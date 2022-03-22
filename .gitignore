@@ -6,8 +6,10 @@
 data
 videos
 plots
+papers
 notebooks
 _research
+src/models/contrib
 
 ################################################################################
 #                                    Julia                                     #
