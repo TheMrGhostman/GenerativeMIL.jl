@@ -20,7 +20,7 @@ function (MoG::MixtureOfGaussians)(sample_size::Int)
     nothing
 end
 
-function MixtureOfGaussians(dims::Union{Int, tuple}, n_mixtures::Int, trainable::Bool=true)
+function MixtureOfGaussians(dims::Union{Int, Tuple}, n_mixtures::Int, trainable::Bool=true)
     nothing
 end
 

@@ -44,7 +44,7 @@ function loss(vae::VariationalAutoencoder, x::AbstractArray{T}, β::Float32=1f0)
     return 𝓛_rec + β * 𝓛_kld
 end
 
-function VariationalAutoencoder(in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity)
+function VariationalAutoencoder(in_dim::Int, z_dim::Int, out_dim::Int; hidden::Int=32, depth::Int=1, activation::Function=identity)
     encoder = []
     decoder = []
     if depth>=2
