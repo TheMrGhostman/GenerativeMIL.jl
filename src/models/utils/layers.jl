@@ -56,6 +56,33 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
     return isab.MAB2(x, h), h # (d, n, bs), (d, m, bs)
 end
 
+
+struct InducedSetAttentionHalfBlock
+    MAB1::MultiheadAttentionBlock
+    I::AbstractArray{<:Real} # Inducing points 
+end
+
+Flux.@functor InducedSetAttentionHalfBlock
+
+Flux.trainable(isab::InducedSetAttentionHalfBlock) = (isab.MAB1, isab.I)
+
+# simple constructor
+function InducedSetAttentionHalfBlock(m::Int, hidden_dim::Int, heads::Int)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
+    I = randn(Float32, hidden_dim, m) # keep batch size as free parameter
+    return InducedSetAttentionHalfBlock(mab1, I)
+end
+
+function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Real
+    # I ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
+    I = batched_I(isab, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
+    h = isab.MAB1(I, x) # h ~ (d, m, bs)
+    return h
+end
+
+
 struct VariationalBottleneck
     prior::Flux.Chain
     posterior::Flux.Chain
@@ -132,7 +159,7 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
     I = batched_I(abl, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, h, kld = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss
+    z, h, kld = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB2(x, h), kld, h, z  # (d, n, bs), (d, m, bs)
 end
@@ -145,7 +172,7 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArr
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
     I = batched_I(abl, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, h, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss
+    z, h, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB2(x, h), kld, h, z # (d, n, bs), (d, m, bs), (zdim, m, bs), ...
 end

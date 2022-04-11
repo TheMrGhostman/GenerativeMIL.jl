@@ -1,6 +1,7 @@
 name = "GenerativeMIL"
 
 [deps]
+Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
