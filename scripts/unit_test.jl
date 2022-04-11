@@ -4,6 +4,7 @@ using Flux
 using Distributions
 
 using GenerativeMIL
+using GenerativeMIL.Models
 
 function info(model::Flux.Chain; text=("",""))
 	for i=1:length(model)
@@ -41,7 +42,7 @@ function info(abl::AttentiveBottleneckLayer; text=("",""))
     info(abl.MAB1, text=("$(text[1])-"," (inner)"))
     info(abl.MAB2, text=("$(text[1])-"," (outer)"))
     info(abl.VB, text=("$(text[1])-",""))
-    @info("$(text[1])- Induced Set -> $(typeof(isab.I)), $(size(isab.I))")
+    @info("$(text[1])- Induced Set -> $(typeof(abl.I)), $(size(abl.I))")
 end
 
 # test MAB
@@ -108,8 +109,8 @@ function abl_unit(depth::Int=3)
     @info "=========================================="
 end
 
-mab_unit()
-isab_unit()
-vb_unit(3)
-vb_unit(1)
-abl_unit(2)
+#mab_unit()
+#isab_unit()
+#vb_unit(3)
+#vb_unit(1)
+#abl_unit(2)
