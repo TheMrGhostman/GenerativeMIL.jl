@@ -106,6 +106,7 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T
     z = (μ + Δμ) + (Σ .* ΔΣ) * randn(Float32)
     x̂ = vb.decoder(z)
     kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
+    # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
     return z, x̂, kld
 end    
 
