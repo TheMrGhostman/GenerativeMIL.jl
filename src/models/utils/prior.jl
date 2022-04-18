@@ -22,8 +22,11 @@ function (MoG::MixtureOfGaussians)(sample_size::Union{Int, Array{Float64, 1}}, b
     # TODO for array instead of int
     # sample_size = ...
     αₒₕ = gumbel_softmax(MoG.α, hard=false)
-    αₒₕ = cat([reshape(αₒₕ, (1, 1, MoG.K, 1)) for i=1:sample_size]..., dims=2) # (K) -> (1, 1, K, 1) -> (1, ss, K, 1),
-    αₒₕ = cat([αₒₕ for i =1:batch_size]..., dims=4) # (1, ss, K, 1) -> (1, ss, K, bs)
+    αₒₕ = reshape(αₒₕ, (1, 1, MoG.K, 1))
+    αₒₕ = repeat(αₒₕ, 1, sample_size, 1, 1) # (K) -> (1, 1, K, 1) -> (1, ss, K, 1),
+    #cat([reshape(αₒₕ, (1, 1, MoG.K, 1)) for i=1:sample_size]..., dims=2)
+    αₒₕ = repeat(αₒₕ, 1, 1, 1, batch_size)  # (1, ss, K, 1) -> (1, ss, K, bs)
+    # cat([αₒₕ for i =1:batch_size]..., dims=4)
 
     μ = reshape(MoG.μ, (MoG.Ds, 1, MoG.K, 1)) # (Ds, K, 1) -> (Ds, 1, K, 1) 
     Σ = reshape(MoG.Σ, (MoG.Ds, 1, MoG.K, 1)) # (Ds, K, 1) -> (Ds, 1, K, 1) 

@@ -50,7 +50,7 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = batched_I(isab, size(x)[end]) # (d, m, 1) -> (d, m, bs) #TODO check this
+    I = repeat(isab.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs) #TODO check this
     h = isab.MAB1(I, x) # h ~ (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return isab.MAB2(x, h), h # (d, n, bs), (d, m, bs)
@@ -77,7 +77,7 @@ function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Re
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = batched_I(isab, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
+    I = repeat(isab.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
     h = isab.MAB1(I, x) # h ~ (d, m, bs)
     return h
 end
@@ -158,7 +158,7 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = batched_I(abl, size(x)[end]) # (d, m, 1) -> (d, m, bs)
+    I = repeat(abl.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
     z, h, kld = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
@@ -171,7 +171,7 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArr
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = batched_I(abl, size(x)[end]) # (d, m, 1) -> (d, m, bs)
+    I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
     z, h, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
@@ -187,12 +187,4 @@ function AttentiveBottleneckLayer(
     I = randn(Float32, hidden_dim, m) # keep batch size as free parameter
     vb = VariationalBottleneck(hidden_dim, z_dim, hidden_dim, hidden, depth, activation)
     return AttentiveBottleneckLayer(mab1, mab2, vb, I)
-end
-
-function batched_I(isab::Union{InducedSetAttentionBlock, AttentiveBottleneckLayer}, batch_size::Int)
-    new_I = isab.I
-    for i in 1:batch_size-1
-        new_I = cat(new_I, isab.I, dims=3)
-    end
-    return new_I
 end
