@@ -48,6 +48,8 @@ function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::A
     return mh.WO(values)
 end
 
+# masked version
+
 
 function attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}) where T <: Real
     # Attention for 3D tensors

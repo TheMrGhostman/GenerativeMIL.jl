@@ -60,6 +60,10 @@ isab3 = Models.InducedSetAttentionBlock(sis3, h_d, heads)
 zdim3 = 4
 depth3 = 2
 hid3 = 9
+n_mixtures = 5
+
+mog = Models.MixtureOfGaussians(in_d, n_mixtures)
+
 abl3 = Models.AttentiveBottleneckLayer(sis3, h_d, heads, zdim3, hid3, depth3, Flux.sigmoid)
 
 # second ABL
@@ -74,17 +78,23 @@ r_expand = Dense(o_d, in_d)
 
 # Inference
 # Forward Pass
+## Encoder
 x0 = expand(x);
 x1, h1 = isab1(x0);
 x2, h2 = isab2(x1);
 x3, h3 = isab3(x2);
 
+## Prior
+p_ss = size(x, 2)
+p_bs = size(x, 3)
+
+h0 = mog(p_ss, p_bs);
+
+## Decoder
 xx2, kld3, hh2, z3 = abl3(expand_h0(h0), h3);
 xx1, kld2, hh1, z2 = abl2(xx2, h2);
 xx0, kld1, hh0, z1 = abl1(xx1, h1);
 xx = r_expand(xx0);
-
-
 
 
 # Generation
