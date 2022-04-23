@@ -27,6 +27,17 @@ function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}
     return mab.LN2(a .+ mab.FF(a))
 end
 
+function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, 
+    Q_mask::Union{BitArray, Nothing}=nothing, V_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    # Q ∈ ℝ^{m,d} ~ (d, m, bs)
+    # V ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # Q_mask ∈ ℝ^{m} ~ (1, m, bs) 
+    # V_mask ∈ ℝ^{n} ~ (1, n, bs) 
+    a = mab.LN1(Q .+ mab.Multihead(Q, V, Q_mask, V_mask)) # (d, m, bs) .+ (d, m, bs)
+    a = mab.LN2(a .+ mab.FF(a)) # because of masking
+    return (Q_mask !== nothing) ? a .* Q_mask : a
+end
+
 
 struct InducedSetAttentionBlock
     MAB1::MultiheadAttentionBlock
@@ -50,12 +61,23 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = repeat(isab.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs) #TODO check this
+    I = repeat(isab.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs) 
     h = isab.MAB1(I, x) # h ~ (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return isab.MAB2(x, h), h # (d, n, bs), (d, m, bs)
 end
 
+function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, 
+    x_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    # I ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
+    # MAB1((d, m, bs), (d, n, bs), _, (1, n, bs)) -> (d, m, bs)
+    I = repeat(isab.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs) 
+    h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
+    # MAB2((d, n, bs), (d, m, bs), (1, n, bs), _) -> (d, n, bs)
+    return isab.MAB2(x, h, x_mask, nothing), h # (d, n, bs), (d, m, bs)
+end
 
 struct InducedSetAttentionHalfBlock
     MAB1::MultiheadAttentionBlock
@@ -82,6 +104,16 @@ function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Re
     return h
 end
 
+function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T},
+    x_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    # I ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
+    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
+    I = repeat(isab.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
+    h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
+    return h
+end
 
 struct VariationalBottleneck
     prior::Flux.Chain
@@ -95,8 +127,8 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: Real
     # computing prior μ, Σ from h
     μ, Σ = vb.prior(h)
     z = μ + Σ * randn(Float32)
-    x̂ = vb.decoder(z)
-    return z, x̂, nothing
+    ĥ = vb.decoder(z)
+    return z, ĥ, nothing
 end
 
 function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
@@ -104,10 +136,10 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T
     μ, Σ = vb.prior(h)
     Δμ, ΔΣ = vb.posterior(h .+ h_enc)
     z = (μ + Δμ) + (Σ .* ΔΣ) * randn(Float32)
-    x̂ = vb.decoder(z)
+    ĥ = vb.decoder(z)
     kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
-    return z, x̂, kld
+    return z, ĥ, kld
 end    
 
 function VariationalBottleneck(
@@ -160,9 +192,9 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
     I = repeat(abl.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, h, kld = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
+    z, ĥ, kld = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, h), kld, h, z  # (d, n, bs), (d, m, bs)
+    return abl.MAB2(x, ĥ), kld, h, z  # (d, n, bs), (d, m, bs)
 end
 
 function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
@@ -173,9 +205,23 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArr
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
     I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, h, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, h), kld, h, z # (d, n, bs), (d, m, bs), (zdim, m, bs), ...
+    return abl.MAB2(x, ĥ), kld, h, z # (d, n, bs), (d, m, bs), (zdim, m, bs), ...
+end
+
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
+    x_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    # inference
+    # I     ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
+    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
+    I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
+    h = abl.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
+    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
+    return abl.MAB2(x, ĥ, x_mask, nothing), kld, h, z # (d, n, bs), (d, m, bs), (zdim, m, bs), ...
 end
 
 # simple constructor
