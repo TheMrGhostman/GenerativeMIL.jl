@@ -1,5 +1,3 @@
-using Flux
-
 struct SplitLayer
     μ::Flux.Dense
     σ::Flux.Dense

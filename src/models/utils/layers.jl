@@ -1,7 +1,3 @@
-using Flux
-include("attention.jl")
-include("utils.jl")
-
 struct MultiheadAttentionBlock
     FF::Flux.Dense
     Multihead::MultiheadAttention
@@ -28,7 +24,7 @@ function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}
 end
 
 function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, 
-    Q_mask::Union{BitArray, Nothing}=nothing, V_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    Q_mask::Union{AbstractArray{Bool}, Nothing}=nothing, V_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     # Q_mask ∈ ℝ^{m} ~ (1, m, bs) 
@@ -68,7 +64,7 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
 end
 
 function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, 
-    x_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
@@ -101,18 +97,18 @@ function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Re
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
     I = repeat(isab.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
     h = isab.MAB1(I, x) # h ~ (d, m, bs)
-    return h
+    return x, h
 end
 
 function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T},
-    x_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
     I = repeat(isab.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
     h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
-    return h
+    return x, h
 end
 
 struct VariationalBottleneck
@@ -194,7 +190,7 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
     z, ĥ, kld = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, ĥ), kld, h, z  # (d, n, bs), (d, m, bs)
+    return abl.MAB2(x, ĥ), kld, ĥ, z  # (d, n, bs), (d, m, bs)
 end
 
 function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
@@ -206,12 +202,13 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArr
     I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
     z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, ĥ), kld, h, z # (d, n, bs), (d, m, bs), (zdim, m, bs), ...
+    return abl.MAB2(x, ĥ), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
 
 function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
-    x_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
@@ -220,8 +217,9 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArr
     I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
     z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, ĥ, x_mask, nothing), kld, h, z # (d, n, bs), (d, m, bs), (zdim, m, bs), ...
+    return abl.MAB2(x, ĥ, x_mask, nothing), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
 
 # simple constructor

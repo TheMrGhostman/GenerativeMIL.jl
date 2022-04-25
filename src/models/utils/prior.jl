@@ -1,10 +1,6 @@
-# code for induction sets
-using Distributions
-using Flux
-using Random: rand!
-using Zygote
+abstract type AbstractPriorDistribution end
 
-struct MixtureOfGaussians{T <: Real}
+struct MixtureOfGaussians{T <: Real} <: AbstractPriorDistribution
     # p(x| α, μ, Σ) = ∑ αₖ ⋅ p(x| μₖ, Σₖ)
     K::Int # n_mixtures
     Ds::Int # dimension of space
@@ -14,12 +10,14 @@ struct MixtureOfGaussians{T <: Real}
     trainable::Bool
 end
 
+Flux.@functor MixtureOfGaussians
+
 Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (MoG.α, MoG.μ, MoG.Σ) : ()
 
 #Flux.@functor MixtureOfGaussians # all parameters α, μ and Σ are now trainable
 
-function (MoG::MixtureOfGaussians)(sample_size::Union{Int, Array{Float64, 1}}, batch_size)
-    # TODO for array instead of int
+function (MoG::MixtureOfGaussians)(sample_size::Union{Int, Array{Int, 1}}, batch_size)
+    # TODO for array instead of int .. maybe not needed
     # sample_size = ...
     αₒₕ = gumbel_softmax(MoG.α, hard=false)
     αₒₕ = reshape(αₒₕ, (1, 1, MoG.K, 1))
@@ -56,7 +54,7 @@ function gumbel_softmax(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, e
     # τ ... non-negative scalar temeperature (default=1.0) https://arxiv.org/pdf/1611.01144.pdf
     # gumbel_samples = -log.(-log.(rand(Float32, size(logits)) + 1e-10) + 1e-10) # alternative version
     #.+ rand(Gumbel(Float32(0), Float32(1)), size(logits))
-    gumbel_samples = -log.(-log.(rand!(logits) .+ eps) .+ eps)
+    gumbel_samples = -log.(-log.(Random.rand!(logits) .+ eps) .+ eps)
     y = logits .+ gumbel_samples
     y = Flux.softmax(y./τ)
 

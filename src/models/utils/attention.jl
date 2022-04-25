@@ -49,7 +49,7 @@ function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::A
 end
 
 function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T}, 
-    X_mask::Union{BitArray, Nothing}=nothing, Y_mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    X_mask::Union{AbstractArray{Bool}, Nothing}=nothing, Y_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # X_mask ~ (1, m, BS)
     # Y_mask ~ (1, n, BS)
     Q = (X_mask !== nothing) ? mh.WQ(X) .* X_mask : mh.WQ(X)
@@ -116,7 +116,7 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
 end
 
 function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4},
-    mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # Attention for 4D tensors
     # Q ∈ ℝ^{h,m,d} ~ (d, m, h, bs)
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)
@@ -147,7 +147,7 @@ function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::Abstr
 end
 
 function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, 
-    mask::Union{BitArray, Nothing}=nothing) where T <: Real
+    mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # Attention for 4D tensors
     # Q ∈ ℝ^{h,m,d} ~ (d, m, h, bs)
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)
