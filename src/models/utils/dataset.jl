@@ -133,9 +133,9 @@ function load_and_standardize_mnist()
     test = load(joinpath(dp, "test.bson"))
 	train = load(joinpath(dp, "train.bson"))
 
-    x_train, mu, sigma = standardize_list(float.(train[:data]))
+    x_train, mu, sigma = standardize_list(Array{Float32}.(train[:data]))
     @info "train standardized μ = $(mu), σ = $(sigma)"
-    x_test = [(x .- mu) ./ sigma for x in float.(test[:data])]
+    x_test = [(x .- mu) ./ sigma for x in Array{Float32}.(test[:data])]
     return (x_train, train[:labels]), (x_test, test[:labels])
 end
 

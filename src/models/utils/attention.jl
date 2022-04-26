@@ -76,6 +76,10 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     else 
         error("Both X_mask and Y_mask are not nothing!!")
     end
+    Zygote.ignore() do
+        mask = Array{Float32}(mask)
+        mask[mask.==0] .-= 1e30
+    end
     values = mh.attention(Q, K, V, mask) 
     # permute dims back and reshape
     values = reshape(permutedims(values, (1,3,2,4)), (d_v, m, bs))
@@ -147,7 +151,7 @@ function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::Abstr
 end
 
 function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, 
-    mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+    mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
     # Attention for 4D tensors
     # Q ∈ ℝ^{h,m,d} ~ (d, m, h, bs)
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)

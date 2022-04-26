@@ -2,8 +2,8 @@ function SumMinDist(A, B)
     # minimum_{j}(|| a_i - b_j||^2)
     # Chamfer Distance between two 2D!! sets / bags / point clouds
     # A ∈ R^{N,D} , B ∈ R^{M,D}
-    dist = Distances.pairwise(SqEuclidean(), A, B, dims=1) # -> distance matrix R^{N,M}
-    dist = minimum(dist, dims=2) # over j
+    dist = Distances.pairwise(SqEuclidean(), A, B, dims=2) # -> distance matrix R^{N,M}
+    dist = minimum(dist, dims=1) # over j
     return Flux.sum(dist)
 end
 
