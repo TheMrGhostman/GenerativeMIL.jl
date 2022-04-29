@@ -11,16 +11,21 @@ function MultiheadAttentionBlock(hidden_dim::Int, heads::Int)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
     mh = MultiheadAttention(hidden_dim, hidden_dim, heads, slot_attention)
     ff = Flux.Dense(hidden_dim, hidden_dim)
-    ln1 = Flux.LayerNorm(hidden_dim)
-    ln2 = Flux.LayerNorm(hidden_dim)
+    ln1 = Flux.LayerNorm((hidden_dim,1))
+    ln2 = Flux.LayerNorm((hidden_dim,1))
     return MultiheadAttentionBlock(ff, mh, ln1, ln2)
+end
+
+function Base.show(io::IO, m::MultiheadAttentionBlock)
+    print(io, "MultiheadAttentionBlock(")
+    print(io, "\n - Mulithead = $(m.Multihead) \n - FF = $(m.FF) \n - LN1 = $(m.LN1) \n - LN2 = $(m.LN2) \n ) ")
 end
 
 function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}) where T <: Real
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
-    a = mab.LN1(Q .+ mab.Multihead(Q, V, V)) # (d, m, bs) .+ (d, m, bs)
-    return mab.LN2(a .+ mab.FF(a))
+    a = mab.LN1(Q + mab.Multihead(Q, V, V)) # (d, m, bs) .+ (d, m, bs)
+    return mab.LN2(a + mab.FF(a))
 end
 
 function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, 
@@ -29,8 +34,8 @@ function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     # Q_mask ∈ ℝ^{m} ~ (1, m, bs) 
     # V_mask ∈ ℝ^{n} ~ (1, n, bs) 
-    a = mab.LN1(Q .+ mab.Multihead(Q, V, Q_mask, V_mask)) # (d, m, bs) .+ (d, m, bs)
-    a = mab.LN2(a .+ mab.FF(a)) # because of masking
+    a = mab.LN1(Q + mab.Multihead(Q, V, Q_mask, V_mask)) # (d, m, bs) .+ (d, m, bs)
+    a = mab.LN2(a + mab.FF(a)) # because of masking
     return (Q_mask !== nothing) ? a .* Q_mask : a
 end
 
@@ -130,7 +135,7 @@ end
 function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
     # computing prior μ, Σ from h as well as posterior from h_enc
     μ, Σ = vb.prior(h)
-    Δμ, ΔΣ = vb.posterior(h .+ h_enc)
+    Δμ, ΔΣ = vb.posterior(h + h_enc)
     z = (μ + Δμ) + (Σ .* ΔΣ) * randn(Float32)
     ĥ = vb.decoder(z)
     kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this

@@ -24,6 +24,12 @@ function MultiheadAttention(input_dim::Int, hidden_dim::Int, heads::Int, attenti
     return MultiheadAttention(heads, WQ, WK, WV, WO, attention)
 end
 
+function Base.show(io::IO, m::MultiheadAttention)
+    print(io, "MultiheadAttention(")
+    print(io, "\n - heads = $(m.heads) \n - WQ = $(m.WQ) \n - WK = $(m.WK)")
+    print(io, "\n - WV = $(m.WV) \n - WO = $(m.WO) \n - attention = $(m.attention) \n ) ")
+end
+
 function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}) where T <: Real
     # Project Q, K, V to new ones
     Q = mh.WQ(Q)
@@ -67,19 +73,25 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     K = permutedims(reshape(K, (head_qk, mh.heads, n, bs)), (1,3,2,4))
     V = permutedims(reshape(V, (head_v, mh.heads, n, bs)), (1,3,2,4))
 
+    
     if (X_mask === nothing) & (Y_mask === nothing)
         mask = nothing
     elseif (X_mask === nothing) & (Y_mask !== nothing)
         mask = reshape(Y_mask, (n, 1, 1, bs))
+        #println(Y_mask |> size, Y_mask |> typeof)
     elseif (X_mask !== nothing) & (Y_mask === nothing)
         mask = reshape(X_mask, (1, m, 1, bs))
+        #println(X_mask |> size, X_mask |> typeof)
     else 
         error("Both X_mask and Y_mask are not nothing!!")
     end
-    Zygote.ignore() do
-        mask = Array{Float32}(mask)
-        mask[mask.==0] .-= 1e30
-    end
+    #Zygote.ignore() do
+    mask = Array{Float32}(mask)
+    n_mask = -1.0f30 .* (1 .- mask)
+    mask = mask + n_mask
+    #println(mask |> size, mask |> typeof)
+    #end
+
     values = mh.attention(Q, K, V, mask) 
     # permute dims back and reshape
     values = reshape(permutedims(values, (1,3,2,4)), (d_v, m, bs))
@@ -135,6 +147,18 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     return batchedmul(V, A)  # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
 end
 
+function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, matrixmul::Function) where T <: Real
+    dₖ = size(K, 1)
+    dₖ = convert(Float32, 1/sqrt(dₖ))
+    Kᵀ = permutedims(K, (2,1,3,4))
+    # batched_mul can do only 3D tensors 
+    A = matrixmul(Kᵀ, Q) .* dₖ # (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
+    A = (mask !== nothing) ? A .* mask : A
+    A = Flux.softmax(A, dims=2) # softmax over m for each n; normalizes samples not features
+    W = matrixmul(V, A)
+    W = W ./ Flux.sum(A .+ 1f-5 , dims=1)
+end
+
 function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}) where T <: Real
     # tensor shape -> (feature_dim, n - samples in set, BS)
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
@@ -163,8 +187,21 @@ function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::Abstr
     A = batchedmul(Kᵀ, Q) .* dₖ # (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
     A = (mask !== nothing) ? A .* mask : A
     A = Flux.softmax(A, dims=2) # softmax over m for each n; normalizes samples not features
-    W = A ./ Flux.sum(A, dims=1) # weighted mean; normalizes features for each sample
-    return batchedmul(V, W) # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
+    W = batchedmul(V, A)
+    W = W ./ Flux.sum(A .+ 1f-5 , dims=1) # weighted mean; normalizes features for each sample
+    return  W# (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
 end
+
+
+
+"""
+function Base.show(io::IO, l::LayerNorm)
+    print(io, "LayerNorm(", join(l.size, ", "))
+    l.λ === identity || print(io, ", ", l.λ)
+    hasaffine(l) || print(io, ", affine=false")
+    print(io, ")")
+  end
+
+"""
 
 

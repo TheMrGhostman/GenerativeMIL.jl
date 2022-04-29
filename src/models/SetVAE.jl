@@ -7,10 +7,10 @@ Flux.@functor HierarchicalEncoder
 
 function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool})
     x = m.expansion(x) .* x_mask
-    h_encs = Array{Any}(undef, length(m.layers))
+    h_encs = Zygote.Buffer(Array{Any}(undef, length(m.layers)))
     for (i, layer) in enumerate(m.layers)
         x, h_enc = layer(x, x_mask)
-        h_encs[i] = h_enc
+        h_encs[length(m.layers) - i + 1] = h_enc
     end
     return x, h_encs
 end
@@ -92,7 +92,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     decoder = HierarchicalDecoder(
         Flux.Dense(prior_dim, hidden_dim),
         dec_blocks,
-        Flux.Dense(hidden_dim, input_dim)
+        Flux.Dense(hidden_dim, input_dim, tanh)
     )
     return SetVAE(encoder, decoder, prior)
 end
