@@ -156,6 +156,7 @@ function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::Abstr
     # V ∈ ℝ^{n,vd} ~ (vd, n, bs) 
     # Output: (vd, n, bs) ⊠ (n, m, BS) -> (vd, m, BS)
     return _slot_attention(Q, K, V, batched_mul, (2,1,3), mask=mask)
+end
 
 function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, 
     mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
