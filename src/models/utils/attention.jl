@@ -147,61 +147,40 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     return batchedmul(V, A)  # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
 end
 
-function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, matrixmul::Function) where T <: Real
-    dₖ = size(K, 1)
-    dₖ = convert(Float32, 1/sqrt(dₖ))
-    Kᵀ = permutedims(K, (2,1,3,4))
-    # batched_mul can do only 3D tensors 
-    A = matrixmul(Kᵀ, Q) .* dₖ # (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
-    A = (mask !== nothing) ? A .* mask : A
-    A = Flux.softmax(A, dims=2) # softmax over m for each n; normalizes samples not features
-    W = matrixmul(V, A)
-    W = W ./ Flux.sum(A .+ 1f-5 , dims=1)
-end
 
-function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}) where T <: Real
+function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3},
+    mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
     # tensor shape -> (feature_dim, n - samples in set, BS)
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # K ∈ ℝ^{n,d} ~ (d, n, bs)
-    # V ∈ ℝ^{n,vd} ~ (vd, n, bs)         
-    dₖ = size(K, 1)
-    dₖ = convert(Float32, 1/sqrt(dₖ))
-    Kᵀ = permutedims(K, (2,1,3))
-    # batched_mul \boxtimes
-    A = (Kᵀ ⊠ Q) .* dₖ  # (n, d, BS) ⊠ (d, m, BS) -> (n, m, BS)
-    A = Flux.softmax(A, dims=2) # softmax over m for each n; normalizes samples not features
-    W = A ./ Flux.sum(A, dims=1) # weighted mean; normalizes features for each sample
-    return V ⊠ W # (vd, n, bs) ⊠ (n, m, BS) -> (vd, m, BS)
-end
+    # V ∈ ℝ^{n,vd} ~ (vd, n, bs) 
+    # Output: (vd, n, bs) ⊠ (n, m, BS) -> (vd, m, BS)
+    return _slot_attention(Q, K, V, batched_mul, (2,1,3), mask=mask)
 
 function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, 
     mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
     # Attention for 4D tensors
     # Q ∈ ℝ^{h,m,d} ~ (d, m, h, bs)
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)
-    # V ∈ ℝ^{h,n,vd} ~ (vd, n, h, bs)           
-    dₖ = size(K, 1)
-    dₖ = convert(Float32, 1/sqrt(dₖ))
-    Kᵀ = permutedims(K, (2,1,3,4))
-    # batched_mul can do only 3D tensors 
-    A = batchedmul(Kᵀ, Q) .* dₖ # (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
-    A = (mask !== nothing) ? A .* mask : A
-    A = Flux.softmax(A, dims=2) # softmax over m for each n; normalizes samples not features
-    W = batchedmul(V, A)
-    W = W ./ Flux.sum(A .+ 1f-5 , dims=1) # weighted mean; normalizes features for each sample
-    return  W# (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
+    # V ∈ ℝ^{h,n,vd} ~ (vd, n, h, bs) 
+    # Output: (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
+    return _slot_attention(Q, K, V, batchedmul, (2,1,3,4), mask=mask)
 end
 
-
-
-"""
-function Base.show(io::IO, l::LayerNorm)
-    print(io, "LayerNorm(", join(l.size, ", "))
-    l.λ === identity || print(io, ", ", l.λ)
-    hasaffine(l) || print(io, ", affine=false")
-    print(io, ")")
-  end
-
-"""
+function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, matrixmul::Function, pdims::Tuple;
+    mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
+    dₖ = size(K, 1)
+    dₖ = convert(Float32, 1/sqrt(dₖ))
+    Kᵀ = permutedims(K, pdims)
+    # 3D Singlehead # (n, d, BS) ⊠ (d, m, BS) -> (n, m, BS)
+    # 3D Multihead # (n, d, h) ⊠ (d, m, h) -> (n, m, h)
+    # 4D Mulithead # (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
+    A = matrixmul(Kᵀ, Q) .* dₖ 
+    A = (mask !== nothing) ? A .* mask : A
+    A = Flux.softmax(A, dims=2) # softmax over m for each n; normalizes samples not features
+    W = matrixmul(V, A)
+    W = W ./ Flux.sum(A .+ 1f-5 , dims=1) # weighted mean; normalizes features for each sample
+    return W
+end
 
 
