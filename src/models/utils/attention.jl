@@ -3,10 +3,10 @@ using Transformers: batchedmul # can do 4D tensors
 
 struct MultiheadAttention
     heads::Int32
-    WQ::Flux.Dense
-    WK::Flux.Dense
-    WV::Flux.Dense
-    WO::Flux.Dense
+    WQ::Union{Flux.Dense, MaskedDense}
+    WK::Union{Flux.Dense, MaskedDense}
+    WV::Union{Flux.Dense, MaskedDense}
+    WO::Union{Flux.Dense, MaskedDense}
     attention::Function # type of attention -> attention or slot_attention
 end
 
@@ -17,17 +17,17 @@ Flux.trainable(mh::MultiheadAttention) = (mh.WQ, mh.WK, mh.WV, mh.WO)
 # simple constructor
 function MultiheadAttention(input_dim::Int, hidden_dim::Int, heads::Int, attention::Function=attention)
     (hidden_dim % heads != 0) ? error("hidden_dim modulo heads must be equall to zero!!!") : nothing
-    WQ = Flux.Dense(input_dim, hidden_dim, bias=false)
-    WK = Flux.Dense(input_dim, hidden_dim, bias=false)
-    WV = Flux.Dense(input_dim, hidden_dim, bias=false)
-    WO = Flux.Dense(hidden_dim, hidden_dim, bias=false)
+    WQ = MaskedDense(input_dim, hidden_dim, bias=false)
+    WK = MaskedDense(input_dim, hidden_dim, bias=false)
+    WV = MaskedDense(input_dim, hidden_dim, bias=false)
+    WO = MaskedDense(hidden_dim, hidden_dim, bias=false)
     return MultiheadAttention(heads, WQ, WK, WV, WO, attention)
 end
 
 function Base.show(io::IO, m::MultiheadAttention)
     print(io, "MultiheadAttention(")
-    print(io, "\n - heads = $(m.heads) \n - WQ = $(m.WQ) \n - WK = $(m.WK)")
-    print(io, "\n - WV = $(m.WV) \n - WO = $(m.WO) \n - attention = $(m.attention) \n ) ")
+    print(io, "\n\t - heads = $(m.heads) \n\t - WQ = $(m.WQ) \n\t - WK = $(m.WK)")
+    print(io, "\n\t - WV = $(m.WV) \n\t - WO = $(m.WO) \n\t - attention = $(m.attention) \n\t ) ")
 end
 
 function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}) where T <: Real
@@ -58,9 +58,9 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     X_mask::Union{AbstractArray{Bool}, Nothing}=nothing, Y_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # X_mask ~ (1, m, BS)
     # Y_mask ~ (1, n, BS)
-    Q = (X_mask !== nothing) ? mh.WQ(X) .* X_mask : mh.WQ(X)
-    K = (Y_mask !== nothing) ? mh.WK(Y) .* Y_mask : mh.WK(Y)
-    V = (Y_mask !== nothing) ? mh.WV(Y) .* Y_mask : mh.WV(Y)
+    Q = mh.WQ(X, X_mask) #(X_mask !== nothing) ? mh.WQ(X) .* X_mask : mh.WQ(X)
+    K = mh.WK(Y, Y_mask) #(Y_mask !== nothing) ? mh.WK(Y) .* Y_mask : mh.WK(Y)
+    V = mh.WV(Y, Y_mask) #(Y_mask !== nothing) ? mh.WV(Y) .* Y_mask : mh.WV(Y)
     # get correct dims
     d, m, bs = size(Q);
     _, n, _ = size(K);
@@ -73,7 +73,6 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     K = permutedims(reshape(K, (head_qk, mh.heads, n, bs)), (1,3,2,4))
     V = permutedims(reshape(V, (head_v, mh.heads, n, bs)), (1,3,2,4))
 
-    
     if (X_mask === nothing) & (Y_mask === nothing)
         mask = nothing
     elseif (X_mask === nothing) & (Y_mask !== nothing)
@@ -86,8 +85,8 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
         error("Both X_mask and Y_mask are not nothing!!")
     end
     #Zygote.ignore() do
-    mask = Array{Float32}(mask)
-    n_mask = -1.0f30 .* (1 .- mask)
+    #mask = Array{Float32}(mask)
+    n_mask = -1.0f30 .* (1f0 .- mask)
     mask = mask + n_mask
     #println(mask |> size, mask |> typeof)
     #end
@@ -95,10 +94,10 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     values = mh.attention(Q, K, V, mask) 
     # permute dims back and reshape
     values = reshape(permutedims(values, (1,3,2,4)), (d_v, m, bs))
-    values = (X_mask !== nothing) ? values.* X_mask : values
+    #values = (X_mask !== nothing) ? values.* X_mask : values
     # project values
     #output = (X_mask !== nothing) ? mh.WO(values) .* X_mask : mh.WO(values)
-    return mh.WO(values)
+    return mh.WO(values, X_mask)
 end
 # masked version
 

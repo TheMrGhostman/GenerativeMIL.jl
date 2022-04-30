@@ -16,6 +16,31 @@ function (m::SplitLayer)(x)
 	return (m.μ(x), m.σ(x))
 end
 
+
+struct MaskedDense
+    dense::Flux.Dense
+end
+
+Flux.@functor MaskedDense
+
+function MaskedDense(in, out, σ=identity; bias=true)
+    m = Flux.Dense(in, out, σ, bias=bias)
+    return MaskedDense(m)
+end
+
+function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::Nothing=nothing)
+    return m.dense(x)
+end
+
+function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real}) 
+    # masking of input as well as of output
+    return m.dense(x .* mask) .* mask
+end
+
+
+
+
+
 struct VariationalAutoencoder
     encoder::Flux.Chain
     decoder::Flux.Chain
@@ -65,3 +90,10 @@ function VariationalAutoencoder(in_dim::Int, z_dim::Int, out_dim::Int; hidden::I
     return VariationalAutoencoder(encoder, decoder)
 end
 
+"""
+
+function check(x)
+    print("size -> $(size(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(x)) | sum -> $(Flux.sum(x)) | not zero elements -> $(sum(x .!= 0))) ")
+end
+
+"""
