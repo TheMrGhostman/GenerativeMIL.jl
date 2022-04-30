@@ -1,5 +1,5 @@
 struct MultiheadAttentionBlock
-    FF::Union{Flux.Dense, MaskedDense}
+    FF::Flux.Dense
     Multihead::MultiheadAttention
     LN1::Flux.LayerNorm
     LN2::Flux.LayerNorm
@@ -18,14 +18,14 @@ end
 
 function Base.show(io::IO, m::MultiheadAttentionBlock)
     print(io, "MultiheadAttentionBlock(")
-    print(io, "\n\t - Mulithead = $(m.Multihead) \n\t - FF = $(m.FF) \n\t - LN1 = $(m.LN1) \n\t - LN2 = $(m.LN2) \n ) ")
+    print(io, "\n - Mulithead = $(m.Multihead) \n - FF = $(m.FF) \n - LN1 = $(m.LN1) \n - LN2 = $(m.LN2) \n ) ")
 end
 
 function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}) where T <: Real
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     a = mab.LN1(Q + mab.Multihead(Q, V, V)) # (d, m, bs) .+ (d, m, bs)
-    return mab.LN2(a + mab.FF(a)) #TODO add mask
+    return mab.LN2(a + mab.FF(a))
 end
 
 function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, 
