@@ -7,6 +7,7 @@ using ProgressMeter: Progress, next!
 using PaddedViews
 using PyPlot
 using BSON
+using Dates
 
 BS = 64
 
@@ -71,4 +72,4 @@ for (i, batch) in enumerate(dataloader)
     end
 end
 
-tagsave(datadir("model_test_1.bson"), Dict(:model => sv, :loss => map(x->x[1], losses), :klds => map(x->x[2], losses)), safe=true)
+tagsave(datadir("model_test_$(now)_1.bson"), Dict(:model => sv, :loss => map(x->x[1], losses), :klds => map(x->x[2], losses)), safe=true)

@@ -46,6 +46,13 @@ function mask(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real})
     return x .* mask
 end
 
+function unmask(x, mask, output_dim=3)
+    x = reshape(x, (output_dim,:))
+    mask = reshape(mask, (1,:))
+    x_masked = ones(size(x)...) .* mask
+    x = reshape(x[x_masked .== 1], (output_dim,:))
+    return x
+end
 
 struct VariationalAutoencoder
     encoder::Flux.Chain
@@ -98,5 +105,5 @@ end
 
 
 function check(x::AbstractArray{<:Real})
-    println("size -> $(size(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(x)) | sum -> $(Flux.sum(x)) | not zero elements -> $(sum(x .!= 0))) ")
+    println("size -> $(size(x)) | type -> $(typeof(x)) | mean -> $(Flux.mean(x)) | sum -> $(Flux.sum(x)) | not zero elements -> $(sum(x .!= 0))) ")
 end

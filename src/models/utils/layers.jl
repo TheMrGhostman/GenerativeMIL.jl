@@ -55,6 +55,11 @@ Flux.@functor InducedSetAttentionBlock
 
 Flux.trainable(isab::InducedSetAttentionBlock) = (isab.MAB1, isab.MAB2, isab.I)
 
+function Base.show(io::IO, m::InducedSetAttentionBlock)
+    print(io, "InducedSetAttentionBlock(")
+    print(io, " - MAB1 = $(m.MAB1)\n - MAB2 = $(m.MAB2) \n - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
+end
+
 # simple constructor
 function InducedSetAttentionBlock(m::Int, hidden_dim::Int, heads::Int)
     mab1 = MultiheadAttentionBlock(hidden_dim, heads)
@@ -94,6 +99,11 @@ Flux.@functor InducedSetAttentionHalfBlock
 
 Flux.trainable(isab::InducedSetAttentionHalfBlock) = (isab.MAB1, isab.I)
 
+function Base.show(io::IO, m::InducedSetAttentionHalfBlock)
+    print(io, "InducedSetAttentionHalfBlock(")
+    print(io, " - MAB1 = $(m.MAB1)\n - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
+end
+
 # simple constructor
 function InducedSetAttentionHalfBlock(m::Int, hidden_dim::Int, heads::Int)
     mab1 = MultiheadAttentionBlock(hidden_dim, heads)
@@ -129,6 +139,12 @@ end
 
 Flux.@functor VariationalBottleneck
 
+function Base.show(io::IO, m::VariationalBottleneck)
+    print(io, "VariationalBottleneck(")
+    print(io, "\n\t - prior = $(m.prior) \n\t - posterior = $(m.posterior)")
+    print(io, "\n\t - decoder = $(m.decoder) \n ) ")
+end
+
 function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: Real
     # computing prior μ, Σ from h
     μ, Σ = vb.prior(h)
@@ -141,7 +157,7 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T
     # computing prior μ, Σ from h as well as posterior from h_enc
     μ, Σ = vb.prior(h)
     Δμ, ΔΣ = vb.posterior(h + h_enc)
-    z = (μ + Δμ) + (Σ .* ΔΣ) * randn(Float32)
+    z = (μ + Δμ) + (Σ .* ΔΣ) .* randn(Float32)
     ĥ = vb.decoder(z)
     kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
@@ -190,6 +206,13 @@ end
 Flux.@functor AttentiveBottleneckLayer
 
 Flux.trainable(abl::AttentiveBottleneckLayer) = (abl.MAB1, abl.MAB2, abl.VB, abl.I)
+
+function Base.show(io::IO, m::AttentiveBottleneckLayer)
+    print(io, "InducedSetAttentionBlock(")
+    print(io, " - MAB1 = $(m.MAB1)\n - MAB2 = $(m.MAB2)")
+    print(io, " - VB = $(m.VB) \n")
+    print(io, " - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
+end
 
 function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     # generation

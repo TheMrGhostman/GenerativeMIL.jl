@@ -10,6 +10,12 @@ struct MixtureOfGaussians{T <: Real} <: AbstractPriorDistribution
     trainable::Bool
 end
 
+function Base.show(io::IO, m::MixtureOfGaussians)
+    print(io, "MixtureOfGaussians(")
+    print(io, "\n\t - K = $(m.K) \n\t - Ds = $(m.Ds) \n\t - α = $(m.α)")
+    print(io, "\n\t - μ = $(m.μ) \n\t - Σ = $(m.Σ) \n\t - trainable = $(m.trainable) \n\t ) ")
+end
+
 Flux.@functor MixtureOfGaussians
 
 Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (MoG.α, MoG.μ, MoG.Σ) : ()
@@ -30,12 +36,14 @@ function (MoG::MixtureOfGaussians)(sample_size::Union{Int, Array{Int, 1}}, batch
     Σ = reshape(MoG.Σ, (MoG.Ds, 1, MoG.K, 1)) # (Ds, K, 1) -> (Ds, 1, K, 1) 
 
     # (1, ss, K, bs) * (Ds, 1, K, 1) -> (Ds, ss, K, bs) -> (Ds, ss, 1, bs) -> (Ds, ss, bs)
-    μ = Flux.sum( μ .* αₒₕ  , dims=3)[:,:,1,:] 
-    Σ = Flux.sum( Σ .* αₒₕ  , dims=3)[:,:,1,:] 
+    #μ = Flux.sum( μ .* αₒₕ  , dims=3)[:,:,1,:] 
+    #Σ = Flux.sum( Σ .* αₒₕ  , dims=3)[:,:,1,:] 
+    μ = reshape(Flux.sum( μ .* αₒₕ  , dims=3), (:,sample_size, batch_size))
+    Σ = reshape(Flux.sum( Σ .* αₒₕ  , dims=3), (:,sample_size, batch_size))
 
     # samples from N(0,1) -> (Ds, ss, bs)
-    ϵ = randn(Float32, MoG.Ds, sample_size, batch_size)
-    z = μ .+ Flux.softplus.(Σ) .* ϵ # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
+    #ϵ = randn(Float32, MoG.Ds, sample_size, batch_size)
+    z = μ + Flux.softplus.(Σ) .* randn(Float32) # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
     return z
 end
 
