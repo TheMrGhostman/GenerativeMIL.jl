@@ -139,10 +139,14 @@ function load_and_standardize_mnist()
     return (x_train, train[:labels]), (x_test, test[:labels])
 end
 
-function transform_batch(x)
+function transform_batch(x, max=false)
     a_mask = [ones(size(a)) for a in x];
-    max_set = maximum(size.(x))[end];
-    b = map(a->Array(PaddedView(0, a, (3, max_set))), x);
+    if max
+        max_set = maximum(size.(x))[end];
+    else
+        max_set = minimum(size.(x))[end]; #minimum
+    end
+    b = map(a->Array{Float32}(PaddedView(0, a, (3, max_set))), x);
     b_mask = map(a->Array(PaddedView(0, a, (3, max_set))), a_mask);
     c = cat(b..., dims=3);
     c_mask = cat(b_mask..., dims=3) .> 0; # mask as BitArray

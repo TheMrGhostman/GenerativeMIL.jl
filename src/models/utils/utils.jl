@@ -34,7 +34,7 @@ end
 
 function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real}) 
     # masking of input as well as of output
-    return m.dense(x .* mask) .* mask
+    return m.dense(x .* mask) .* mask
 end
 
 # mask function
@@ -96,10 +96,7 @@ function VariationalAutoencoder(in_dim::Int, z_dim::Int, out_dim::Int; hidden::I
     return VariationalAutoencoder(encoder, decoder)
 end
 
-"""
 
-function check(x)
-    print("size -> $(size(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(x)) | sum -> $(Flux.sum(x)) | not zero elements -> $(sum(x .!= 0))) ")
+function check(x::AbstractArray{<:Real})
+    println("size -> $(size(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(x)) | sum -> $(Flux.sum(x)) | not zero elements -> $(sum(x .!= 0))) ")
 end
-
-"""
