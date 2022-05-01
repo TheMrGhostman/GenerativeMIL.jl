@@ -1,5 +1,5 @@
 struct MultiheadAttentionBlock
-    FF::Union{Flux.Dense, MaskedDense}
+    FF::Union{Flux.Dense, MaskedDense, Flux.Chain}
     Multihead::MultiheadAttention
     LN1::Flux.LayerNorm
     LN2::Flux.LayerNorm
@@ -10,7 +10,10 @@ Flux.@functor MultiheadAttentionBlock
 function MultiheadAttentionBlock(hidden_dim::Int, heads::Int)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
     mh = MultiheadAttention(hidden_dim, hidden_dim, heads, slot_attention)
-    ff = Flux.Dense(hidden_dim, hidden_dim)
+    ff = Flux.Chain(
+        Flux.Dense(hidden_dim, hidden_dim, relu),
+        Flux.Dense(hidden_dim, hidden_dim)
+    )
     ln1 = Flux.LayerNorm((hidden_dim,1))
     ln2 = Flux.LayerNorm((hidden_dim,1))
     return MultiheadAttentionBlock(ff, mh, ln1, ln2)
@@ -34,9 +37,11 @@ function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     # Q_mask ∈ ℝ^{m} ~ (1, m, bs) 
     # V_mask ∈ ℝ^{n} ~ (1, n, bs) 
-    a = mab.LN1(Q + mab.Multihead(Q, V, Q_mask, V_mask)) # (d, m, bs) .+ (d, m, bs)
-    a = mab.LN2(a + mab.FF(a)) # because of masking
-    return (Q_mask !== nothing) ? a .* Q_mask : a
+    Q = mask(Q, Q_mask)
+    V = mask(V, V_mask)
+    a = mab.LN1(Q + mab.Multihead(Q, V, Q_mask, V_mask)) # (d, m, bs) + (d, m, bs) 
+    a = mab.LN2(a + mab.FF(a)) 
+    return mask(a, Q_mask)
 end
 
 

@@ -37,8 +37,14 @@ function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real})
     return m.dense(x .* mask) .* mask
 end
 
+# mask function
+function mask(x::AbstractArray{<:Real}, mask::Nothing=nothing)
+    return x
+end
 
-
+function mask(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real})
+    return x .* mask
+end
 
 
 struct VariationalAutoencoder

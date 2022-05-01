@@ -2,6 +2,7 @@ using Flux
 using Transformers: batchedmul # can do 4D tensors
 
 struct MultiheadAttention
+    # Dense layers without bias !! or it will break masking
     heads::Int32
     WQ::Union{Flux.Dense, MaskedDense}
     WK::Union{Flux.Dense, MaskedDense}
@@ -58,9 +59,10 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     X_mask::Union{AbstractArray{Bool}, Nothing}=nothing, Y_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # X_mask ~ (1, m, BS)
     # Y_mask ~ (1, n, BS)
-    Q = mh.WQ(X, X_mask) #(X_mask !== nothing) ? mh.WQ(X) .* X_mask : mh.WQ(X)
-    K = mh.WK(Y, Y_mask) #(Y_mask !== nothing) ? mh.WK(Y) .* Y_mask : mh.WK(Y)
-    V = mh.WV(Y, Y_mask) #(Y_mask !== nothing) ? mh.WV(Y) .* Y_mask : mh.WV(Y)
+    # masking of WQ,WK, and WV is not needed since bias=false
+    Q = mh.WQ(X) # mask(mh.WQ(X), X_mask) 
+    K = mh.WK(Y) # mask(mh.WK(Y), Y_mask)
+    V = mh.WV(Y) # mask(mh.WV(Y), Y_mask)
     # get correct dims
     d, m, bs = size(Q);
     _, n, _ = size(K);
@@ -84,20 +86,16 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     else 
         error("Both X_mask and Y_mask are not nothing!!")
     end
-    #Zygote.ignore() do
     #mask = Array{Float32}(mask)
     n_mask = -1.0f30 .* (1f0 .- mask)
     mask = mask + n_mask
-    #println(mask |> size, mask |> typeof)
-    #end
 
     values = mh.attention(Q, K, V, mask) 
     # permute dims back and reshape
     values = reshape(permutedims(values, (1,3,2,4)), (d_v, m, bs))
-    #values = (X_mask !== nothing) ? values.* X_mask : values
-    # project values
-    #output = (X_mask !== nothing) ? mh.WO(values) .* X_mask : mh.WO(values)
-    return mh.WO(values, X_mask)
+    values = mask(values, X_mask)
+    # masking of WO(values) is not needed since bias=false
+    return mh.WO(values)
 end
 # masked version
 
