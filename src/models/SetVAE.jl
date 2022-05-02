@@ -92,7 +92,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     decoder = HierarchicalDecoder(
         Flux.Dense(prior_dim, hidden_dim),
         dec_blocks,
-        Flux.Dense(hidden_dim, input_dim, tanh)
+        Flux.Dense(hidden_dim, input_dim)
     )
     return SetVAE(encoder, decoder, prior)
 end

@@ -7,6 +7,7 @@ using ProgressMeter: Progress, next!
 using PaddedViews
 using PyPlot
 using BSON
+using Dates
 
 BS = 64
 
@@ -54,7 +55,7 @@ progress = Progress(iters)
 beta = 0.01f0
 
 for (i, batch) in enumerate(dataloader)
-    x, x_mask = GenerativeMIL.Models.transform_batch(batch,true)#GenerativeMIL.Models.transform_batch(batch)
+    x, x_mask = GenerativeMIL.Models.transform_batch(batch, true)#GenerativeMIL.Models.transform_batch(batch)
     #println(x|>size, x_mask|>size)
     loss, back = Flux.pullback(ps) do 
         loss_f(sv, x, x_mask, beta) 
@@ -65,10 +66,11 @@ for (i, batch) in enumerate(dataloader)
     push!(losses, loss)
     next!(progress; showvalues=[(:iters, "$(i)/$(iters)"),(:loss, loss[1]),(:klds, loss[2])])
     if i == -1 #placehodler for annealing
-        beta = 0.01f0
+        #beta = 0.01f0
+        print("i = -1")
     elseif i == iters
         break
     end
 end
 
-tagsave(datadir("model_test_1.bson"), Dict(:model => sv, :loss => map(x->x[1], losses), :klds => map(x->x[2], losses)), safe=true)
+tagsave(datadir("model_test_$(now())_iters=$(iters)_2.bson"), Dict(:model => sv, :loss => map(x->x[1], losses), :klds => map(x->x[2], losses)), safe=true)
