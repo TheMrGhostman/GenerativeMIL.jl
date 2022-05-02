@@ -1,6 +1,7 @@
 module Models
 
 using Flux
+using Flux3D
 using Zygote
 using Distributions
 using LinearAlgebra
