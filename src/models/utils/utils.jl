@@ -105,5 +105,5 @@ end
 
 
 function check(x::AbstractArray{<:Real})
-    println("size -> $(size(x)) | type -> $(typeof(x)) | mean -> $(Flux.mean(x)) | sum -> $(Flux.sum(x)) | not zero elements -> $(sum(x .!= 0))) ")
+    println("size -> $(size(x)) | type -> $(typeof(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(cpu(x))) | sum -> $(Flux.sum(x)) | not zero elements -> $(sum(x .!= 0))) ")
 end

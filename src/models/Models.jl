@@ -18,5 +18,7 @@ include("utils/utils.jl")
 include("utils/dataset.jl")
 #include("utils/losses.jl")
 include("SetVAE.jl")
+include("PoolAE.jl")
+
 
 end

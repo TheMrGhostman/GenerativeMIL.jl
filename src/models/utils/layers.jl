@@ -148,7 +148,7 @@ end
 function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: Real
     # computing prior μ, Σ from h
     μ, Σ = vb.prior(h)
-    z = μ + Σ * randn(Float32)
+    z = μ + Σ * randn(Float32, size(μ)...)
     ĥ = vb.decoder(z)
     return z, ĥ, nothing
 end
@@ -157,7 +157,7 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T
     # computing prior μ, Σ from h as well as posterior from h_enc
     μ, Σ = vb.prior(h)
     Δμ, ΔΣ = vb.posterior(h + h_enc)
-    z = (μ + Δμ) + (Σ .* ΔΣ) .* randn(Float32)
+    z = (μ + Δμ) + (Σ .* ΔΣ) .* randn(Float32, size(μ)...)
     ĥ = vb.decoder(z)
     kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set

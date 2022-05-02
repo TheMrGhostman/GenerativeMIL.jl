@@ -22,10 +22,9 @@ Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (MoG.α, MoG.μ, MoG.�
 
 #Flux.@functor MixtureOfGaussians # all parameters α, μ and Σ are now trainable
 
-function (MoG::MixtureOfGaussians)(sample_size::Union{Int, Array{Int, 1}}, batch_size)
-    # TODO for array instead of int .. maybe not needed
+function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size)
     # sample_size = ...
-    αₒₕ = gumbel_softmax(MoG.α, hard=false)
+    αₒₕ = gumbel_softmax(MoG.α, hard=true)
     αₒₕ = reshape(αₒₕ, (1, 1, MoG.K, 1))
     αₒₕ = repeat(αₒₕ, 1, sample_size, 1, 1) # (K) -> (1, 1, K, 1) -> (1, ss, K, 1),
     #cat([reshape(αₒₕ, (1, 1, MoG.K, 1)) for i=1:sample_size]..., dims=2)
@@ -42,8 +41,8 @@ function (MoG::MixtureOfGaussians)(sample_size::Union{Int, Array{Int, 1}}, batch
     Σ = reshape(Flux.sum( Σ .* αₒₕ  , dims=3), (:,sample_size, batch_size))
 
     # samples from N(0,1) -> (Ds, ss, bs)
-    #ϵ = randn(Float32, MoG.Ds, sample_size, batch_size)
-    z = μ + Flux.softplus.(Σ) .* randn(Float32) # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
+    ϵ = randn(Float32, MoG.Ds, sample_size, batch_size)
+    z = μ + Flux.softplus.(Σ) .* ϵ # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
     return z
 end
 
@@ -69,6 +68,7 @@ function gumbel_softmax(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, e
     if !hard
         return y
     else
+        y_hard = nothing
         Zygote.ignore() do
             # we don't want for this block of code computing gradients
             shape = size(y)
@@ -77,7 +77,7 @@ function gumbel_softmax(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, e
             y_hard[ind] .= 1
             y_hard = y_hard .- y
         end
-        print(y_hard)
+        #print(y_hard)
         # now we bypass gradients from y_hard to y
         y = y_hard .+ y 
         return y
