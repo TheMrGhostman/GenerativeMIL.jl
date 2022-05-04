@@ -41,7 +41,8 @@ function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size)
     Σ = reshape(Flux.sum( Σ .* αₒₕ  , dims=3), (:,sample_size, batch_size))
 
     # samples from N(0,1) -> (Ds, ss, bs)
-    ϵ = randn(Float32, MoG.Ds, sample_size, batch_size)
+    # tyoeof(μ)(x) works only if has the same size/shape as μ !!!!!
+    ϵ = typeof(μ)(randn(Float32, MoG.Ds, sample_size, batch_size))
     z = μ + Flux.softplus.(Σ) .* ϵ # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
     return z
 end
@@ -72,7 +73,7 @@ function gumbel_softmax(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, e
         Zygote.ignore() do
             # we don't want for this block of code computing gradients
             shape = size(y)
-            y_hard = zeros(T, shape)
+            y_hard = typeof(y)(zeros(T, shape)) # !!!!! this will break if y_hard would be diferent size then y
             _, ind = findmax(y, dims=1)
             y_hard[ind] .= 1
             y_hard = y_hard .- y
