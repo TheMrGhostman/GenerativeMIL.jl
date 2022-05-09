@@ -94,10 +94,21 @@ end
 
 Flux.@functor ConstGaussPrior
 
+Flux.trainable(cgp::ConstGaussPrior) = (cgp.μ, cgp.Σ)
+
 function (cgp::ConstGaussPrior)(sample_size, batch_size; const_module::Module=Base)
     # computing prior μ, Σ from h
     μ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.μ
     Σ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.Σ
+    return μ, Σ
+end
+
+function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3})
+    # computing prior μ, Σ from h
+    const_module = (typeof(h) == CuArray{Float32, 3, CUDA.Mem.DeviceBuffer}) ? CUDA : Base
+    _, sample_size, batch_size = size(h)
+    μ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.μ
+    Σ = const_module.ones(Float32, 1, sample_size, batch_size) .* Flux.softplus.(cgp.Σ)
     return μ, Σ
 end
 
@@ -114,3 +125,11 @@ function ConstGaussPrior(dimension::Int)
     Σ = ones(Float32, dimension)
     return ConstGaussPrior(μ, Σ)
 end
+"""
+function Flux.gpu(cgp::ConstGaussPrior)
+    μ = CuArray(cgp.μ)
+    Σ = CuArray(cgp.Σ)
+    const_module = CUDA
+    return ConstGaussPrior(μ, Σ, const_module)
+end
+"""

@@ -133,7 +133,6 @@ function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T},
     return x, h
 end
 
-
 struct VariationalBottleneck
     prior::Union{Flux.Chain, ConstGaussPrior}
     posterior::Flux.Chain
@@ -166,6 +165,19 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
     return z, ĥ, kld
 end    
+
+"""
+function vb_const(vb::VariationalBottleneck, h::AbstractArray{T}, h_enc::AbstractArray{T}; const_module::Module=Base) where T <: Real
+    # computing prior μ, Σ from h as well as posterior from h_enc
+    μ, Σ = vb.prior(h; const_module=const_module)
+    Δμ, ΔΣ = vb.posterior(h + h_enc)
+    z = (μ + Δμ) + (Σ .* ΔΣ) .* const_module.randn(Float32, size(μ)...)
+    ĥ = vb.decoder(z)
+    kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
+    # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
+    return z, ĥ, kld
+end    
+"""
 
 function VariationalBottleneck(
     in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity
@@ -294,7 +306,8 @@ function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T},
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     h_const = const_module.zeros(Float32, size(h_enc)...)
-    z, ĥ, kld = abl.VB(h_const, h_enc, const_module=const_module) 
+    z, ĥ, kld = abl.VB(h_const, h_enc, const_module=const_module)
+    #vb_const(abl.VB, h_const, h_enc, const_module=const_module) 
     kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB1(x, ĥ, x_mask, nothing), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...

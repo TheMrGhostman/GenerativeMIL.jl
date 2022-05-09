@@ -50,12 +50,12 @@ end
 
 Flux.@functor SetVAE
 
-function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0)
-    _, h_encs = vae.encoder(x, x_mask) # no need for x
+function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0; const_module::Module=Base)
+    _, h_encs = vae.encoder(x, x_mask; const_module=const_module) # no need for x
     #h_encs = reverse(h_encs)
     _, sample_size, bs = size(x_mask)
-    z = vae.prior(sample_size, bs)
-    x̂, _, _, klds = vae.decoder(z, h_encs, x_mask)
+    z = vae.prior(sample_size, bs; const_module=const_module)
+    x̂, _, _, klds = vae.decoder(z, h_encs, x_mask; const_module=const_module)
     loss = chamfer_distance(x, x̂) +  β * klds
     return loss
 end
