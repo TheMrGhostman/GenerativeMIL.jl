@@ -112,13 +112,15 @@ function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3})
     return μ, Σ
 end
 
-function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3}; const_module::Module=Base)
+"""
+function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3}, const_module::Module=Base)
     # computing prior μ, Σ from h
     _, sample_size, batch_size = size(h)
     μ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.μ
     Σ = const_module.ones(Float32, 1, sample_size, batch_size) .* Flux.softplus.(cgp.Σ)
     return μ, Σ
 end
+"""
 
 function ConstGaussPrior(dimension::Int)
     μ = randn(Float32, dimension)
