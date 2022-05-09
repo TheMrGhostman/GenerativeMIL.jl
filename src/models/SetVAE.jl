@@ -5,11 +5,11 @@ end
 
 Flux.@functor HierarchicalEncoder
 
-function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool})
+function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}; const_module::Module=Base)
     x = m.expansion(x) .* x_mask
     h_encs = Zygote.Buffer(Array{Any}(undef, length(m.layers)))
     for (i, layer) in enumerate(m.layers)
-        x, h_enc = layer(x, x_mask)
+        x, h_enc = layer(x, x_mask; const_module=const_module)
         h_encs[length(m.layers) - i + 1] = h_enc
     end
     return x, h_encs
@@ -24,13 +24,13 @@ end
 
 Flux.@functor HierarchicalDecoder
 
-function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::AbstractArray{Bool})
+function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::AbstractArray{Bool}; const_module::Module=Base)
     x = m.expansion(z) .* x_mask
     zs = []
     klds = []
     kld_loss = 0
     for (layer, h_enc) in zip(m.layers, h_encs)
-        x, kld, _, z = layer(x, h_enc, x_mask) 
+        x, kld, _, z = layer(x, h_enc, x_mask; const_module=const_module) 
         Zygote.ignore() do
             push!(klds, kld)
             push!(zs, z)
@@ -52,11 +52,11 @@ Flux.@functor SetVAE
 
 function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0)
     _, h_encs = vae.encoder(x, x_mask) # no need for x
-    h_encs = reverse(h_encs)
+    #h_encs = reverse(h_encs)
     _, sample_size, bs = size(x_mask)
     z = vae.prior(sample_size, bs)
     x̂, _, _, klds = vae.decoder(z, h_encs, x_mask)
-    loss = chemfer_distance(x, x̂) +  β * klds
+    loss = chamfer_distance(x, x̂) +  β * klds
     return loss
 end
 
@@ -85,7 +85,10 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
 
     #DECODER
     dec_blocks = []
-    for (iss, zdim) in zip(reverse(induced_set_sizes), reverse(latent_dims))
+    half_block = AttentiveHalfBlock(hidden_dim, heads, latent_dims[1], zed_hidden_dim, zed_depth, activation)
+    push!(dec_blocks, half_block)
+
+    for (iss, zdim) in zip(reverse(induced_set_sizes)[2:end], reverse(latent_dims)[2:end])
         abl = AttentiveBottleneckLayer(iss, hidden_dim, heads, zdim, zed_hidden_dim, zed_depth, activation)
         push!(dec_blocks, abl)
     end
