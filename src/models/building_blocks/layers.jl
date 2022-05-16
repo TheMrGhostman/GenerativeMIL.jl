@@ -48,7 +48,7 @@ end
 struct InducedSetAttentionBlock
     MAB1::MultiheadAttentionBlock
     MAB2::MultiheadAttentionBlock
-    I::AbstractArray{<:Real} # Inducing points #TODO add as trainable parameter
+    I::AbstractArray{<:Real} 
 end
 
 Flux.@functor InducedSetAttentionBlock
@@ -79,12 +79,13 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
 end
 
 function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     # MAB1((d, m, bs), (d, n, bs), _, (1, n, bs)) -> (d, m, bs)
-    I = repeat(isab.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs) 
+    I = const_module.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
+    # repeat(isab.I, 1, 1, size(x)[end]) ----> repeat on gpu is extremly slow!!
     h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs), (1, n, bs), _) -> (d, n, bs)
     return isab.MAB2(x, h, x_mask, nothing), h # (d, n, bs), (d, m, bs)
@@ -121,18 +122,19 @@ function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Re
 end
 
 function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T},
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = repeat(isab.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
+    I = const_module.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
+    # repeat(isab.I, 1, 1, size(x)[end]) ----> repeat on gpu is extremly slow!! 
     h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
     return x, h
 end
 
 struct VariationalBottleneck
-    prior::Flux.Chain
+    prior::Union{Flux.Chain, ConstGaussPrior}
     posterior::Flux.Chain
     decoder::Flux.Chain
 end
@@ -153,16 +155,29 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: Real
     return z, ĥ, nothing
 end
 
-function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
+function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}; const_module::Module=Base) where T <: Real
     # computing prior μ, Σ from h as well as posterior from h_enc
     μ, Σ = vb.prior(h)
     Δμ, ΔΣ = vb.posterior(h + h_enc)
-    z = (μ + Δμ) + (Σ .* ΔΣ) .* randn(Float32, size(μ)...)
+    z = (μ + Δμ) + (Σ .* ΔΣ) .* const_module.randn(Float32, size(μ)...)
     ĥ = vb.decoder(z)
     kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
     return z, ĥ, kld
 end    
+
+"""
+function vb_const(vb::VariationalBottleneck, h::AbstractArray{T}, h_enc::AbstractArray{T}; const_module::Module=Base) where T <: Real
+    # computing prior μ, Σ from h as well as posterior from h_enc
+    μ, Σ = vb.prior(h; const_module=const_module)
+    Δμ, ΔΣ = vb.posterior(h + h_enc)
+    z = (μ + Δμ) + (Σ .* ΔΣ) .* const_module.randn(Float32, size(μ)...)
+    ĥ = vb.decoder(z)
+    kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
+    # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
+    return z, ĥ, kld
+end    
+"""
 
 function VariationalBottleneck(
     in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity
@@ -208,7 +223,7 @@ Flux.@functor AttentiveBottleneckLayer
 Flux.trainable(abl::AttentiveBottleneckLayer) = (abl.MAB1, abl.MAB2, abl.VB, abl.I)
 
 function Base.show(io::IO, m::AttentiveBottleneckLayer)
-    print(io, "InducedSetAttentionBlock(")
+    print(io, "AttentiveBottleneckLayer(")
     print(io, " - MAB1 = $(m.MAB1)\n - MAB2 = $(m.MAB2)")
     print(io, " - VB = $(m.VB) \n")
     print(io, " - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
@@ -226,30 +241,32 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     return abl.MAB2(x, ĥ), kld, ĥ, z  # (d, n, bs), (d, m, bs)
 end
 
-function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}; const_module::Module=Base) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
+    I = const_module.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
+    #I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    z, ĥ, kld = abl.VB(h, h_enc, const_module=const_module) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB2(x, ĥ), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
 
 function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
+    I = const_module.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
+    #I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
-    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    z, ĥ, kld = abl.VB(h, h_enc, const_module=const_module) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB2(x, ĥ, x_mask, nothing), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
@@ -264,4 +281,64 @@ function AttentiveBottleneckLayer(
     I = randn(Float32, hidden_dim, m) # keep batch size as free parameter
     vb = VariationalBottleneck(hidden_dim, z_dim, hidden_dim, hidden, depth, activation)
     return AttentiveBottleneckLayer(mab1, mab2, vb, I)
+end
+
+struct AttentiveHalfBlock
+    MAB1::MultiheadAttentionBlock
+    VB::VariationalBottleneck
+end
+
+Flux.@functor AttentiveHalfBlock
+
+Flux.trainable(abl::AttentiveHalfBlock) = (abl.MAB1, abl.VB)
+
+function Base.show(io::IO, m::AttentiveHalfBlock)
+    print(io, "AttentiveHalfBlock(")
+    print(io, " - MAB1 = $(m.MAB1)\n")
+    print(io, " - VB = $(m.VB) \n ) ")
+end
+
+function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
+    # inference
+    # I     ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
+    # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    h_const = const_module.zeros(Float32, size(h_enc)...)
+    z, ĥ, kld = abl.VB(h_const, h_enc, const_module=const_module)
+    #vb_const(abl.VB, h_const, h_enc, const_module=const_module) 
+    kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
+    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
+    return abl.MAB1(x, ĥ, x_mask, nothing), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
+end
+
+function AttentiveHalfBlock(
+    hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity
+)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
+
+    encoder_Δμ = []
+    decoder = []
+    if depth>=2
+        push!(encoder_Δμ, Flux.Dense(hidden_dim, hidden, activation))
+        push!(decoder, Flux.Dense(z_dim, hidden, activation))
+        for i=1:depth-2
+            push!(encoder_Δμ, Flux.Dense(hidden, hidden, activation))
+            push!(decoder, Flux.Dense(hidden, hidden, activation))
+        end
+        push!(encoder_Δμ, SplitLayer(hidden, (z_dim, z_dim), (identity, softplus)))
+        push!(decoder, Flux.Dense(hidden, hidden_dim))
+    elseif depth==1
+        push!(encoder_Δμ, SplitLayer(in_dim, (z_dim, z_dim), (identity, softplus)))
+        push!(decoder, Flux.Dense(z_dim, hidden_dim))
+    else
+        @error("Incorrect depth of VariationalBottleneck")
+    end
+    encoder_Δμ = Flux.Chain(encoder_Δμ...)
+    decoder = Flux.Chain(decoder...)
+
+    vb = VariationalBottleneck(ConstGaussPrior(z_dim), encoder_Δμ, decoder)
+
+    return AttentiveHalfBlock(mab1, vb)
 end
