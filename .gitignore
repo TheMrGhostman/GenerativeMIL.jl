@@ -10,6 +10,7 @@ papers
 notebooks
 _research
 src/models/contrib
+logs
 
 ################################################################################
 #                                    Julia                                     #
