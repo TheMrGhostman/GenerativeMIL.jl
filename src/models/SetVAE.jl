@@ -15,7 +15,6 @@ function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArra
     return x, h_encs
 end
 
-
 struct HierarchicalDecoder
     expansion::Flux.Dense # expansion of prior samples
     layers
