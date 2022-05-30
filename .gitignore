@@ -11,6 +11,7 @@ notebooks
 _research
 src/models/contrib
 logs
+groupad
 
 ################################################################################
 #                                    Julia                                     #
