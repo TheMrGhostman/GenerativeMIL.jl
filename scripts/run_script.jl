@@ -4,72 +4,45 @@ using Flux
 using Flux3D: chamfer_distance
 using MLDataPattern
 using ProgressMeter: Progress, next!
-using PaddedViews
 using PyPlot
 using BSON
 using Dates
+using GenerativeMIL: transform_batch
+using GenerativeMIL.Models: loss, check
+using CUDA
 
 BS = 64
 
-function loss_f(m::GenerativeMIL.Models.SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=0.01f0)
-    #encoder
-    x1 = m.encoder.expansion(x) .* x_mask
-    x1, h_enc1 = m.encoder.layers[1](x1, x_mask)
-    x1, h_enc2 = m.encoder.layers[2](x1, x_mask)
-    x1, h_enc3 = m.encoder.layers[3](x1, x_mask)
-    x1, h_enc4 = m.encoder.layers[4](x1, x_mask)
-    
-    #println("encoder", x1)
-    _, sample_size, bs = size(x_mask)
-    z = m.prior(sample_size, bs)
-    #println("sampling", z)
-    #decoder
-    klds = 0
-    x1 = m.decoder.expansion(z) .* x_mask
-    x1, kld, _,_ = m.decoder.layers[1](x1, h_enc4, x_mask)
-    klds += kld
-    x1, kld, _,_ = m.decoder.layers[2](x1, h_enc3, x_mask)
-    klds += kld
-    x1, kld, _,_ = m.decoder.layers[3](x1, h_enc2, x_mask)
-    klds += kld
-    x1, kld, _,_ = m.decoder.layers[4](x1, h_enc1, x_mask)
-    klds += kld
-    x1 = m.decoder.reduction(x1) .* x_mask
-    #println("decoder", x1)
-    #loss = ChamferDistanceLoss(x, x1) + β * klds
-    loss = chamfer_distance(x, x1) + β * klds
-    return loss, klds
-end
-
-train, test = GenerativeMIL.Models.load_and_standardize_mnist();
+train, test = GenerativeMIL.load_and_standardize_mnist();
 
 dataloader = RandomBatches(train[1], size=BS)
 
-sv = GenerativeMIL.Models.SetVAE(3,64,4,[16,8,4,2], [2,4,8,16], 5, 32);
-
+sv = GenerativeMIL.Models.SetVAE(3,64,4,[16,8,4,2], [2,4,8,16], 1, 32, Flux.relu, 5, 10) |> gpu;
+print(sv)
 ps = Flux.params(sv);
-opt = ADAM()
 losses = []
-iters = 100 * fld(60000,BS) # 100 epochs
-progress = Progress(iters)
+learning_rate = 1e-3
 beta = 0.01f0
+iters = 100 * fld(60000,BS) # 100 epochs
+opt = ADAM(learning_rate)
+progress = Progress(iters)
+
 
 for (i, batch) in enumerate(dataloader)
-    x, x_mask = GenerativeMIL.Models.transform_batch(batch,true)#GenerativeMIL.Models.transform_batch(batch)
-    #println(x|>size, x_mask|>size)
-    loss, back = Flux.pullback(ps) do 
-        loss_f(sv, x, x_mask, beta) 
+    x, x_mask = transform_batch(batch,true)
+    x, x_mask = x|>gpu, x_mask|>gpu
+    
+    loss_, back = Flux.pullback(ps) do 
+        loss(sv, x, x_mask, beta, const_module=CUDA) 
     end;
     grad = back((1f0,0f0));
     Flux.Optimise.update!(opt, ps, grad);
     #@info "loss = $(loss)"
-    push!(losses, loss)
-    next!(progress; showvalues=[(:iters, "$(i)/$(iters)"),(:loss, loss[1]),(:klds, loss[2])])
-    if i == -1 #placehodler for annealing
-        beta = 0.01f0
-    elseif i == iters
+    push!(losses, loss_)
+    next!(progress; showvalues=[(:iters, "$(i)/$(iters)"),(:loss, loss_[1]),(:klds, loss_[2])])
+    if i == iters
         break
     end
 end
 
-tagsave(datadir("model_test_$(now)_1.bson"), Dict(:model => sv, :loss => map(x->x[1], losses), :klds => map(x->x[2], losses)), safe=true)
+tagsave(datadir("model_test_$(now)_gpu.bson"), Dict(:model => sv, :loss => map(x->x[1], losses), :klds => map(x->x[2], losses), :lr => learning_rate, :beta => beta, :iters =>iters), safe=true)

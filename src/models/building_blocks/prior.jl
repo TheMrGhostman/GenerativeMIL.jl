@@ -96,42 +96,23 @@ Flux.@functor ConstGaussPrior
 
 Flux.trainable(cgp::ConstGaussPrior) = (cgp.μ, cgp.Σ)
 
-function (cgp::ConstGaussPrior)(sample_size, batch_size; const_module::Module=Base)
-    # computing prior μ, Σ from h
-    μ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.μ
-    Σ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.Σ
-    return μ, Σ
-end
-
 function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3})
     # computing prior μ, Σ from h
     const_module = (typeof(h) == CuArray{Float32, 3, CUDA.Mem.DeviceBuffer}) ? CUDA : Base
     _, sample_size, batch_size = size(h)
-    μ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.μ
-    Σ = const_module.ones(Float32, 1, sample_size, batch_size) .* Flux.softplus.(cgp.Σ)
+    μ = const_module.ones(Float32, 1, 1, batch_size) .* cgp.μ
+    Σ = const_module.ones(Float32, 1, 1, batch_size) .* Flux.softplus.(cgp.Σ)
     return μ, Σ
 end
 
-"""
-function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3}, const_module::Module=Base)
-    # computing prior μ, Σ from h
-    _, sample_size, batch_size = size(h)
-    μ = const_module.ones(Float32, 1, sample_size, batch_size) .* cgp.μ
-    Σ = const_module.ones(Float32, 1, sample_size, batch_size) .* Flux.softplus.(cgp.Σ)
-    return μ, Σ
-end
-"""
-
-function ConstGaussPrior(dimension::Int)
-    μ = randn(Float32, dimension)
-    Σ = ones(Float32, dimension)
+function ConstGaussPrior(m::Int, dimension::Int)
+    μ = randn(Float32, dimension, m, 1)
+    Σ = ones(Float32, dimension, m, 1)
     return ConstGaussPrior(μ, Σ)
 end
-"""
-function Flux.gpu(cgp::ConstGaussPrior)
-    μ = CuArray(cgp.μ)
-    Σ = CuArray(cgp.Σ)
-    const_module = CUDA
-    return ConstGaussPrior(μ, Σ, const_module)
+
+function Base.show(io::IO, m::ConstGaussPrior)
+    print(io, "ConstGaussPrior(")
+    print(io, "\n\t - μ = $(m.μ |> size) | $(m.μ |> typeof) | mean ~ $(m.μ |> Flux.mean)")
+    print(io, "\n\t - Σ = $(m.Σ |> size) | $(m.Σ |> typeof) | mean ~ $(m.Σ |> Flux.mean) \n\t ) ")
 end
-"""

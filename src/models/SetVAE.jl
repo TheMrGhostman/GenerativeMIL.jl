@@ -55,7 +55,8 @@ function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}
     _, sample_size, bs = size(x_mask)
     z = vae.prior(sample_size, bs; const_module=const_module)
     x̂, _, _, klds = vae.decoder(z, h_encs, x_mask; const_module=const_module)
-    loss = chamfer_distance(x, x̂) +  β * klds
+    #loss = chamfer_distance(x, x̂) +  β * klds
+    loss = masked_chamfer_distance_cpu(x, x̂, x_mask, x_mask) +  β * klds
     return loss
 end
 
@@ -84,7 +85,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
 
     #DECODER
     dec_blocks = []
-    half_block = AttentiveHalfBlock(hidden_dim, heads, latent_dims[1], zed_hidden_dim, zed_depth, activation)
+    half_block = AttentiveHalfBlock(induced_set_sizes[end], hidden_dim, heads, latent_dims[end], zed_hidden_dim, zed_depth, activation)
     push!(dec_blocks, half_block)
 
     for (iss, zdim) in zip(reverse(induced_set_sizes)[2:end], reverse(latent_dims)[2:end])
