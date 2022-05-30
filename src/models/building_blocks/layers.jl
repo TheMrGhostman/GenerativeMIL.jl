@@ -314,7 +314,7 @@ function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T},
 end
 
 function AttentiveHalfBlock(
-    hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity
+    m::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity
 )
     mab1 = MultiheadAttentionBlock(hidden_dim, heads)
 
@@ -330,7 +330,7 @@ function AttentiveHalfBlock(
         push!(encoder_Δμ, SplitLayer(hidden, (z_dim, z_dim), (identity, softplus)))
         push!(decoder, Flux.Dense(hidden, hidden_dim))
     elseif depth==1
-        push!(encoder_Δμ, SplitLayer(in_dim, (z_dim, z_dim), (identity, softplus)))
+        push!(encoder_Δμ, SplitLayer(hidden_dim, (z_dim, z_dim), (identity, softplus)))
         push!(decoder, Flux.Dense(z_dim, hidden_dim))
     else
         @error("Incorrect depth of VariationalBottleneck")
@@ -338,7 +338,7 @@ function AttentiveHalfBlock(
     encoder_Δμ = Flux.Chain(encoder_Δμ...)
     decoder = Flux.Chain(decoder...)
 
-    vb = VariationalBottleneck(ConstGaussPrior(z_dim), encoder_Δμ, decoder)
+    vb = VariationalBottleneck(ConstGaussPrior(m, z_dim), encoder_Δμ, decoder)
 
     return AttentiveHalfBlock(mab1, vb)
 end
