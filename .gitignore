@@ -420,3 +420,7 @@ $RECYCLE.BIN/
 scripts/SetVAE debugging-Copy1.ipynb
 scripts/SetVAE debugging.ipynb
 SetVAE/mwe.jl
+*.ipynb
+scripts/setvae_mnist_test.jl
+scripts/vae_test.jl
+scripts/vae_test.jl
