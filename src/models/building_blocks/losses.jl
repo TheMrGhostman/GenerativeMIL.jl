@@ -44,3 +44,28 @@ end
 # m ~ z_scales
 """
 
+function unmask(x, mask, output_dim=3)
+    x = reshape(x, (output_dim,:))
+    mask = reshape(mask, (1,:))
+    x_masked = ones(size(x)...) .* mask
+    x = reshape(x[x_masked .== 1], (output_dim,:))
+    return x
+end
+
+function masked_chamfer_distance(x, y, x_mask, y_mask)
+    return Flux.mean([
+            chamfer_distance(
+                unmask(x[:,:,i:i],x_mask[:,:,i:i]), 
+                unmask(y[:,:,i:i],y_mask[:,:,i:i])
+            ) for i=1:size(x,1)])
+end
+
+function masked_chamfer_distance_cpu(x, y, x_mask, y_mask)
+    x, x_mask = x|>cpu, x_mask|>cpu
+    y, y_mask = y|>cpu, y_mask|>cpu
+    return Flux.mean([
+            chamfer_distance(
+                unmask(x[:,:,i:i],x_mask[:,:,i:i]), 
+                unmask(y[:,:,i:i],y_mask[:,:,i:i])
+            ) for i=1:size(x,1)])
+end
