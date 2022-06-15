@@ -44,14 +44,6 @@ end
 # m ~ z_scales
 """
 
-function unmask(x, mask, output_dim=3)
-    x = reshape(x, (output_dim,:))
-    mask = reshape(mask, (1,:))
-    x_masked = ones(size(x)...) .* mask
-    x = reshape(x[x_masked .== 1], (output_dim,:))
-    return x
-end
-
 function masked_chamfer_distance(x, y, x_mask, y_mask)
     return Flux.mean([
             chamfer_distance(

@@ -44,6 +44,33 @@ function standardize_list(X)
     return new_X, mu, sigma
 end
 
+function scale_list_to_interval(X, lowerb=0, upperb=1)
+    max_val_ = nothing
+    min_val_ = nothing
+    for x in X
+        max_val = maximum(x, dims=2)
+        min_val = minimum(x, dims=2)
+        if max_val_ === nothing
+            max_val_ = max_val
+        else
+            common_max = cat(max_val_, max_val, dims=2)
+            max_val_ = maximum(common_max, dims=2)
+        end
+        if min_val_ === nothing
+            min_val_ = min_val
+        else
+            common_min = cat(min_val_, min_val, dims=2)
+            min_val_ = minimum(common_min, dims=2)
+        end
+    end
+    new_X = []
+    for x in X
+        scaled_0_1 = (x .- min_val_) ./ (max_val_ .- min_val_)
+        scaled_lowerb_upperb = scaled_0_1 .* (upperb - lowerb) .+ lowerb 
+        push!(new_X,  scaled_lowerb_upperb)
+    end
+    return new_X, max_val_, min_val_
+end
 
 function  process_raw_mnist()
     dp = datadir("mnist_point_cloud")
@@ -136,6 +163,22 @@ function load_and_standardize_mnist()
     x_train, mu, sigma = standardize_list(Array{Float32}.(train[:data]))
     @info "train standardized μ = $(mu), σ = $(sigma)"
     x_test = [(x .- mu) ./ sigma for x in Array{Float32}.(test[:data])]
+    return (x_train, train[:labels]), (x_test, test[:labels])
+end
+
+function load_and_scale_mnist(lowerb=0, upperb=1)
+    dp = datadir("mnist_point_cloud")
+    # check if the data is there
+	if !ispath(dp) || !all(map(x->x in readdir(dp), ["test.bson", "train.bson"]))
+		process_raw_mnist()
+	end
+
+    test = load(joinpath(dp, "test.bson"))
+	train = load(joinpath(dp, "train.bson"))
+
+    x_train, min_, max_ = scale_list_to_interval(Array{Float32}.(train[:data]), lowerb, upperb)
+    @info "train scaled into interval ($(lowerb), $(upperb)) \n ¨min = $(min_), max = $(max_)"
+    x_test = [(x .- min_) ./ (max_ .- min_) for x in Array{Float32}.(test[:data])]
     return (x_train, train[:labels]), (x_test, test[:labels])
 end
 
