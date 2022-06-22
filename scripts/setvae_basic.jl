@@ -88,3 +88,57 @@ function sample_params()
 
 	return merge(model_params,(is_sizes=is_sizes, zdims=zdims), training_params)
 end
+
+
+"""
+	fit(data, parameters)
+This is the most important function - returns `training_info` and a tuple or a vector of tuples `(score_fun, final_parameters)`.
+`training_info` contains additional information on the training process that should be saved, the same for all anomaly score functions.
+Each element of the return vector contains a specific anomaly score function - there can be multiple for each trained model.
+Final parameters is a named tuple of names and parameter values that are used for creation of the savefile name.
+"""
+function fit(data, parameters)
+	# construct model - constructor should only accept kwargs
+	model = GenerativeMIL.Models.setvae_constructor_from_named_tuple(
+		;idim=size(data[1][1],1), parameters...
+	)
+
+	# fit train data
+	# max. train time: 24 hours, over 10 CPU cores -> 2.4 hours of training for each model
+	# the full traning time should be 48 hours to ensure all scores are calculated
+	# training time is decreased automatically for less cores!
+	try
+		# number of available cores
+		cores = Threads.nthreads()
+		global info, fit_t, _, _, _ = @timed fit!(model, data, loss; max_train_time=24*3600*cores/max_seed/anomaly_classes, 
+			patience=200, check_interval=5, parameters...)
+	catch e
+		# return an empty array if fit fails so nothing is computed
+		@info "Failed training due to \n$e"
+		return (fit_t = NaN, history=nothing, npars=nothing, model=nothing), [] 
+	end
+
+	# construct return information - put e.g. the model structure here for generative models
+	training_info = (
+		fit_t = fit_t,
+		history = info.history,
+		npars = info.npars,
+		model = info.model
+		)
+
+	# now return the info to be saved and an array of tuples (anomaly score function, hyperparatemers)
+	return training_info, [
+		(x -> GroupAD.Models.reconstruct(info.model, x),
+			merge(parameters, (score = "reconstructed_input",)))
+	]
+end
+
+"""
+	edit_params(data, parameters)
+	
+This modifies parameters according to data. Default version only returns the input arg. 
+Overload for models where this is needed.
+"""
+function edit_params(data, parameters, class, method)
+	merge(parameters, (method = method, class = class, ))
+end

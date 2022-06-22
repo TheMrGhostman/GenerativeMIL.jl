@@ -99,3 +99,13 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     )
     return SetVAE(encoder, decoder, prior)
 end
+
+function setvae_constructor_from_named_tuple(
+    ;input_dim, hidden_dim, heads, induced_set_sizes, latent_dims, zed_depth, zed_hidden_dim, activation, 
+    n_mixtures, prior_dim, output_activation, kwargs...)
+    model = SetVAE(
+        input_dim, hidden_dim, heads, induced_set_sizes, latent_dims, zed_depth, zed_hidden_dim, 
+        activation, n_mixtures, prior_dim, output_activation
+        )
+    return model
+end
