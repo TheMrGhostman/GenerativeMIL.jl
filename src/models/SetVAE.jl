@@ -62,7 +62,7 @@ end
 
 function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::Array{Int,1}, 
     latent_dims::Array{Int,1}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, 
-    n_mixtures::Int=5, prior_dim::Int=3)
+    n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity)
 
     (length(induced_set_sizes) !=length(latent_dims)) ? error("induced sets and latent dims have different lengths") : nothing
 
@@ -95,7 +95,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     decoder = HierarchicalDecoder(
         Flux.Dense(prior_dim, hidden_dim),
         dec_blocks,
-        Flux.Dense(hidden_dim, input_dim)
+        Flux.Dense(hidden_dim, input_dim, x->output_activation(x))
     )
     return SetVAE(encoder, decoder, prior)
 end

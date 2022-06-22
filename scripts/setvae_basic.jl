@@ -50,16 +50,41 @@ modelname = "setvae_basic"
 Should return a named tuple that contains a sample of model parameters.
 """
 function sample_params()
-	# MNIST has idim = 2 -> fewer possibilities for sampling
-	# zdim: 1, 2, 4, 8, 12, 16
-	# hdim: 4, 8, 16, 32, 64
-	par_vec = ([1, 2, 4, 8, 12, 16], 2 .^(2:6),  ["scalar", "diagonal"], 10f0 .^(-4:-3), 2 .^ (5:7), ["relu", "swish", "tanh"], 3:4, 1:Int(1e8),
-		["mean", "maximum", "median"])
-	argnames = (:zdim, :hdim, :var, :lr, :batchsize, :activation, :nlayers, :init_seed, :aggregation)
-	parameters = (;zip(argnames, map(x->sample(x, 1)[1], par_vec))...)
-	# ensure that zdim < hdim
-	while parameters.zdim >= parameters.hdim
-		parameters = merge(parameters, (zdim = sample(par_vec[1])[1],))
-	end
-	return parameters
+	# MNIST has idim = 3 -> fewer possibilities for sampling
+	# +/- 4608 possible combinations, some of sample supports are just placehodlers for future options
+	default(x) = 16*ones(Int, size(x)...)
+	model_par_vec = (
+		2:5, 				# :levels -> number of "sampling skip-connections"
+		2 .^(4:6), 			# :hdim -> number of neurons in All dense layers except VariationalBottleneck layers
+		[4],				# :heads -> number of heads in multihead attentions
+		["relu", "swish"], 	# :activation -> type activation functions in model (mainly for outout from MAB)
+		["gaussian", "mog"],# :prior -> prior distribution for decoder, mog has defaultly 4 mixtures
+		2 .^(4:5), 			# :prior_dim -> dimension of prior distributino ("noise") 
+		[1], 				# :vb_depth -> nlayers in VariationalBottleneck
+		[0], 				# :vb_hdim -> hidden dimension in VariationalBottleneck, for :vb_depth=1 is not used
+	)
+	induced_set_pars = ( 
+		[2 .^(5:-1:1)], 	# :is_sizes -> induced sets sides in top-down encoder 				
+		[reverse, default] 	# :zdims	-> latent dimension at each level ("skip-connection")
+	)
+	training_par_vec = (
+		2 .^ (6:7), 		# :batchsize -> size of one training batch
+		10f0 .^(-4:-3),		# :lr -> learning rate
+		[false],			# :lr_decay -> boolean value if to use learning rate decay after half of epochs. 
+		10f0 .^ (-3:-1),	# :beta -> final β scaling factor for KL divergence
+		[0, 50], 			# :beta_anealing -> number of anealing epochs!!, if 0 then NO anealing
+		[200], 				# :epochs -> n of iid iterations (depends on bs and datasize) proportional to n of :epochs 
+		1:Int(1e8), 		# :init_seed -> init seed for random samling for experiment instace 
+	);
+	model_argnames = ( :levels, :hdim, :heads, :activation, :prior, :prior_dim, :vb_depth, :vb_hdim)
+	training_argnames = ( :batchsize, :lr, :lr_decay, :beta, :beta_anealing, :epochs, :init_seed )
+
+	model_params = (;zip(model_argnames, map(x->sample(x, 1)[1], model_par_vec))...)
+	training_params = (;zip(training_argnames, map(x->sample(x, 1)[1], training_par_vec))...)
+	# IS params
+	levels = model_params[:levels];
+	is_sizes = sample(induced_set_pars[1])[1:levels]
+	zdims = sample(induced_set_pars[2])(is_sizes) 
+
+	return merge(model_params,(is_sizes=is_sizes, zdims=zdims), training_params)
 end

@@ -177,7 +177,7 @@ function load_and_scale_mnist(lowerb=0, upperb=1)
 	train = load(joinpath(dp, "train.bson"))
 
     x_train, min_, max_ = scale_list_to_interval(Array{Float32}.(train[:data]), lowerb, upperb)
-    @info "train scaled into interval ($(lowerb), $(upperb)) \n ¨min = $(min_), max = $(max_)"
+    @info "train scaled into interval ($(lowerb), $(upperb)) \n min = $(min_), max = $(max_)"
     x_test = [(x .- min_) ./ (max_ .- min_) for x in Array{Float32}.(test[:data])]
     return (x_train, train[:labels]), (x_test, test[:labels])
 end
