@@ -57,12 +57,18 @@ function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}
     x̂, _, _, klds = vae.decoder(z, h_encs, x_mask; const_module=const_module)
     #loss = chamfer_distance(x, x̂) +  β * klds
     loss = masked_chamfer_distance_cpu(x, x̂, x_mask, x_mask) +  β * klds
-    return loss
+    return loss, klds
 end
+
+
+######################################
+###          Constructors          ###
+######################################
 
 function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::Array{Int,1}, 
     latent_dims::Array{Int,1}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, 
-    n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity)
+    n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity) 
+    #prior_type::AbstractPriorDistribution=MixtureOfGaussians)
 
     (length(induced_set_sizes) !=length(latent_dims)) ? error("induced sets and latent dims have different lengths") : nothing
 
@@ -80,7 +86,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
         enc_blocks
     )
 
-    # Prior
+    # Prior # FIXME another option for prior distribution 
     prior = MixtureOfGaussians(prior_dim, n_mixtures, true)
 
     #DECODER
@@ -101,11 +107,27 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
 end
 
 function setvae_constructor_from_named_tuple(
-    ;input_dim, hidden_dim, heads, induced_set_sizes, latent_dims, zed_depth, zed_hidden_dim, activation, 
-    n_mixtures, prior_dim, output_activation, kwargs...)
+    ;idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, activation, 
+    n_mixtures=5, prior_dim, output_activation=identity, prior="mog", kwargs...)
+    #n_mixtures = (n_mixtures === nothing) ? 5 : n_mixtures
+    #output_activation = (output_activation === nothing) ? identity : output_activation
+    activation = eval(:($(Symbol(activation))))
     model = SetVAE(
-        input_dim, hidden_dim, heads, induced_set_sizes, latent_dims, zed_depth, zed_hidden_dim, 
-        activation, n_mixtures, prior_dim, output_activation
+        idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, 
+        activation, n_mixtures, prior_dim, output_activation#, prior_type
         )
     return model
+end
+
+
+######################################
+### Score functions and evaluation ###
+######################################
+
+function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}; const_module::Module=Base)
+    _, h_encs = vae.encoder(x, x_mask; const_module=const_module)
+    _, sample_size, bs = size(x_mask)
+    z = vae.prior(sample_size, bs; const_module=const_module)
+    x̂, _, _, _ = vae.decoder(z, h_encs, x_mask; const_module=const_module)
+    return x̂
 end

@@ -10,6 +10,7 @@ using StatsBase
 using Random
 using Distances
 using CUDA
+using MLDataPattern
 
 export check
 
@@ -21,6 +22,7 @@ include("utils.jl")
 include("building_blocks/losses.jl") # masked_chamfer_distance_cpu
 include("SetVAE.jl")
 include("PoolAE.jl")
+include("fits.jl")
 
 Zygote.@adjoint CUDA.ones(x...) = CUDA.ones(x...), _ -> map(_ -> nothing, x)
 Zygote.@adjoint CUDA.zeros(x...) = CUDA.zeros(x...), _ -> map(_ -> nothing, x)

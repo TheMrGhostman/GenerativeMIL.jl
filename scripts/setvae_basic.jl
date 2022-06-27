@@ -5,6 +5,8 @@ using GroupAD
 import StatsBase: fit!, predict
 using StatsBase
 using BSON
+using Random
+using ValueHistories
 #generative MIL
 using GenerativeMIL
 using Flux
@@ -18,7 +20,7 @@ s = ArgParseSettings()
 @add_arg_table! s begin
    "max_seed"
         arg_type = Int
-        help = "seed"
+        help = "seed, if seed =< 0 it is considered concrete single seed to train with"
         default = 1
     "dataset"
         default = "MNIST"
@@ -36,9 +38,24 @@ s = ArgParseSettings()
         default = 0.0
         arg_type = Float64
         help = "training data contamination rate"
+	"random_seed"
+		default = 0
+		arg_type = Int
+		help = "random seed for sample_params function (to be able to train multile seeds in parallel)"
 end
 parsed_args = parse_args(ARGS, s)
-@unpack dataset, max_seed, anomaly_classes, method, contamination = parsed_args
+@unpack max_seed, dataset, anomaly_classes, method, contamination, random_seed = parsed_args
+
+
+####################################################
+# simple preparation "hacking" before sampling etc #
+####################################################
+if random_seed != 0
+	Random.seed!(random_seed)
+end
+# option to train specific seed and specific anomaly class | useful for possible parallelization
+max_seed = (max_seed <= 0) ? [abs(max_seed)] : [1:max_seed...]
+anomaly_classes = (anomaly_classes <= 0) ? [abs(anomaly_classes)] : [1:anomaly_classes...]
 
 #######################################################################################
 ################ THIS PART IS TO BE PROVIDED FOR EACH MODEL SEPARATELY ################
@@ -72,7 +89,7 @@ function sample_params()
 		10f0 .^(-4:-3),		# :lr -> learning rate
 		[false],			# :lr_decay -> boolean value if to use learning rate decay after half of epochs. 
 		10f0 .^ (-3:-1),	# :beta -> final β scaling factor for KL divergence
-		[0, 50], 			# :beta_anealing -> number of anealing epochs!!, if 0 then NO anealing
+		[0f0, 50f0], 		# :beta_anealing -> number of anealing epochs!!, if 0 then NO anealing
 		[200], 				# :epochs -> n of iid iterations (depends on bs and datasize) proportional to n of :epochs 
 		1:Int(1e8), 		# :init_seed -> init seed for random samling for experiment instace 
 	);
@@ -99,9 +116,7 @@ Final parameters is a named tuple of names and parameter values that are used fo
 """
 function fit(data, parameters)
 	# construct model - constructor should only accept kwargs
-	model = GenerativeMIL.Models.setvae_constructor_from_named_tuple(
-		;idim=size(data[1][1],1), parameters...
-	)
+	model = GenerativeMIL.Models.setvae_constructor_from_named_tuple( ;idim=size(data[1][1],1), parameters...)
 
 	# fit train data
 	# max. train time: 24 hours, over 10 CPU cores -> 2.4 hours of training for each model
@@ -110,8 +125,9 @@ function fit(data, parameters)
 	try
 		# number of available cores
 		cores = Threads.nthreads()
-		global info, fit_t, _, _, _ = @timed fit!(model, data, loss; max_train_time=24*3600*cores/max_seed/anomaly_classes, 
-			patience=200, check_interval=5, parameters...)
+		# FIXME remove n_threads, prepare for specific anomaly class and max seed
+		global info, fit_t, _, _, _ = @timed fit!(model, data, loss; max_train_time=24*3600*cores/length(max_seed)/lenght(anomaly_classes), 
+			patience=200, check_interval=20, parameters...)
 	catch e
 		# return an empty array if fit fails so nothing is computed
 		@info "Failed training due to \n$e"
@@ -128,7 +144,7 @@ function fit(data, parameters)
 
 	# now return the info to be saved and an array of tuples (anomaly score function, hyperparatemers)
 	return training_info, [
-		(x -> GroupAD.Models.reconstruct(info.model, x),
+		((x, x_mask) -> GenerativeMIL.Models.reconstruct(info.model, x, x_mask),
 			merge(parameters, (score = "reconstructed_input",)))
 	]
 end
