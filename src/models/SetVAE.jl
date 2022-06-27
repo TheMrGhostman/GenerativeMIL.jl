@@ -131,3 +131,16 @@ function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArra
     x̂, _, _, _ = vae.decoder(z, h_encs, x_mask; const_module=const_module)
     return x̂
 end
+
+function transform_and_reconstruct(vae::SetVAE, data::Vector; const_module::Module=Base)
+    # expect to get output from GroupAD.Models.unpack_mill(tr_data) or list of "sets"
+    dataloader = Flux.Data.DataLoader(data, batchsize=1) 
+    # we could iterate via data itself (batchsize=1) but we decided to use dataloader instaed
+    X̂ = []
+    for batch in dataloader
+        x, x_mask = GenerativeMIL.transform_batch(batch,true)
+        x̂ = reconstruct(vae, x, x_mask, const_module=const_module)
+        push!(X̂, x̂|>cpu)
+    end
+    return X̂
+end

@@ -123,10 +123,7 @@ function fit(data, parameters)
 	# the full traning time should be 48 hours to ensure all scores are calculated
 	# training time is decreased automatically for less cores!
 	try
-		# number of available cores
-		cores = Threads.nthreads()
-		# FIXME remove n_threads, prepare for specific anomaly class and max seed
-		global info, fit_t, _, _, _ = @timed fit!(model, data, loss; max_train_time=24*3600*cores/length(max_seed)/lenght(anomaly_classes), 
+		global info, fit_t, _, _, _ = @timed fit!(model, data, loss; max_train_time=24*3600/length(max_seed)/lenght(anomaly_classes), 
 			patience=200, check_interval=20, parameters...)
 	catch e
 		# return an empty array if fit fails so nothing is computed
@@ -144,9 +141,10 @@ function fit(data, parameters)
 
 	# now return the info to be saved and an array of tuples (anomaly score function, hyperparatemers)
 	return training_info, [
-		((x, x_mask) -> GenerativeMIL.Models.reconstruct(info.model, x, x_mask),
-			merge(parameters, (score = "reconstructed_input",)))
+		(x -> GenerativeMIL.Models.transform_and_reconstruct(info.model, x, const_module=Base), 
+		merge(parameters, (score = "reconstructed_input",)))
 	]
+	#((x, x_mask) -> GenerativeMIL.Models.reconstruct(info.model, x, x_mask), merge(parameters, (score = "reconstructed_input",)))
 end
 
 """
@@ -157,4 +155,22 @@ Overload for models where this is needed.
 """
 function edit_params(data, parameters, class, method)
 	merge(parameters, (method = method, class = class, ))
+end
+
+####################################################################
+################ THIS PART IS COMMON FOR ALL MODELS ################
+# only execute this if run directly - so it can be included in other files
+if abspath(PROGRAM_FILE) == @__FILE__
+	GroupAD.point_cloud_experimental_loop_gpu(
+		sample_params, 
+		fit, 
+		edit_params, 
+		max_seed, 
+		modelname, 
+		dataset, 
+		contamination, 
+		datadir("experiments/contamination-$(contamination)"),
+		anomaly_classes,
+        method
+		)
 end
