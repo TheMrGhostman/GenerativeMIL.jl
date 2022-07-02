@@ -68,14 +68,14 @@ Should return a named tuple that contains a sample of model parameters.
 """
 function sample_params()
 	# MNIST has idim = 3 -> fewer possibilities for sampling
-	# +/- 4608 possible combinations, some of sample supports are just placehodlers for future options
+	# +/- 2304 (4608) possible combinations, some of sample supports are just placehodlers for future options (with gaussian prior)
 	default(x) = 16*ones(Int, size(x)...)
 	model_par_vec = (
 		2:5, 				# :levels -> number of "sampling skip-connections"
 		2 .^(4:6), 			# :hdim -> number of neurons in All dense layers except VariationalBottleneck layers
 		[4],				# :heads -> number of heads in multihead attentions
 		["relu", "swish"], 	# :activation -> type activation functions in model (mainly for outout from MAB)
-		["gaussian", "mog"],# :prior -> prior distribution for decoder, mog has defaultly 4 mixtures
+		["mog"],			# :prior -> prior distribution for decoder, mog has defaultly 5 mixtures, "gaussian" will be added later
 		2 .^(4:5), 			# :prior_dim -> dimension of prior distributino ("noise") 
 		[1], 				# :vb_depth -> nlayers in VariationalBottleneck
 		[0], 				# :vb_hdim -> hidden dimension in VariationalBottleneck, for :vb_depth=1 is not used
