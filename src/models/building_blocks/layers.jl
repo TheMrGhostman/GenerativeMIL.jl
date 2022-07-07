@@ -161,23 +161,10 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T
     Δμ, ΔΣ = vb.posterior(h + h_enc)
     z = (μ + Δμ) + (Σ .* ΔΣ) .* const_module.randn(Float32, size(μ)...)
     ĥ = vb.decoder(z)
-    kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
+    kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 )
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
     return z, ĥ, kld
 end    
-
-"""
-function vb_const(vb::VariationalBottleneck, h::AbstractArray{T}, h_enc::AbstractArray{T}; const_module::Module=Base) where T <: Real
-    # computing prior μ, Σ from h as well as posterior from h_enc
-    μ, Σ = vb.prior(h; const_module=const_module)
-    Δμ, ΔΣ = vb.posterior(h + h_enc)
-    z = (μ + Δμ) + (Σ .* ΔΣ) .* const_module.randn(Float32, size(μ)...)
-    ĥ = vb.decoder(z)
-    kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 ) # TODO sum/mean .... fix this
-    # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
-    return z, ĥ, kld
-end    
-"""
 
 function VariationalBottleneck(
     in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity

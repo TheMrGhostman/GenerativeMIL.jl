@@ -59,9 +59,15 @@ function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}
     return loss, klds
 end
 
+
+######################################
+###          Constructors          ###
+######################################
+
 function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::Array{Int,1}, 
     latent_dims::Array{Int,1}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, 
-    n_mixtures::Int=5, prior_dim::Int=3)
+    n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity) 
+    #prior_type::AbstractPriorDistribution=MixtureOfGaussians)
 
     (length(induced_set_sizes) !=length(latent_dims)) ? error("induced sets and latent dims have different lengths") : nothing
 
@@ -79,7 +85,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
         enc_blocks
     )
 
-    # Prior
+    # Prior # FIXME another option for prior distribution 
     prior = MixtureOfGaussians(prior_dim, n_mixtures, true)
 
     #DECODER
@@ -94,7 +100,46 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     decoder = HierarchicalDecoder(
         Flux.Dense(prior_dim, hidden_dim),
         dec_blocks,
-        Flux.Dense(hidden_dim, input_dim)
+        Flux.Dense(hidden_dim, input_dim, x->output_activation(x))
     )
     return SetVAE(encoder, decoder, prior)
+end
+
+function setvae_constructor_from_named_tuple(
+    ;idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, activation, 
+    n_mixtures=5, prior_dim, output_activation=identity, prior="mog", kwargs...)
+    #n_mixtures = (n_mixtures === nothing) ? 5 : n_mixtures
+    #output_activation = (output_activation === nothing) ? identity : output_activation
+    activation = eval(:($(Symbol(activation))))
+    model = SetVAE(
+        idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, 
+        activation, n_mixtures, prior_dim, output_activation#, prior_type
+        )
+    return model
+end
+
+
+######################################
+### Score functions and evaluation ###
+######################################
+
+function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}; const_module::Module=Base)
+    _, h_encs = vae.encoder(x, x_mask; const_module=const_module)
+    _, sample_size, bs = size(x_mask)
+    z = vae.prior(sample_size, bs; const_module=const_module)
+    x̂, _, _, _ = vae.decoder(z, h_encs, x_mask; const_module=const_module)
+    return x̂
+end
+
+function transform_and_reconstruct(vae::SetVAE, data::Vector; const_module::Module=Base)
+    # expect to get output from GroupAD.Models.unpack_mill(tr_data) or list of "sets"
+    dataloader = Flux.Data.DataLoader(data, batchsize=1) 
+    # we could iterate via data itself (batchsize=1) but we decided to use dataloader instaed
+    X̂ = []
+    for batch in dataloader
+        x, x_mask = GenerativeMIL.transform_batch(batch, true)
+        x̂ = reconstruct(vae, x, x_mask, const_module=const_module)
+        push!(X̂, x̂|>cpu)
+    end
+    return X̂
 end

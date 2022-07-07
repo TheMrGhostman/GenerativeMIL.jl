@@ -12,8 +12,11 @@ end
 
 function Base.show(io::IO, m::MixtureOfGaussians)
     print(io, "MixtureOfGaussians(")
-    print(io, "\n\t - K = $(m.K) \n\t - Ds = $(m.Ds) \n\t - α = $(m.α)")
-    print(io, "\n\t - μ = $(m.μ) \n\t - Σ = $(m.Σ) \n\t - trainable = $(m.trainable) \n\t ) ")
+    print(io, "\n\t - K = $(m.K) \n\t - Ds = $(m.Ds)")
+    print(io, "\n\t - α = $(m.α |> size) | $(m.α |> typeof) | mean ~ $(m.α |> Flux.mean)")
+    print(io, "\n\t - μ = $(m.μ |> size) | $(m.μ |> typeof) | mean ~ $(m.μ |> Flux.mean)")
+    print(io, "\n\t - Σ = $(m.Σ |> size) | $(m.Σ |> typeof) | mean ~ $(m.Σ |> Flux.mean)")
+    print(io, "\n\t - trainable = $(m.trainable) \n\t ) ")
 end
 
 Flux.@functor MixtureOfGaussians
@@ -49,12 +52,29 @@ function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size; const_module::M
     return z
 end
 
-function MixtureOfGaussians(dim::Int, n_mixtures::Int, trainable::Bool=true) #Union{Int, Tuple}
+function sample_sphere(dim, n_points)
+    norm_(x,d=1) = sqrt.(sum(abs2, x, dims=d))
+    x = randn(Float32, dim, n_points)
+    return x ./ norm_(x, 1)
+end
+
+function MixtureOfGaussians(dim::Int, n_mixtures::Int, trainable::Bool=true; downscale=10f0, eps=1f-3) #Union{Int, Tuple}
     # initial α ∈ 1^{k} ~ (n_mixtures, bs)
     # random initial μ ∈ R^{d, k} ~ (dim, n_mixtures, bs)
     # random initial Σ ∈ R₊^{d, k} ~ (dim, n_mixtures, bs)  
-    μs = randn(Float32, dim, n_mixtures, 1)
-    Σs = abs.(randn(Float32, dim, n_mixtures, 1))       
+
+    # Original dummy random initialization
+    #μs = randn(Float32, dim, n_mixtures, 1)
+    #Σs = abs.(randn(Float32, dim, n_mixtures, 1))   
+
+    # Spherical random initialization   
+    ## much easier is to sample from shpere then constructing Fibonacci sphere lattice
+    μs = sample_sphere(dim, n_mixtures) |> Flux.unsqueeze(3) 
+    ## pick general vairance, so gaussians don't overlap
+    pp = Distances.pairwise(Distances.euclidean, μs)
+    var_ = pp + LinearAlgebra.Diagonal(LinearAlgebra.diag(pp) .+ Inf) |> minimum
+    Σs = ones(Float32, dim, n_mixtures, 1) .* Float32(var_ / downscale + eps)
+    ## alpha is kept uniform at start
     αs = ones(Float32, n_mixtures)
     return MixtureOfGaussians(n_mixtures, dim, αs, μs, Σs, trainable)
 end

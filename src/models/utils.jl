@@ -58,3 +58,8 @@ end
 function check(x::AbstractArray{<:Real})
     println("size -> $(size(x)) | type -> $(typeof(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(cpu(x))) | sum -> $(Flux.sum(x)) | not zero -> $(sum(x .!= 0)) | n_elements -> $(prod(size(x))) ")
 end
+
+function shifted_tanh(x, bias=1, scale=2)
+    x = Flux.tanh.(x)
+    x = (x .+ bias) ./ scale
+end
