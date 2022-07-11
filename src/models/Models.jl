@@ -11,6 +11,11 @@ using Random
 using Distances
 using CUDA
 using MLDataPattern
+using ValueHistories
+using Mill
+# because of prepocessing
+using PaddedViews
+
 
 export check
 

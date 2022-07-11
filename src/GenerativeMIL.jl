@@ -8,7 +8,8 @@ using MLDataPattern
 
 export check
 
-include("models/Models.jl")
 include("dataset.jl")
+include("models/Models.jl")
+
 
 end

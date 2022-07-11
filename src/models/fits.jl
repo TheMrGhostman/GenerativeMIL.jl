@@ -4,7 +4,9 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
 	check_interval::Int=20, kwargs...)
 
     # setup history log 
-    history = MVHistory()
+    @info "creating Hisory object"
+    history = ValueHistories.MVHistory()
+    @info "history object created"
     # save original model into best model and save orignal patience
     best_model = deepcopy(model)
     patience_ = deepcopy(patience)
@@ -24,8 +26,8 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
     end
 
     # prepare data for bag model 
-    x_train, l_training = GroupAD.Models.unpack_mill(data[1])
-    x_val_, l_val = GroupAD.Models.unpack_mill(data[2])
+    x_train, l_training = unpack_mill(data[1])
+    x_val_, l_val = unpack_mill(data[2])
     x_val = x_val_[l_val .== 0]
 
     # Convert epochs to iterations
@@ -48,7 +50,7 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
     for (i, batch) in enumerate(dataloader)
         # Training stage
         beta = final_beta * min(1f0, i/anealing)
-        x, x_mask = GenerativeMIL.transform_batch(batch,true)
+        x, x_mask = transform_batch(batch,true)
         x = (to_gpu) ? x|>gpu : x
         x_mask = (to_gpu) ? x_mask|>gpu : x_mask
  
@@ -69,7 +71,7 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
             # compute validation loss
             total_val_loss, total_val_kld = 0, 0
             for batch in val_dl
-                xv, xv_mask = GenerativeMIL.transform_batch(batch, true)
+                xv, xv_mask = transform_batch(batch, true)
                 xv = (to_gpu) ? xv|>gpu : xv
                 xv_mask = (to_gpu) ? xv_mask|>gpu : xv_mask
                 # compute validation loss

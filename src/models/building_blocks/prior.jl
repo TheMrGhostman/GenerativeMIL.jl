@@ -72,9 +72,9 @@ function MixtureOfGaussians(dim::Int, n_mixtures::Int, trainable::Bool=true; dow
     μs = sample_sphere(dim, n_mixtures) |> Flux.unsqueeze(3) 
     ## pick general vairance, so gaussians don't overlap
     pp = Distances.pairwise(Distances.euclidean, μs)
-    var_ = pp + LinearAlgebra.Diagonal(LinearAlgebra.diag(pp) .+ Inf) |> minimum
+    var_ = pp .+ LinearAlgebra.Diagonal(LinearAlgebra.diag(pp) .+ Inf) |> minimum
     Σs = ones(Float32, dim, n_mixtures, 1) .* Float32(var_ / downscale + eps)
-    Σs = log.(exp.(Σs) - 1) # inverse to softplus in forward/sampling function 
+    Σs = log.(exp.(Σs) .- 1f0) # inverse to softplus in forward/sampling function 
     ## alpha is kept uniform at start
     αs = ones(Float32, n_mixtures)
     return MixtureOfGaussians(n_mixtures, dim, αs, μs, Σs, trainable)
