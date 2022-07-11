@@ -4,9 +4,7 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
 	check_interval::Int=20, kwargs...)
 
     # setup history log 
-    @info "creating Hisory object"
     history = ValueHistories.MVHistory()
-    @info "history object created"
     # save original model into best model and save orignal patience
     best_model = deepcopy(model)
     patience_ = deepcopy(patience)
@@ -110,5 +108,5 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
         end
     end
     best_model = best_model |> cpu # copy model back to cpu
-    (history = history, iterations = i, model = best_model, npars = sum(map(p -> length(p), Flux.params(model))))
+    (history = history, iterations = length(get(history, :training_loss)), model = best_model, npars = sum(map(p -> length(p), Flux.params(model))))
 end

@@ -137,9 +137,9 @@ function transform_and_reconstruct(vae::SetVAE, data::Vector; const_module::Modu
     # we could iterate via data itself (batchsize=1) but we decided to use dataloader instaed
     X̂ = []
     for batch in dataloader
-        x, x_mask = GenerativeMIL.transform_batch(batch, true)
+        x, x_mask = transform_batch(batch, true) # i copied clone of transform_batch into models.utils
         x̂ = reconstruct(vae, x, x_mask, const_module=const_module)
-        push!(X̂, x̂|>cpu)
+        push!(X̂, x̂ |> Flux.squeezebatch |>cpu)
     end
     return X̂
 end
