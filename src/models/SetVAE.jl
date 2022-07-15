@@ -107,14 +107,17 @@ end
 
 function setvae_constructor_from_named_tuple(
     ;idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, activation, 
-    n_mixtures=5, prior_dim, output_activation=identity, prior="mog", kwargs...)
+    n_mixtures=5, prior_dim, output_activation=identity, prior="mog", 
+    init_seed=nothing, kwargs...)
     #n_mixtures = (n_mixtures === nothing) ? 5 : n_mixtures
     #output_activation = (output_activation === nothing) ? identity : output_activation
     activation = eval(:($(Symbol(activation))))
+    (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
     model = SetVAE(
         idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, 
         activation, n_mixtures, prior_dim, output_activation#, prior_type
         )
+    (init_seed !== nothing) ? Random.seed!() : nothing
     return model
 end
 

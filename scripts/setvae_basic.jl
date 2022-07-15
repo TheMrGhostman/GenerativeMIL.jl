@@ -66,7 +66,8 @@ modelname = "setvae_basic"
 
 Should return a named tuple that contains a sample of model parameters.
 """
-function sample_params()
+function sample_params(seed=nothing)
+	(seed!==nothing) ? Random.seed!(seed) : nothing
 	# MNIST has idim = 3 -> fewer possibilities for sampling
 	# +/- 2304 (4608) possible combinations, some of sample supports are just placehodlers for future options (with gaussian prior)
 	default(x) = 16*ones(Int, size(x)...)
@@ -103,9 +104,13 @@ function sample_params()
 	is_sizes = sample(induced_set_pars[1])[1:levels]
 	zdims = sample(induced_set_pars[2])(is_sizes) 
 
+	#reset seed
+	(seed!==nothing) ? Random.seed!() : nothing
+	# return sampled parameters
 	return merge(model_params,(is_sizes=is_sizes, zdims=zdims), training_params)
 end
 
+sample_params_() = (random_seed != 0) ? sample_params(random_seed) : sample_params()
 
 """
 	fit(data, parameters)
@@ -162,7 +167,7 @@ end
 # only execute this if run directly - so it can be included in other files
 if abspath(PROGRAM_FILE) == @__FILE__
 	GroupAD.point_cloud_experimental_loop_gpu(
-		sample_params, 
+		sample_params_, 
 		fit, 
 		edit_params, 
 		max_seed, 
