@@ -13,6 +13,8 @@ using CUDA
 using MLDataPattern
 using ValueHistories
 using Mill
+# schedulers and warmups
+using ParameterSchedulers
 # because of prepocessing
 using PaddedViews
 
@@ -28,6 +30,7 @@ include("building_blocks/losses.jl") # masked_chamfer_distance_cpu
 include("SetVAE.jl")
 include("PoolAE.jl")
 include("fits.jl")
+
 
 Zygote.@adjoint CUDA.ones(x...) = CUDA.ones(x...), _ -> map(_ -> nothing, x)
 Zygote.@adjoint CUDA.zeros(x...) = CUDA.zeros(x...), _ -> map(_ -> nothing, x)
