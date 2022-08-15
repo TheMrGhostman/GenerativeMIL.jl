@@ -46,7 +46,8 @@ function mask(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real})
     return x .* mask
 end
 
-function unmask(x, mask, output_dim=3)
+function unmask(x, mask)
+    output_dim = size(x, 1)
     x = reshape(x, (output_dim,:))
     mask = reshape(mask, (1,:))
     x_masked = ones(size(x)...) .* mask
@@ -54,6 +55,15 @@ function unmask(x, mask, output_dim=3)
     return x
 end
 
+"""
+function unmask(x, mask, output_dim=3)# FIXME to accept other output_dims
+    x = reshape(x, (output_dim,:))
+    mask = reshape(mask, (1,:))
+    x_masked = ones(size(x)...) .* mask
+    x = reshape(x[x_masked .== 1], (output_dim,:))
+    return x
+end
+"""
 
 function check(x::AbstractArray{<:Real})
     println("size -> $(size(x)) | type -> $(typeof(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(cpu(x))) | sum -> $(Flux.sum(x)) | not zero -> $(sum(x .!= 0)) | n_elements -> $(prod(size(x))) ")
@@ -67,13 +77,14 @@ end
 
 function transform_batch(x, max=false)
     a_mask = [ones(size(a)) for a in x];
+    feature_dim = size(x[1],1)
     if max
         max_set = maximum(size.(x))[end];
     else
         max_set = minimum(size.(x))[end]; #minimum
     end
-    b = map(a->Array{Float32}(PaddedView(0, a, (3, max_set))), x);
-    b_mask = map(a->Array(PaddedView(0, a, (3, max_set))), a_mask);
+    b = map(a->Array{Float32}(PaddedView(0, a, (feature_dim, max_set))), x);
+    b_mask = map(a->Array(PaddedView(0, a, (feature_dim, max_set))), a_mask);
     c = cat(b..., dims=3);
     c_mask = cat(b_mask..., dims=3) .> 0; # mask as BitArray
     c_mask = Array(c_mask[1:1,:,:]);

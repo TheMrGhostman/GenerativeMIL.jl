@@ -29,18 +29,21 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
     x_val = x_val_[l_val .== 0]
 
     # Convert epochs to iterations
-    max_iters = epochs * fld(length(x_train), batchsize) # epochs to iters
-
+    if fld(length(x_train), batchsize) == 0
+        max_iters = epochs
+    else
+        max_iters = epochs * fld(length(x_train), batchsize) # epochs to iters
+    end
     # Prepare schedulers
     @assert lr_decay in [true, false, "true", "false", "WarmupCosine"]
     if lr_decay == "WarmupCosine"
-        scheduler = WarmupCosine(1e-7, lr*100, lr, Int(0.05 * max_iters), Int(0.8 * max_iters))
+        scheduler = WarmupCosine(1e-7, lr*10, lr, Int(0.05 * max_iters), Int(0.8 * max_iters))
         # from 0 to 5% iters there is linear increase of learing rate
         # from 5% to 80% there is cosine decay of learing rate 
         # from 80% to 100% iters there is constant learing rate 
     elseif (lr_decay == "true") || (lr_decay == true)
         scheduler = it -> lr .* min.(1.0, 2.0 - it/(0.5*max_iters))
-        #lr .* min.(1.0, map(x -> 2.0 - x/(0.5*max_iters), 1:max_iters)) # FIXME
+        #lr .* min.(1.0, map(x -> 2.0 - x/(0.5*max_iters), 1:max_iters)) 
         # learning rate decay (0%,50%) -> 1 , (50%, 100%) -> linear(1->0)
     else
         # just constant learing rate
@@ -75,10 +78,11 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
         # backward only total loss
         grad = back((1f0,0f0));
         # get lr from scheduler
-        opt.η = scheduler(i)
+        opt.eta = scheduler(i)
         # optimise
         Flux.Optimise.update!(opt, ps, grad);
         # Logging
+        push!(history, :lr, i, scheduler(i))
         push!(history, :training_loss, i, loss_[1])
         push!(history, :training_kld_loss, i, loss_[2])
         push!(history, :beta, i, beta)
