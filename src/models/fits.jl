@@ -23,6 +23,8 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
         @info "No GPU found"
     end
 
+    print(const_module)
+    print(model)
     # prepare data for bag model 
     x_train, l_training = unpack_mill(data[1])
     x_val_, l_val = unpack_mill(data[2])
@@ -31,8 +33,10 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
     # Convert epochs to iterations
     if fld(length(x_train), batchsize) == 0
         max_iters = epochs
+        @info "dataset//batchsize == 0 -> max_iters = $(epochs)"
     else
         max_iters = epochs * fld(length(x_train), batchsize) # epochs to iters
+        @info "dataset//batchsize > 0 -> max_iters = $(max_iters)"
     end
     # Prepare schedulers
     @assert lr_decay in [true, false, "true", "false", "WarmupCosine"]
