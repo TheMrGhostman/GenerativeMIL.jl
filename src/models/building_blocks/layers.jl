@@ -7,11 +7,11 @@ end
 
 Flux.@functor MultiheadAttentionBlock
 
-function MultiheadAttentionBlock(hidden_dim::Int, heads::Int)
+function MultiheadAttentionBlock(hidden_dim::Int, heads::Int, activation::Function=relu)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
     mh = MultiheadAttention(hidden_dim, hidden_dim, heads, slot_attention)
     ff = Flux.Chain(
-        Flux.Dense(hidden_dim, hidden_dim, relu),
+        Flux.Dense(hidden_dim, hidden_dim, activation),
         Flux.Dense(hidden_dim, hidden_dim)
     )
     ln1 = Flux.LayerNorm((hidden_dim,1))

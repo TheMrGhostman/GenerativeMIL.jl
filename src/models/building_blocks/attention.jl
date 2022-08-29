@@ -128,7 +128,7 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
 end
 
 function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4},
-    mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+    mask::Union{AbstractArray{Bool}, AbstractArray{T}, Nothing}=nothing) where T <: Real
     # Attention for 4D tensors
     # Q ∈ ℝ^{h,m,d} ~ (d, m, h, bs)
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)
