@@ -28,8 +28,10 @@ include("building_blocks/layers.jl")
 include("utils.jl")
 include("building_blocks/losses.jl") # masked_chamfer_distance_cpu
 include("SetVAE.jl")
+include("FoldingVAE.jl")
 include("PoolAE.jl")
 include("fits.jl")
+#include("Classifiers.jl")
 
 
 Zygote.@adjoint CUDA.ones(x...) = CUDA.ones(x...), _ -> map(_ -> nothing, x)
