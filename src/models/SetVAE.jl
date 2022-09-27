@@ -134,11 +134,12 @@ function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArra
     return x̂
 end
 
-function transform_and_reconstruct(vae::SetVAE, data::Vector; const_module::Module=Base)
+function transform_and_reconstruct(vae::SetVAE, data::Vector; const_module::Module=Base, testmode=true)
     # expect to get output from GroupAD.Models.unpack_mill(tr_data) or list of "sets"
     dataloader = Flux.Data.DataLoader(data, batchsize=1) 
     # we could iterate via data itself (batchsize=1) but we decided to use dataloader instaed
     X̂ = []
+    vae = (testmode) ? Flux.testmode!(vae, true) : vae # to testmode
     for batch in dataloader
         x, x_mask = transform_batch(batch, true) # i copied clone of transform_batch into models.utils
         x̂ = reconstruct(vae, x, x_mask, const_module=const_module)
