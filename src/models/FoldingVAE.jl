@@ -108,7 +108,7 @@ function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Re
     x = torch.cat((pts, x), dim=1)                          # (batch_size, 12, num_points)
     """
     bs = size(pts, 2)
-    x = pts[:, kx]
+    x = pts[:, idx]
     x = x[:,2:end,:] # the closest one is original point => filter it out 
     x = batched_mul(x, permutedims(x, (2,1,3))) # x @ x^t
     x = reshape(x, (:, bs))
