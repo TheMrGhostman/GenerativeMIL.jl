@@ -12,6 +12,8 @@ _research
 src/models/contrib
 logs
 groupad
+experiments
+scripts/workspace*
 
 ################################################################################
 #                                    Julia                                     #
