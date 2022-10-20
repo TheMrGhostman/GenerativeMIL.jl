@@ -31,7 +31,7 @@ include("SetVAE.jl")
 include("FoldingVAE.jl")
 include("PoolAE.jl")
 include("fits.jl")
-#include("Classifiers.jl")
+#include("SetTransformer.jl")
 
 
 Zygote.@adjoint CUDA.ones(x...) = CUDA.ones(x...), _ -> map(_ -> nothing, x)

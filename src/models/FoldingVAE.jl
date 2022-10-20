@@ -89,8 +89,30 @@ function local_maxpool(x::AbstractArray{<:Real, 2},kx::AbstractArray{<:Real, 2})
     return x
 end
 
-function local_covariance()
-    #FIXME
+function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Real, 2})
+    """ ORIGINAL IMPLEMENTATION
+    batch_size = pts.size(0)
+    num_points = pts.size(2)
+    pts = pts.view(batch_size, -1, num_points)              # (batch_size, 3, num_points)
+ 
+    _, num_dims, _ = pts.size()
+
+    x = pts.transpose(2, 1).contiguous()                    # (batch_size, num_points, 3)
+    x = x.view(batch_size*num_points, -1)[idx, :]           # (batch_size*num_points*2, 3)
+    x = x.view(batch_size, num_points, -1, num_dims)        # (batch_size, num_points, k, 3)
+
+    x = torch.matmul(x[:,:,0].unsqueeze(3), x[:,:,1].unsqueeze(2))  # (batch_size, num_points, 3, 1) * (batch_size, num_points, 1, 3) -> (batch_size, num_points, 3, 3)
+    # x = torch.matmul(x[:,:,1:].transpose(3, 2), x[:,:,1:])
+    x = x.view(batch_size, num_points, 9).transpose(2, 1)   # (batch_size, 9, num_points)
+
+    x = torch.cat((pts, x), dim=1)                          # (batch_size, 12, num_points)
+    """
+    bs = size(pts, 2)
+    x = pts[:, kx]
+    x = x[:,2:end,:] # the closest one is original point => filter it out 
+    x = batched_mul(x, permutedims(x, (2,1,3))) # x @ x^t
+    x = reshape(x, (:, bs))
+    return cat(pts, x, dims=1)
 end
 
 
@@ -111,7 +133,7 @@ function (enc::FoldingNet_encoder)(x::AbstractArray{<:Real, 2}; local_cov::Bool=
     # 5) to latent space
     kidx = nothing
     Zygote.ignore() do
-        kidx = knn(x, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
+        global kidx = knn(x, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
     end
     if local_cov
         x = local_covariance(x, kidx);
@@ -279,7 +301,7 @@ function loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 2}; β=1f0)
     𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x) 
     𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
     𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
-    𝓛 = 𝓛ᵣₑ + β * (𝓛ₖₗₒᵣᵢ + 𝓛ₖₗᵣₑ) # default β = 1 
+    𝓛 = 𝓛ᵣₑ .+ β .* (𝓛ₖₗₒᵣᵢ + 𝓛ₖₗᵣₑ) # default β = 1 
 end
 
 
@@ -343,4 +365,18 @@ function test_backward_batch(x)
     grad = back(1f0);
     Flux.Optimise.update!(opt, ps, grad)
     println(loss_)
+end
+
+function test_backward_batch_train(x)
+    model = FoldingNet_VAE(
+        FoldingNet_encoder(),
+        FoldingNet_decoder(),
+        false,
+        true
+    )
+    ps = Flux.params(model);
+    opt = ADAM(1f-3)
+    loss_f(x) = loss(model, x)
+
+    Flux.train!(loss_f, ps, xx, opt)
 end
