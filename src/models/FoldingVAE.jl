@@ -141,7 +141,7 @@ function (enc::FoldingNet_encoder)(x::AbstractArray{<:Real, 2}; local_cov::Bool=
     # 5) to latent space
     kidx = nothing
     Zygote.ignore() do
-        global kidx = knn(x, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
+        kidx = knn(x, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
     end
     if local_cov
         x = local_covariance(x, kidx);

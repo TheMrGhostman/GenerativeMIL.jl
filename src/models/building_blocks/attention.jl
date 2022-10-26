@@ -86,9 +86,10 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
         error("Both X_mask and Y_mask are not nothing!!")
     end
     #mask = Array{Float32}(mask)
-    n_mask = -1.0f30 .* (1f0 .- att_mask) # FIXME if if att_mask == nothing => error
-    att_mask = att_mask .+ n_mask
-
+    if att_mask !== nothing
+        n_mask = -1.0f30 .* (1f0 .- att_mask) 
+        att_mask = att_mask .+ n_mask
+    end 
     values = mh.attention(Q, K, V, att_mask) 
     # permute dims back and reshape
     values = reshape(permutedims(values, (1,3,2,4)), (d_v, m, bs))
