@@ -5,11 +5,11 @@ end
 
 Flux.@functor HierarchicalEncoder
 
-function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}; const_module::Module=Base)
+function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool})
     x = m.expansion(x) .* x_mask
     h_encs = Zygote.Buffer(Array{Any}(undef, length(m.layers)))
     for (i, layer) in enumerate(m.layers)
-        x, h_enc = layer(x, x_mask; const_module=const_module)
+        x, h_enc = layer(x, x_mask)
         h_encs[length(m.layers) - i + 1] = h_enc
     end
     return x, h_encs
@@ -23,13 +23,13 @@ end
 
 Flux.@functor HierarchicalDecoder
 
-function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::AbstractArray{Bool}; const_module::Module=Base)
+function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::AbstractArray{Bool})
     x = m.expansion(z) .* x_mask
     zs = []
     klds = []
     kld_loss = 0
     for (layer, h_enc) in zip(m.layers, h_encs)
-        x, kld, _, z = layer(x, h_enc, x_mask; const_module=const_module) 
+        x, kld, _, z = layer(x, h_enc, x_mask) 
         Zygote.ignore() do
             push!(klds, kld)
             push!(zs, z)
@@ -49,12 +49,12 @@ end
 
 Flux.@functor SetVAE
 
-function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0; const_module::Module=Base)
-    _, h_encs = vae.encoder(x, x_mask; const_module=const_module) # no need for x
+function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0)
+    _, h_encs = vae.encoder(x, x_mask) # no need for x
     #h_encs = reverse(h_encs)
     _, sample_size, bs = size(x_mask)
-    z = vae.prior(sample_size, bs; const_module=const_module)
-    x̂, _, _, klds = vae.decoder(z, h_encs, x_mask; const_module=const_module)
+    z = vae.prior(sample_size, bs)
+    x̂, _, _, klds = vae.decoder(z, h_encs, x_mask)
     loss = masked_chamfer_distance_cpu(x, x̂, x_mask, x_mask) +  β * klds
     return loss, klds
 end
@@ -126,15 +126,15 @@ end
 ### Score functions and evaluation ###
 ######################################
 
-function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}; const_module::Module=Base)
-    _, h_encs = vae.encoder(x, x_mask; const_module=const_module)
+function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool})
+    _, h_encs = vae.encoder(x, x_mask)
     _, sample_size, bs = size(x_mask)
-    z = vae.prior(sample_size, bs; const_module=const_module)
-    x̂, _, _, _ = vae.decoder(z, h_encs, x_mask; const_module=const_module)
+    z = vae.prior(sample_size, bs)
+    x̂, _, _, _ = vae.decoder(z, h_encs, x_mask)
     return x̂
 end
 
-function transform_and_reconstruct(vae::SetVAE, data::Vector; const_module::Module=Base, testmode=true)
+function transform_and_reconstruct(vae::SetVAE, data::Vector; testmode=true)
     # expect to get output from GroupAD.Models.unpack_mill(tr_data) or list of "sets"
     dataloader = Flux.Data.DataLoader(data, batchsize=1) 
     # we could iterate via data itself (batchsize=1) but we decided to use dataloader instaed
@@ -142,7 +142,7 @@ function transform_and_reconstruct(vae::SetVAE, data::Vector; const_module::Modu
     vae = (testmode) ? Flux.testmode!(vae, true) : vae # to testmode
     for batch in dataloader
         x, x_mask = transform_batch(batch, true) # i copied clone of transform_batch into models.utils
-        x̂ = reconstruct(vae, x, x_mask, const_module=const_module)
+        x̂ = reconstruct(vae, x, x_mask)
         push!(X̂, x̂ |> Flux.squeezebatch |>cpu)
     end
     return X̂

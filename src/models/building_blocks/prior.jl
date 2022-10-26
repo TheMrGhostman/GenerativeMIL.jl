@@ -25,11 +25,12 @@ Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (MoG.α, MoG.μ, MoG.�
 
 #Flux.@functor MixtureOfGaussians # all parameters α, μ and Σ are now trainable
 
-function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size; const_module::Module=Base)
+function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size)
+    device = get_device(MoG.μ)
     # sample_size = ...
     αₒₕ = gumbel_softmax(MoG.α, hard=true)
     αₒₕ = reshape(αₒₕ, (1, 1, MoG.K, 1))
-    αₒₕ = const_module.ones(Float32, 1,sample_size,MoG.K,batch_size) .* αₒₕ
+    αₒₕ = device.ones(Float32, 1,sample_size,MoG.K,batch_size) .* αₒₕ
     # on gpu is much faster then repeat
     #αₒₕ = repeat(αₒₕ, 1, sample_size, 1, 1) # (K) -> (1, 1, K, 1) -> (1, ss, K, 1),
     #cat([reshape(αₒₕ, (1, 1, MoG.K, 1)) for i=1:sample_size]..., dims=2)
@@ -47,7 +48,7 @@ function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size; const_module::M
 
     # samples from N(0,1) -> (Ds, ss, bs)
     # tyoeof(μ)(x) works only if has the same size/shape as μ !!!!!
-    ϵ = const_module.randn(Float32, MoG.Ds, sample_size, batch_size)
+    ϵ = device.randn(Float32, MoG.Ds, sample_size, batch_size)
     z = μ + Flux.softplus.(Σ) .* ϵ # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
     return z
 end
@@ -119,10 +120,10 @@ Flux.trainable(cgp::ConstGaussPrior) = (cgp.μ, cgp.Σ)
 
 function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3})
     # computing prior μ, Σ from h
-    const_module = (typeof(h) == CuArray{Float32, 3, CUDA.Mem.DeviceBuffer}) ? CUDA : Base
+    device = get_device(h)
     _, sample_size, batch_size = size(h)
-    μ = const_module.ones(Float32, 1, 1, batch_size) .* cgp.μ
-    Σ = const_module.ones(Float32, 1, 1, batch_size) .* Flux.softplus.(cgp.Σ)
+    μ = device.ones(Float32, 1, 1, batch_size) .* cgp.μ
+    Σ = device.ones(Float32, 1, 1, batch_size) .* Flux.softplus.(cgp.Σ)
     return μ, Σ
 end
 

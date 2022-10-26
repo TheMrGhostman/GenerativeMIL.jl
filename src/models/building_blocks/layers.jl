@@ -79,12 +79,13 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
 end
 
 function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     # MAB1((d, m, bs), (d, n, bs), _, (1, n, bs)) -> (d, m, bs)
-    I = const_module.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
+    device = get_device(isab.I)
+    I = device.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
     # repeat(isab.I, 1, 1, size(x)[end]) ----> repeat on gpu is extremly slow!!
     h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs), (1, n, bs), _) -> (d, n, bs)
@@ -122,12 +123,13 @@ function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Re
 end
 
 function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T},
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = const_module.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
+    device = get_device(isab.I)
+    I = device.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
     # repeat(isab.I, 1, 1, size(x)[end]) ----> repeat on gpu is extremly slow!! 
     h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
     return x, h
@@ -155,11 +157,12 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: Real
     return z, ĥ, nothing
 end
 
-function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}; const_module::Module=Base) where T <: Real
+function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
+    device = get_device(vb.posterior)
     # computing prior μ, Σ from h as well as posterior from h_enc
     μ, Σ = vb.prior(h)
     Δμ, ΔΣ = vb.posterior(h + h_enc)
-    z = (μ + Δμ) + (Σ .* ΔΣ) .* const_module.randn(Float32, size(μ)...)
+    z = (μ + Δμ) + (Σ .* ΔΣ) .* device.randn(Float32, size(μ)...)
     ĥ = vb.decoder(z)
     kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 )
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
@@ -228,32 +231,34 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     return abl.MAB2(x, ĥ), kld, ĥ, z  # (d, n, bs), (d, m, bs)
 end
 
-function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}; const_module::Module=Base) where T <: Real
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = const_module.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
+    device = get_device(abl.I)
+    I = device.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
     #I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, ĥ, kld = abl.VB(h, h_enc, const_module=const_module) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB2(x, ĥ), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
 
 function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = const_module.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
+    device = get_device(abl.I)
+    I = device.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
     #I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
     h = abl.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
-    z, ĥ, kld = abl.VB(h, h_enc, const_module=const_module) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
     kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB2(x, ĥ, x_mask, nothing), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
@@ -286,14 +291,15 @@ function Base.show(io::IO, m::AttentiveHalfBlock)
 end
 
 function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base) where T <: Real
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
-    h_const = const_module.zeros(Float32, size(h_enc)...)
-    z, ĥ, kld = abl.VB(h_const, h_enc, const_module=const_module)
+    device = get_device(abl.MAB1)
+    h_const = device.zeros(Float32, size(h_enc)...)
+    z, ĥ, kld = abl.VB(h_const, h_enc)
     #vb_const(abl.VB, h_const, h_enc, const_module=const_module) 
     kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)

@@ -69,6 +69,16 @@ function check(x::AbstractArray{<:Real})
     println("size -> $(size(x)) | type -> $(typeof(x)) | mean -> $(Flux.mean(x)) | var -> $(Flux.var(cpu(x))) | sum -> $(Flux.sum(x)) | not zero -> $(sum(x .!= 0)) | n_elements -> $(prod(size(x))) ")
 end
 
+function get_device(m)
+    """
+    Fuction get_device returns CUDA/Base
+     according to type of stored weights of model "m"
+    """
+    p = Flux.params(m)
+    tp = typeof(p[1])
+    (tp <: CUDA.CuArray) ? CUDA : Base
+end
+
 function shifted_tanh(x, bias=1, scale=2)
     x = Flux.tanh.(x)
     x = (x .+ bias) ./ scale
