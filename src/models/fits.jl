@@ -10,12 +10,10 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
     patience_ = deepcopy(patience)
 
     # Change device to gpu if gpu found
-    global const_module = Base
     global to_gpu = false
 
     try  
         if CUDA.devices() |> length > 0
-            const_module = CUDA
             to_gpu = true
             model = model |> gpu
         end
@@ -24,7 +22,7 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
         @info "No GPU found"
     end
 
-    print(const_module)
+    print("module of model -> ", get_device(model))
     print(model)
     # prepare data for bag model 
     x_train, l_training = unpack_mill(data[1])
@@ -78,7 +76,7 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
  
         # forward
         loss_, back = Flux.pullback(ps) do 
-            loss(model, x, x_mask, beta, const_module=const_module) 
+            loss(model, x, x_mask, beta) 
         end;
         # backward only total loss
         grad = back((1f0,0f0));
@@ -101,7 +99,7 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
                 xv = (to_gpu) ? xv|>gpu : xv
                 xv_mask = (to_gpu) ? xv_mask|>gpu : xv_mask
                 # compute validation loss
-                v_loss, v_kld = loss(model, xv, xv_mask, beta, const_module=const_module);
+                v_loss, v_kld = loss(model, xv, xv_mask, beta);
                 total_val_loss += v_loss;
                 total_val_kld += v_kld;
             end   
