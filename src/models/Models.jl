@@ -11,6 +11,7 @@ using Random
 using Distances
 using CUDA
 using MLDataPattern
+using MLUtils
 using ValueHistories
 using Mill
 # schedulers and warmups

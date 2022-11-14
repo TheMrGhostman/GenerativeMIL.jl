@@ -24,6 +24,13 @@ function Base.show(io::IO, m::MultiheadAttentionBlock)
     print(io, "\n\t - Mulithead = $(m.Multihead) \n\t - FF = $(m.FF) \n\t - LN1 = $(m.LN1) \n\t - LN2 = $(m.LN2) \n ) ")
 end
 
+function (mab::MultiheadAttentionBlock)(V::AbstractArray{T}) where T <: Real
+    # Self Attention
+    # V ∈ ℝ^{n,d} ~ (d, n, bs) 
+    a = mab.LN1(V + mab.Multihead(V, V, V)) # (d, n, bs) .+ (d, n, bs)
+    return mab.LN2(a + mab.FF(a)) 
+end
+
 function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}) where T <: Real
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
