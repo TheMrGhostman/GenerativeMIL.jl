@@ -8,7 +8,7 @@ end
 
 Flux.@functor AttentionPooling
 
-function (m::AbstractPooling)(x::AbstractArray{<:Real, 3})
+function (m::AbstractPooling)(x::AbstractArray{<:Real, 3}) # TODO add masked version
     # equivalent to single head attention with trainable query
     # x ~ (d, n, BS)
     # for classification purposes -> ff output_dim (d_ff) == 1 for pooling
@@ -30,10 +30,9 @@ end
 
 Flux.@functor PMA
 
-function (m::PMA)(x::AbstractArray{<:Real, 3})
+function (m::PMA)(x::AbstractArray{<:Real, 3}, x_mask::Union{AbstractArray{Bool}, Nothing}=nothing)
     d, n, bs = size(x)
-    const_module = (typeof(x) <: CUDA.CuArray) ? CUDA : Base 
-    _, h = m.layer(x, nothing, const_module=const_module)
+    _, h = m.layer(x, x_mask)
     h = (size(h, 2) == 1) ? dropdims(h, dims=2) : h 
 end
 
@@ -44,7 +43,7 @@ end
 # placeholder structure for pooling encoder 
 struct PoolEncoder
     prepool
-    pooling
+    pooling::Union{AbstractPooling, Function}
     postpool
 end
 
@@ -53,5 +52,11 @@ Flux.@functor PoolEncoder
 function (m::PoolEncoder)(x::AbstractArray{<:Real})
     h = m.prepool(x)
     h = m.pooling(h)
+    h = m.postpool(h)
+end
+
+function (m::PoolEncoder)(x::AbstractArray{<:Real}, x_mask::Union{AbstractArray{Bool}, Nothing}=nothing)
+    h = mask(m.prepool(x), x_mask)
+    h = m.pooling(h, mask) # TODO fix
     h = m.postpool(h)
 end

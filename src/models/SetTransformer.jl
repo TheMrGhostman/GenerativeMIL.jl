@@ -9,15 +9,15 @@ end
 Flux.@functor SetClassifier
 
 function (m::SetClassifier)(x::AbstractArray{<:Real}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base)
+    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing)
 
     x = mask(m.reduction(x), x_mask)
     for layer in m.isabs
-        x, _ = layer(x, x_mask, const_module=const_module)
+        x, _ = layer(x, x_mask)
         # we don't need Induced Set
     end
     x = (m.dropout !== nothing) ? m.dropout(x) : x
-    _, x = m.pooling(x, x_mask, const_module=const_module)
+    _, x = m.pooling(x, x_mask)
     x = (m.dropout !== nothing) ? m.dropout(x) : x
     x = m.class(x)
     x = dropdims(x, dims=2) # drom empty dimension 
@@ -26,10 +26,9 @@ end
 
 function loss(
     m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, 
-    x_mask::Union{AbstractArray{Bool}, AbstractArray{T}, Nothing}=nothing; 
-    const_module::Module=Base) T<:Real
+    x_mask::Union{AbstractArray{Bool}, AbstractArray{T}, Nothing}=nothing) T<:Real
     
-    ŷ = m(x, x_mask, const_module=const_module);
+    ŷ = m(x, x_mask);
     loss_ = Flux.crossentropy(ŷ, y)
     return loss_
 end
