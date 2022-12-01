@@ -5,6 +5,7 @@ using Flux
 using Flux3D
 using Distributions
 using MLDataPattern
+using AbstractTrees
 
 export check
 

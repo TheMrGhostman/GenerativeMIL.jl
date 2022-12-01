@@ -15,6 +15,9 @@ function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArra
     return x, h_encs
 end
 
+AbstractTrees.children(m::HierarchicalEncoder) = (("Expansion", m.expansion), m.layers)
+AbstractTrees.printnode(io::IO, m::HierarchicalEncoder) = print(io, "HierarchicalEncoder - ($(length(m.layers)) depth)")
+
 struct HierarchicalDecoder
     expansion::Flux.Dense # expansion of prior samples
     layers
@@ -39,6 +42,9 @@ function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::Abst
     x = m.reduction(x) .* x_mask
     return x, klds, zs, kld_loss
 end
+
+AbstractTrees.children(m::HierarchicalDecoder) = (("Expansion", m.expansion), m.layers, ("Reduction", m.reduction))
+AbstractTrees.printnode(io::IO, m::HierarchicalDecoder) = print(io, "HierarchicalDecoder - ($(length(m.layers)) depth)")
 
 
 struct SetVAE 
