@@ -6,7 +6,7 @@ GenerativeMIL mostly provide advanced models for generative modeling of Multi In
 Models are implemented in the most optimal which we could think of. So there might be other better way.
 
 ## Model Zoo
-| Implemented models | CPU training | GPU training | variable cardinality[^1] (in/out)[^2] | note |
+| Implemented models | CPU training | GPU training | variable cardinality[^1] (in/out) [^2] | note |
 |---|---|---|---|---|
 | [SetVAE][setvae] | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
 | [FoldingNet VAE][foldingnet] | yes | no | yes/no | batched training on CPU via broadcasting |
