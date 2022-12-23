@@ -20,7 +20,7 @@ Models are implemented in the most optimal which we could think of. So there mig
 
 [^1]: As cardinality, we consider to be the number of elements in a single bag/set. For real world this number in can vary for each set, which makes training in batches impossible. If a model contains a method/way how to bypass this problem, it is considered capable of handling "variable cardinality". Most models require modification to fulfil this such as masking inputs as well as intermediate outputs.
 
-[^2] "in variable cardinality" is thought as different cardinality of sets in input batch and "out variable cardinality" is whether the model can output batch with distinct cardinalities then in input batch. In other words it can sample arbitrary number of elements for each set.
+[^2]: "in variable cardinality" is thought as different cardinality of sets in input batch and "out variable cardinality" is whether the model can output batch with distinct cardinalities then in input batch. In other words it can sample arbitrary number of elements for each set.
 
 [^3]: Since there is no cardinality reduction or expansion
 
