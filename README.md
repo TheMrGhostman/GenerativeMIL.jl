@@ -8,17 +8,24 @@ Models are implemented in the most optimal which we could think of. So there mig
 ## Model Zoo
 | Implemented models | CPU training | GPU training | variable cardinality (in/out) | note |
 |---|---|---|---|---|
-| SetVAE | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
-| FoldingNet VAE | yes | no | yes/no | batched training on CPU via broadcasting |
+| [SetVAE][setvae] | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
+| [FoldingNet VAE][foldingnet] | yes | no | yes/no | batched training on CPU via broadcasting |
 | PoolModel (ours) | yes | no (Todo) | yes/yes | |
-| SetTransformer | yes | yes | yes/no | classifier version only | 
-| MADE | yes | yes | yes | Masked Autoencoder for Density Estimation / TODO add support for multiple masks[^1].|
-| Autoregressive Flow (AF)| ? | ? |  | not finished |
-| Inverse Autoregresive Flow (IAF)| ? | ? |  | not finished |
-| SoftPointFlow | ? | ? | yes/yes | not finished |
+| [SetTransformer][settransformer] | yes | yes | yes/no | classifier version only | 
+| [Masked Autoencoder for Distribution Estimation][made] (MADE) | yes | yes | yes |  / TODO add support for multiple masks[^1].|
+| [Masked Autoregressive Flow][maf] (MAF)| ? | ? |  | not finished |
+| [Inverse Autoregresive Flow][iaf] (IAF)| ? | ? |  | not finished |
+| [SoftPointFlow][softflow] | ? | ? | yes/yes | not finished |
 | SetVAEformer (ours) | yes | yes | yes/yes | not finished/ Similar to Vanilla SetVAE but better ;) | 
 
-[^1]: This model is essentially building block for AF, IAF and SoftPointFlow
+[^1]: This model is essentially building block for MAF, IAF and SoftPointFlow
+[setvae]: https://openaccess.thecvf.com/content/CVPR2021/papers/Kim_SetVAE_Learning_Hierarchical_Composition_for_Generative_Modeling_of_Set-Structured_Data_CVPR_2021_paper.pdf
+[foldingnet]: https://ieeexplore.ieee.org/document/9506795
+[settransformer]: http://proceedings.mlr.press/v97/lee19d/lee19d.pdf
+[made]: https://arxiv.org/pdf/1502.03509.pdf 
+[af]: https://homepages.inf.ed.ac.uk/imurray2/pub/17maf/maf.pdf
+[iaf]: https://arxiv.org/pdf/1606.04934.pdf
+[softflow]: https://arxiv.org/pdf/2006.04604.pdf
 
 ## DrWatson
 This code base is using the Julia Language and [DrWatson](https://juliadynamics.github.io/DrWatson.jl/stable/)
