@@ -5,19 +5,22 @@ This repository is being developed as complement to GroupAD.jl, where the most p
 GenerativeMIL mostly provide advanced models for generative modeling of Muliti Instance Learning (MIL) and Set structured data. 
 Models are implemented in the most optimal which we could think of. So there might be other better way.
 
-
+## Model Zoo
 | Implemented models | CPU training | GPU training | variable cardinality (in/out) | note |
 |---|---|---|---|---|
 | SetVAE | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
 | FoldingNet VAE | yes | no | yes/no | batched training on CPU via broadcasting |
 | PoolModel (ours) | yes | no (Todo) | yes/yes | |
 | SetTransformer | yes | yes | yes/no | classifier version only | 
-| Autoregressive Flow | ? | ? |  | not finished |
-| Inverse Autoregresive Flow | ? | ? |  | not finished |
+| MADE [^1]| yes | yes | yes | Masked Autoencoder for Density Estimation / TODO add support for multiple masks.|
+| Autoregressive Flow (AF)| ? | ? |  | not finished |
+| Inverse Autoregresive Flow (IAF)| ? | ? |  | not finished |
 | SoftPointFlow | ? | ? | yes/yes | not finished |
 | SetVAEformer (ours) | yes | yes | yes/yes | not finished/ Similar to Vanilla SetVAE but better ;) | 
 
+[^1]: This model is essentially building block for AF, IAF and SoftPointFlow
 
+## DrWatson
 This code base is using the Julia Language and [DrWatson](https://juliadynamics.github.io/DrWatson.jl/stable/)
 to make a reproducible scientific project named
 > GenerativeMIL
