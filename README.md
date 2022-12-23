@@ -12,7 +12,7 @@ Models are implemented in the most optimal which we could think of. So there mig
 | FoldingNet VAE | yes | no | yes/no | batched training on CPU via broadcasting |
 | PoolModel (ours) | yes | no (Todo) | yes/yes | |
 | SetTransformer | yes | yes | yes/no | classifier version only | 
-| MADE [^1]| yes | yes | yes | Masked Autoencoder for Density Estimation / TODO add support for multiple masks.|
+| MADE | yes | yes | yes | Masked Autoencoder for Density Estimation / TODO add support for multiple masks[^1].|
 | Autoregressive Flow (AF)| ? | ? |  | not finished |
 | Inverse Autoregresive Flow (IAF)| ? | ? |  | not finished |
 | SoftPointFlow | ? | ? | yes/yes | not finished |
