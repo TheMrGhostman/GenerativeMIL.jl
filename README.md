@@ -2,23 +2,25 @@
 Repository in still development!!!
 
 This repository is being developed as complement to GroupAD.jl, where the most procedures are located. 
-GenerativeMIL mostly provide advanced models for generative modeling of Muliti Instance Learning (MIL) and Set structured data. 
+GenerativeMIL mostly provide advanced models for generative modeling of Multi Instance (Learning) data and Set structured data. 
 Models are implemented in the most optimal which we could think of. So there might be other better way.
 
 ## Model Zoo
-| Implemented models | CPU training | GPU training | variable cardinality (in/out) | note |
+| Implemented models | CPU training | GPU training | variable cardinality[^1] (in/out) | note |
 |---|---|---|---|---|
 | [SetVAE][setvae] | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
 | [FoldingNet VAE][foldingnet] | yes | no | yes/no | batched training on CPU via broadcasting |
 | PoolModel (ours) | yes | no (Todo) | yes/yes | |
 | [SetTransformer][settransformer] | yes | yes | yes/no | classifier version only | 
-| [Masked Autoencoder for Distribution Estimation][made] (MADE) | yes | yes | yes |  TODO: add support for multiple masks[^1].|
+| [Masked Autoencoder for Distribution Estimation][made] (MADE) | yes | yes | can be done |  TODO: add support for multiple masks[^2].|
 | [Masked Autoregressive Flow][maf] (MAF)| ? | ? |  | not finished |
 | [Inverse Autoregresive Flow][iaf] (IAF)| ? | ? |  | not finished |
 | [SoftPointFlow][softflow] | ? | ? | yes/yes | not finished |
 | SetVAEformer (ours) | yes | yes | yes/yes | not finished/ Similar to Vanilla SetVAE but better ;) | 
 
-[^1]: This model is essentially building block for MAF, IAF and SoftPointFlow
+[^1]: Cardinality we consider to be number of elements in single bag/set. For real world data in can vary for each set, which makes training in batches impossible. If model contain method/way how to bypass this problem, it is considered capable of handeling "variable cardinality".
+ 
+[^2]: This model is essentially building block for MAF, IAF and SoftPointFlow
 
 
 ## DrWatson
