@@ -16,27 +16,6 @@ function (m::SplitLayer)(x)
 	return (m.μ(x), m.σ(x))
 end
 
-
-struct MaskedDense
-    dense::Flux.Dense
-end
-
-Flux.@functor MaskedDense
-
-function MaskedDense(in, out, σ=identity; bias=true)
-    m = Flux.Dense(in, out, σ, bias=bias)
-    return MaskedDense(m)
-end
-
-function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::Nothing=nothing)
-    return m.dense(x)
-end
-
-function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real}) 
-    # masking of input as well as of output
-    return m.dense(x .* mask) .* mask
-end
-
 # mask function
 function mask(x::AbstractArray{<:Real}, mask::Nothing=nothing)
     return x

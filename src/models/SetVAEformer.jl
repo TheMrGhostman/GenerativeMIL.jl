@@ -29,10 +29,14 @@ end
 
 Flux.@functor CrossAttentionDecoder
 
-function (m::CrossAttentionDecoder)(x::AbstractArray{T, 3}, z::AbstractArray{T, 3}) where T <:Real
+function (m::CrossAttentionDecoder)(x::AbstractArray{T, 3}, kv::AbstractArray{T, 3}) where T <:Real
+    # x ∈ ℝ^{d,d} ~ (d, n, bs)  ... Random samples from prior / Query
+    # kv ∈ ℝ^{m,d} ~ (d, m, bs) ... Key and Value for Cross Attention  
+    # operations are O(n ⋅ m ⋅ d) where m << n ... not quadratic with n as SA O(n² ⋅ d)
+
     x = m.PreMAB(x)
     for mab in m.MABs
-        x = mab(x, z)
+        x = mab(x, kv)
     end
     return m.PostMAB(x)
 end
