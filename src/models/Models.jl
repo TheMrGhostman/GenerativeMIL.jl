@@ -27,7 +27,7 @@ export check
 include("building_blocks/attention.jl")
 include("building_blocks/prior.jl")
 include("building_blocks/layers.jl")
-inlcude("building_blocks/made.jl")
+include("building_blocks/made.jl")
 include("utils.jl")
 include("building_blocks/losses.jl") # masked_chamfer_distance_cpu
 include("SetVAE.jl")

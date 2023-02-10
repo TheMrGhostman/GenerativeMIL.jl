@@ -119,6 +119,9 @@ function Base.show(io::IO, m::InducedSetAttentionHalfBlock)
     print(io, " - MAB1 = $(m.MAB1)\n - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
 end
 
+AbstractTrees.children(m::InducedSetAttentionHalfBlock) = (m.MAB1, ("Induced Set", m.I))
+AbstractTrees.printnode(io::IO, m::InducedSetAttentionHalfBlock) = print(io, "InducedSetAttentionHalfBlock - ($(size(m.I,2)) Induced Sets)")
+
 # simple constructor
 function InducedSetAttentionHalfBlock(m::Int, hidden_dim::Int, heads::Int)
     mab1 = MultiheadAttentionBlock(hidden_dim, heads)

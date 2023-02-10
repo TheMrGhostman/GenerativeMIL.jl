@@ -23,15 +23,25 @@ end
  
 
 struct MaskedGaussian
-    μ::MaskedDense
-    Σ::MaskedDense
+    μ # ::Union{MaskedDense, ConcatSquashDense}
+    Σ # ::Union{MaskedDense, ConcatSquashDense}
 end
 
 Flux.@functor MaskedGaussian
 Flux.trainable(m::MaskedGaussian) = (m.μ,m.Σ)
 
 (m::MaskedGaussian)(x::AbstractArray{<:Real}) = (m.μ(x), m.Σ(x))
+(m::MaskedGaussian)(x::Tuple{AbstractArray{T}, AbstractArray{T}}) where T<:Real = (m.μ(x), m.Σ(x)) #version for ConcatSquashDense
+"""
 
+julia> mcsd_μ = ConcatSquashDense(MaskedDense(lμ, 1f0), cg, bg)
+julia> mcsd_Σ = ConcatSquashDense(MaskedDense(lΣ, 1f0), cg, bg)
+julia> mg = MaskedGaussian(mcsd_μ, mcsd_Σ)
+MaskedGaussian(
+    ConcatSquashDense(MaskedDense(Dense(3, 2), 1.0f0), Dense(3, 2), Dense(3, 2)), 
+    ConcatSquashDense(MaskedDense(Dense(3, 2), 1.0f0), Dense(3, 2), Dense(3, 2))
+)
+"""
 
 function get_ordering(D, K; seed=nothing)
     @assert K >= (D-1)

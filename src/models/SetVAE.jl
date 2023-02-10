@@ -65,6 +65,20 @@ function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}
     return loss, klds
 end
 
+function loss_gpu(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0) 
+    """
+    - special case only for modelnet due to the same dimensions of samples
+    - it can be used for all datasets but masked datasets will return inaccurate loss values
+    """
+        _, h_encs = vae.encoder(x, x_mask) # no need for x
+    #h_encs = reverse(h_encs)
+    _, sample_size, bs = size(x_mask)
+    z = vae.prior(sample_size, bs)
+    x̂, _, _, klds = vae.decoder(z, h_encs, x_mask)
+    loss = Flux3D.chamfer_distance(x, x̂) +  β * klds
+    return loss, klds
+end
+
 
 ######################################
 ###          Constructors          ###
@@ -140,14 +154,14 @@ function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArra
     return x̂
 end
 
-function transform_and_reconstruct(vae::SetVAE, data::Vector; testmode=true)
+function transform_and_reconstruct(vae::SetVAE, data::AbstractArray; testmode=true)
     # expect to get output from GroupAD.Models.unpack_mill(tr_data) or list of "sets"
     dataloader = Flux.Data.DataLoader(data, batchsize=1) 
     # we could iterate via data itself (batchsize=1) but we decided to use dataloader instaed
     X̂ = []
     vae = (testmode) ? Flux.testmode!(vae, true) : vae # to testmode
     for batch in dataloader
-        x, x_mask = transform_batch(batch, true) # i copied clone of transform_batch into models.utils
+        x, x_mask = transform_batch(batch, true) 
         x̂ = reconstruct(vae, x, x_mask)
         push!(X̂, x̂ |> Flux.squeezebatch |>cpu)
     end

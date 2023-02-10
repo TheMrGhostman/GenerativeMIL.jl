@@ -107,7 +107,7 @@ end
 
 Flux.@functor ConcatSquashDense
 
-(m::ConcatSquashDense)(x::Tuple{T, T}) where T<:AbstractArray{<:Real} = m(x...)
+(m::ConcatSquashDense)(x::Tuple{AbstractArray{T}, Matrix{T}}) where T<:Real = m(x...) 
 
 function (m::ConcatSquashDense)(x::AbstractArray{T, 3}, context::AbstractArray{T,2}) where T<:Real
     # x ~ (d₁, n, bs)
@@ -127,7 +127,7 @@ function ConcatSquashDense(in_features, in_context, out_features, zeros_init::Bo
 end
 
 
-function tuple_activation(f::Function, x::Tuple{T, T}) where T<:AbstractArray{<:Real}
+function tuple_activation(f::Function, x::Tuple{AbstractArray{T}, Matrix{T}}) where T<:Real 
     x, context = x
     return (f.(x), context)
 end
@@ -153,3 +153,5 @@ function (m::AffineCoupling)(x::Union{T, Tuple{T, T}}, std_in::T, reverse::Bool=
 end
 
 function reverse(m::AffineCoupling, x, std_in)
+
+end
