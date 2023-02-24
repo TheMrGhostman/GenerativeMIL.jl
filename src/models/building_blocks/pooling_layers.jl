@@ -55,7 +55,7 @@ function (m::PoolEncoder)(x::AbstractArray{<:Real})
     h = m.postpool(h)
 end
 
-function (m::PoolEncoder)(x::AbstractArray{<:Real}, x_mask::Union{AbstractArray{Bool}, Nothing}=nothing)
+function (m::PoolEncoder)(x::AbstractArray{<:Real}, x_mask::Union{AbstractArray{Bool}, Nothing})
     h = mask(m.prepool(x), x_mask)
     h = m.pooling(h, mask) # TODO fix
     h = m.postpool(h)
