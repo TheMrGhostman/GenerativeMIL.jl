@@ -245,3 +245,129 @@ function StatsBase.fit!(model::FoldingNet_VAE, data::Tuple, loss::Function; epoc
     best_model = best_model |> cpu # copy model back to cpu
     (history = history, iterations = length(get(history, :training_loss)), model = best_model, npars = sum(map(p -> length(p), Flux.params(model))))
 end
+
+
+function StatsBase.fit!(model::PoolModel, data::Tuple, loss::Function; epochs=1000, max_train_time=82800, 
+    batchsize=64, lr=0.001, patience=50, check_interval::Int=20, hmil_data::Bool=true, kwargs...)
+    #TODO fix for masked version
+    # setup history log 
+    history = ValueHistories.MVHistory()
+    # save original model into best model and save orignal patience
+    best_model = deepcopy(model)
+    patience_ = deepcopy(patience)
+
+    # Change device to gpu if gpu found
+    global to_gpu = false
+
+    try  
+        if CUDA.devices() |> length > 0
+            to_gpu = true
+            model = model |> gpu
+        end
+        @info "GPU go brrrrr"
+    catch
+        @info "No GPU found"
+    end
+
+    @info "module of model -> $(get_device(model))"
+    #print(model)
+    
+    x_train, l_training = unpack_mill(data[1])
+    x_val_, l_val = unpack_mill(data[2])
+    x_val = nothing
+    try # FIXME
+        x_val = (hmil_data) ? x_val_[l_val .== 0] : x_val_ #FIXME if X_val is 3D or 2D tensor it is not working for hmil_data=true
+    catch e
+        x_val = (hmil_data) ? x_val_[:,:,l_val .== 0] : x_val_
+        @info "inside try catch \"hmil data\" "
+    end
+    @info "zeros in val set => l_val=0 : $(sum(l_val.==0)) | l_val=1 : $(sum(l_val.==1)) | x_val -> $(size(x_val))"
+    # Convert epochs to iterations
+    if fld(length(x_train), batchsize) == 0
+        max_iters = epochs
+        @info "dataset//batchsize == 0 -> max_iters = $(epochs)"
+    else
+        N = (typeof(x_train)<:AbstractArray{<:Real, 3}) ? size(x_train,3) : length(x_train)
+        max_iters = epochs * fld(N, batchsize) # epochs to iters // length(x_train)
+        @info "dataset//batchsize > 0 -> max_iters = $(max_iters)"
+    end
+
+    # create dataloaders
+    dataloader = MLDataPattern.RandomBatches(x_train, size=batchsize, count=max_iters)
+    val_dl = Flux.Data.DataLoader(x_val, batchsize=batchsize)
+
+    # prepere early stopping criterion and start time
+    best_val_loss = Inf
+    start_time = time()
+    nan_ = false
+
+    opt = ADAM(lr)
+    ps = Flux.params(model)
+
+    # infinite for loop via RandomBatches / stopping criterion later
+    for (i, batch) in enumerate(dataloader)
+        # Training stage
+        x, x_mask = transform_batch(batch, true)
+        x = (to_gpu) ? x|>gpu : x   #TODO check this
+        #x_mask = (to_gpu) ? x_mask|>gpu : x_mask
+
+        # forward
+        loss_, back = Flux.pullback(ps) do 
+            loss(model, x) 
+        end;
+        # backward only total loss
+        grad = back(1f0);
+        # optimise
+        Flux.Optimise.update!(opt, ps, grad);
+        # Logging
+        push!(history, :training_loss, i, loss_)
+        #push!(history, :training_kld_loss, i, loss_[2])
+        #push!(history, :beta, i, beta)
+
+        # Validation stage
+        if mod(i, check_interval) == 0
+            # compute validation loss
+            total_val_loss, total_val_kld = 0, 0
+            for batch in val_dl
+                xv, xv_mask = transform_batch(batch, true)
+                xv = (to_gpu) ? xv|>gpu : xv
+                #xv_mask = (to_gpu) ? xv_mask|>gpu : xv_mask
+                # compute validation loss
+                v_loss = loss(model, xv);
+                total_val_loss += v_loss;
+            end   
+            # compute losses
+            total_val_loss /= length(val_dl)
+            push!(history, :val_loss, i, total_val_loss)
+            @info "$i - training -> loss: $(loss_) || validation -> loss: $(total_val_loss)"
+            # check for nans
+            if isnan(total_val_loss) || isnan(total_val_kld) || isnan(loss_)
+                @warn "Encountered invalid values in loss function."
+                nan_ = true
+				break
+                #error("Encountered invalid values in loss function.")
+			end
+            # Early stopping 
+            if total_val_loss < best_val_loss
+				best_val_loss = total_val_loss
+				patience_ = deepcopy(patience)
+                best_model = deepcopy(model)
+            else # else stop if the model has not improved for `patience` iterations
+				patience_ -= 1
+				# @info "Patience is: $_patience."
+				if patience_ == 0
+					@info "Stopped training after $(i) iterations."
+					break
+				end
+			end
+        end
+        # Time constrain and iteratins constrain
+        if (time() - start_time > max_train_time) | (i > max_iters) # stop early if time is running out
+            best_model = deepcopy(model)
+            @info "Stopped training after $(i) iterations, $((time() - start_time) / 3600) hours."
+            break
+        end
+    end
+    best_model = best_model |> cpu # copy model back to cpu
+    (history = history, iterations = length(get(history, :training_loss)), model = best_model, npars = sum(map(p -> length(p), Flux.params(model))), nan = nan_)
+end

@@ -6,6 +6,9 @@ end
 
 Flux.@functor PoolModel
 
+AbstractTrees.children(m::PoolModel) = (("Encoder", m.encoder), ("Generator", m.generator), ("Decoder", m.decoder))
+AbstractTrees.printnode(io::IO, m::PoolModel) = print(io, "PoolModel")
+
 function (m::PoolModel)(x::AbstractArray{T, 3}; kld::Bool=false) where T <: Real
     _, n, bs = size(x)
     h = m.encoder(x)
@@ -39,7 +42,7 @@ function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decde
     prpdim      -> hidden dimension for Pre Pooling part (PreP)
     prpdepth    -> number of layers in PreP
     popdim      -> hidden dimension for Post Pooling part (PostP)
-    pppdepth    -> number of layers in PostP
+    popdepth    -> number of layers in PostP
     zdim        -> dimension of latent space
     decdim      -> hidden dimension for decoder part
     decdepth    -> number of layers in decoder
@@ -94,4 +97,17 @@ function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decde
     encoder = PoolEncoder(prepool, fpool, postpool)
     generator = SplitLayer(popdim, (zdim, gen_out_dim), (identity, Flux.softplus))
     return PoolModel(encoder, generator, decoder)
+end
+
+
+function poolmodel_constructor_from_named_tuple(;idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
+    poolf="mean-max",  gen_sigma="scalar", activation="swish", init_seed=nothing, kwargs...)
+
+    activation = eval(:($(Symbol(activation))))
+    (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
+    model = PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
+        poolf, gen_sigma, activation
+        )    
+    (init_seed !== nothing) ? Random.seed!() : nothing
+    return model
 end
