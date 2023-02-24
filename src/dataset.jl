@@ -243,8 +243,8 @@ function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=
             idx = findmax(titles .== type)[2]
             X_train = X_train[:, :, Y_train .== idx]
             Y_train = Y_train[Y_train .== idx]
-            Y_val = Y_val .== idx
-            Y_test = Y_test .== idx
+            Y_val = Y_val .!= idx
+            Y_test = Y_test .!= idx
         end
         data = ((X_train, Y_train), (X_val, Y_val), (X_test, Y_test)) 
     else
@@ -252,7 +252,7 @@ function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=
             idx = findmax(titles .== type)[2]
             X_train = X_train[:, :, Y_train .== idx]
             Y_train = Y_train[Y_train .== idx]
-            Y_test = Y_test .== idx
+            Y_test = Y_test .!= idx
         end
         data = ((X_train, Y_train), (X_test, Y_test)) 
     end

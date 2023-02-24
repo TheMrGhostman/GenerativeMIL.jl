@@ -94,7 +94,7 @@ end;
 
 
 # EVALUTATION
-eval_results = [(x -> GenerativeMIL.Models.transform_and_reconstruct(info.model, x), merge(parameters, (score = "reconstructed_input",))),];
+eval_results = [(x -> GenerativeMIL.Models.transform_and_reconstruct(info.model, x), merge(parameters, (score = "r_input",))),];
 
 # here define what additional info should be saved together with parameters, scores, labels and predict times
 save_entries = merge(training_info, (modelname = modelname, seed = seed))

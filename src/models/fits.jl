@@ -27,8 +27,14 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
     
     x_train, l_training = unpack_mill(data[1])
     x_val_, l_val = unpack_mill(data[2])
-    x_val = (hmil_data) ? x_val_[l_val .== 0] : x_val_ #FIXME if X_val is 3D or 2D tensor it is not working for hmil_data=true
-    
+    x_val = nothing
+    try # FIXME
+        x_val = (hmil_data) ? x_val_[l_val .== 0] : x_val_ #FIXME if X_val is 3D or 2D tensor it is not working for hmil_data=true
+    catch e
+        x_val = (hmil_data) ? x_val_[:,:,l_val .== 0] : x_val_
+        @info "inside try catch \"hmil data\" "
+    end
+    @info "zeros in val set => l_val=0 : $(sum(l_val.==0)) | l_val=1 : $(sum(l_val.==1)) | x_val -> $(size(x_val))"
     # Convert epochs to iterations
     if fld(length(x_train), batchsize) == 0
         max_iters = epochs
@@ -87,7 +93,7 @@ function StatsBase.fit!(model::SetVAE, data::Tuple, loss::Function; epochs=1000,
         # optimise
         Flux.Optimise.update!(opt, ps, grad);
         # Logging
-        push!(history, :lr, i, scheduler(i))
+        push!(history, :lr, i, Float32(scheduler(i)))
         push!(history, :training_loss, i, loss_[1])
         push!(history, :training_kld_loss, i, loss_[2])
         push!(history, :beta, i, beta)
