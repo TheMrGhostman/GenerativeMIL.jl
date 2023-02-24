@@ -41,7 +41,7 @@ function knn(x::AbstractArray{<:Real, 2}, k::Int)
     idx = mapslices(z->sortperm(z, rev=true)[1:k], pairwise_distance, dims=1)
 end
 
-function knn(x::AbstractArray{Real, 3}, k::Int)
+function knn(x::AbstractArray{<:Real, 3}, k::Int)
     # Input x ~ (Dim, N, BS)
     # x_t = permutedims(x, (2,1,3))
     # Input transposed to x_t ~ (N, Dim, BS)
@@ -52,18 +52,6 @@ function knn(x::AbstractArray{Real, 3}, k::Int)
     pairwise_distance = -xx .- inner .- permutedims(xx, (2,1,3))
     # pairwise_distance ~ (N,N,BS)
     idx = mapslices(z->sortperm(z, rev=true)[1:k], pairwise_distance, dims=(1))
-end
-
-
-function local_maxpool(x::AbstractArray{<:Real, 3},kx::AbstractArray{<:Real, 3})
-    # FIXME nefunguje backward pro batche vůbec
-    d,n,bs = size(x)
-    new_x = zeros(Float32, d,n,bs)
-    for i in 1:bs
-        #println(size(x[:,:,i]), size(kx[:,:,i]), size(x[:,kx[:,:,i],i]))
-        new_x[:,:,i] = maximum(x[:,kx[:,:,i],i],dims=2)
-    end
-    return new_x
 end
 
 
@@ -87,6 +75,11 @@ function local_maxpool(x::AbstractArray{<:Real, 2},kx::AbstractArray{<:Real, 2})
     d,bs = size(x)
     x = dropdims(maximum(x[:,kx],dims=2),dims=2)
     return x
+end
+
+function local_maxpool(x::AbstractArray{<:Real, 3},kx::AbstractArray{<:Real, 3})
+    # works on CPU and GPU
+    cat(map(y->local_maxpool(y[1], y[2]), zip(eachslice(x, dims=3), eachslice(kx, dims=3)))..., dims=3)
 end
 
 function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Real, 2})
@@ -115,6 +108,10 @@ function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Re
     return cat(pts, x, dims=1)
 end
 
+function local_covariance(pts::AbstractArray{<:Real, 3},idx::AbstractArray{<:Real, 3})
+    # works on CPU and GPU; slower on GPU but it works
+    cat(map(y->local_covariance(y[1], y[2]), zip(eachslice(pts, dims=3), eachslice(idx, dims=3)))..., dims=3)
+end
 
 struct FoldingNet_encoder
     mlp1
@@ -141,7 +138,10 @@ function (enc::FoldingNet_encoder)(x::AbstractArray{<:Real, 2}; local_cov::Bool=
     # 5) to latent space
     kidx = nothing
     Zygote.ignore() do
-        kidx = knn(x, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
+        to_cuda = typeof(x) <: CUDA.CuArray
+        x_ = (to_cuda) ? x |> cpu : x
+        kidx = knn(x_, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
+        kidx = (to_cuda) ? kidx |> gpu : kidx
     end
     if local_cov
         x = local_covariance(x, kidx);
