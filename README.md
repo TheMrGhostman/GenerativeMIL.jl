@@ -28,7 +28,7 @@ Models are implemented in the most optimal which we could think of. So there mig
 
 [^*]: At this point PoolModel works only for constant cardinality.
 
-[^5]: Foldingenetvae is trainable on gpu via function "fit_gpu_ready!". It is a special case with fixed cardinality and without KLD of reconstructed encoding.
+[^5]: FoldingeNet VAE is trainable on gpu via function "fit_gpu_ready!". It is a special case with fixed cardinality and without KLD of reconstructed encoding.
 
 
 
