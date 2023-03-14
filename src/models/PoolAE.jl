@@ -1,77 +1,113 @@
-struct PoolAE 
-    pre_encoder
-    bottleneck
-    generator
+struct PoolModel
+    encoder::PoolEncoder # building_blocks/pooling_layers
+    generator #context generator
     decoder
 end
 
-Flux.@functor PoolAE
+Flux.@functor PoolModel
 
-function (m::PoolAE)(x::AbstractArray{T, 2}) where T <: Real
-    set_size = size(x, 2) 
-    features = m.pre_encoder(x) # (D, N) -> (Hidden_dim, N)
-    maxes = maximum(features, dims=2) # (HD, N) -> (HD,1)
-    means = Flux.mean(features, dims=2) # (HD, N) -> (HD,1)
-    features = vcat(means, maxes) # (2*HD, 1)
+AbstractTrees.children(m::PoolModel) = (("Encoder", m.encoder), ("Generator", m.generator), ("Decoder", m.decoder))
+AbstractTrees.printnode(io::IO, m::PoolModel) = print(io, "PoolModel")
 
-    μ, Σ = m.bottleneck(features)
-    z = μ + Σ .* randn(Float32, size(μ)...)
+function (m::PoolModel)(x::AbstractArray{T, 3}; kld::Bool=false) where T <: Real
+    _, n, bs = size(x)
+    h = m.encoder(x)
+    μ, Σ = m.generator(h)
+    z = μ .+ Σ .* randn_like(x, (size(μ, 1), n, bs)) # MLUtils.randn_like
+    x̂ = m.decoder(z)
+    if kld
+        𝓛ₖₗ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σ.^2) - μ.^2  - Σ.^2, dims=1)) 
+        return x̂, 𝓛ₖₗ
+    else
+        return x̂
+    end 
+end
+
+loss(model::PoolModel, x::AbstractArray{<:Real, 3}) = Flux3D.chamfer_distance(model(x), x)
+
+function loss_with_kld(model::PoolModel, x::AbstractArray{<:Real, 3}; β::Float32=1f0, logging::Bool=false)
+    x̂, 𝓛ₖₗ = model(x, kld=true)
+    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x)
+    𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗ
+    return (logging) ? (𝓛, 𝓛ᵣₑ, 𝓛ₖₗ) : 𝓛
+end
+
+function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
+    poolf="mean-max",  gen_sigma="scalar", activation::Function=swish)
+    """
+    -----------------------
+    PoolModel constructor
+    -----------------------
+    idim        -> input dimensions
+    prpdim      -> hidden dimension for Pre Pooling part (PreP)
+    prpdepth    -> number of layers in PreP
+    popdim      -> hidden dimension for Post Pooling part (PostP)
+    popdepth    -> number of layers in PostP
+    zdim        -> dimension of latent space
+    decdim      -> hidden dimension for decoder part
+    decdepth    -> number of layers in decoder
+    poolf       -> pooling function (\"mean-max\", \"mean\", \"max\", \"attention\", \"PMA\")
+    gen_sigma   -> type of variance in generator (\"scalar\" or \"diag\")
+    activation  -> activation function 
+    """
     
-    kld = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σ.^2) - μ.^2  - Σ.^2, dims=1)) 
-
-    μ₁, Σ₁ = m.generator(z)
-    gen_z = μ₁ .+ Σ₁ .* randn(Float32, size(μ₁, 1), set_size)
-
-    x̂ = m.decoder(gen_z)
-    return x̂, kld
-end
-
-function loss(m::PoolAE, x::AbstractArray{T, 2}, β::Float32=1f0) where T <: Real
-    x̂, 𝓛_kld = m(x)
-    𝓛_rec = chamfer_distance(x, x̂)
-    return 𝓛_rec + β .* 𝓛_kld, 𝓛_kld
-end
-
-function batched_loss(m::PoolAE, x, beta=1f0)
-    bs = length(x)
-    𝓛 = 0
-    kld = 0
-    for i in x
-        l, k = loss(m, i, beta)
-        𝓛 += l
-        kld += k
-    end
-    return 𝓛/bs, kld/bs
-end
-
-function PoolAE(in_dim, hidden, latent_dim, pre_pool_hidden, gen_sigma="scalar", activation::Function=swish)
     if gen_sigma == "scalar"
         gen_out_dim = 1
     elseif gen_sigma == "diag"
-        gen_out_dim = pre_pool_hidden
+        gen_out_dim = zdim
     else
         error("Unkown type of vairance")
     end
 
-    pre_enc = Flux.Chain(
-        Flux.Dense(in_dim, hidden, activation), 
-        Flux.Dense(hidden, hidden, activation),
-        Flux.Dense(hidden, pre_pool_hidden, activation)
+    prepool = Flux.Chain(
+        Flux.Dense(idim, prpdim, activation), 
+        [Flux.Dense(prpdim, prpdim, activation) for i=1:prpdepth-1]...
     )
-    bottle = Flux.Chain(
-        Flux.Dense(2*pre_pool_hidden, hidden, activation),
-        Flux.Dense(hidden, hidden, activation),
-        SplitLayer(hidden, (latent_dim, latent_dim), (identity, Flux.softplus))
+
+    multiplier=1
+    if poolf=="mean-max"
+        fpool = x->cat(mean(x, dims=2), maximum(x, dims=2), dims=1)
+        multiplier = 2
+    elseif poolf=="mean"
+        fpool = x->mean(x, dims=2)
+    elseif poolf=="max"
+        fpool = x->maximum(x, dims=2)
+    elseif poolf=="attention"
+        fpool = AttentionPooling(Flux.Chain(
+                Dense(prpdim, prpdim, activation),
+                Dense(prpdim,1)
+                ))
+    elseif poolf=="PMA"
+        fpool = PMA(1, prpdim, 4)
+    else
+        error("Unknown pooling function")
+    end
+
+    postpool = Flux.Chain(
+        Flux.Dense(multiplier*prpdim, popdim, activation), 
+        [Flux.Dense(popdim, popdim, activation) for i=1:popdepth-1]...
     )
-    gen = Flux.Chain(
-        Flux.Dense(latent_dim, hidden, activation),
-        Flux.Dense(hidden, hidden, activation),
-        SplitLayer(hidden, (pre_pool_hidden, gen_out_dim), (identity, Flux.softplus))
+
+    decoder = Flux.Chain(
+        Flux.Dense(zdim, decdim, activation), 
+        [Flux.Dense(decdim, decdim, activation) for i=1:decdepth-2]...,
+        Flux.Dense(decdim, idim), 
     )
-    dec = Flux.Chain(
-        Flux.Dense(pre_pool_hidden, hidden, activation),
-        Flux.Dense(hidden, hidden, activation),
-        Flux.Dense(hidden, in_dim)
-    )
-    return PoolAE(pre_enc, bottle, gen, dec)
+
+    encoder = PoolEncoder(prepool, fpool, postpool)
+    generator = SplitLayer(popdim, (zdim, gen_out_dim), (identity, Flux.softplus))
+    return PoolModel(encoder, generator, decoder)
+end
+
+
+function poolmodel_constructor_from_named_tuple(;idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
+    poolf="mean-max",  gen_sigma="scalar", activation="swish", init_seed=nothing, kwargs...)
+
+    activation = eval(:($(Symbol(activation))))
+    (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
+    model = PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
+        poolf, gen_sigma, activation
+        )    
+    (init_seed !== nothing) ? Random.seed!() : nothing
+    return model
 end

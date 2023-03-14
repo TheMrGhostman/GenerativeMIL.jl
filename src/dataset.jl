@@ -2,6 +2,8 @@ using Flux
 using PaddedViews
 using DelimitedFiles
 using DrWatson
+using MLUtils
+using HDF5
 
 function procedure()
     #a = randn(3,1)
@@ -182,7 +184,11 @@ function load_and_scale_mnist(lowerb=0, upperb=1)
     return (x_train, train[:labels]), (x_test, test[:labels])
 end
 
-function transform_batch(x, max=false)
+function transform_batch(x::AbstractArray{T,3}, kwargs...) where T<:Real
+    return MLUtils.getobs(x), ones(Bool,size(x[1:1,:,:]))
+end
+
+function transform_batch(x::AbstractArray{T,1}, max=false) where T<:AbstractArray
     a_mask = [ones(size(a)) for a in x];
     feature_dim = size(x[1],1)
     if max
@@ -196,4 +202,59 @@ function transform_batch(x, max=false)
     c_mask = cat(b_mask..., dims=3) .> 0; # mask as BitArray
     c_mask = Array(c_mask[1:1,:,:]);
     return c, c_mask
+end
+
+
+function train_test_split(X, y, ratio=0.2; seed=nothing)
+    # simple util function
+    (seed!==nothing) ? Random.seed!(seed) : nothing
+
+    N = size(X,3)
+    idx_samples = sample(1:N, Int(floor(N*ratio)), replace=false)
+    idx_bool = zeros(Bool,N)
+    idx_bool[idx_samples] .= true
+    
+    X_val = X[:,:,idx_bool]
+    Y_val = y[idx_bool]
+    X_train = X[:,:,.!idx_bool]
+    Y_train = y[.!idx_bool]
+
+    (seed!==nothing) ? Random.seed!() : nothing
+    return (X_train, Y_train), (X_val, Y_val)
+end
+
+
+function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=0.2, seed::Int=666)
+    """
+    npoints     ... Number of points per object ( 512 / 1024 / 2048 )
+    type        ... Type data -> \"all\" or one-class name e.g. \"chair\", \"monitor\"
+    validatoin  ... Return validation set (\"true\") or not (\"false\")
+    seed        ... Random seed for validation split.
+    """
+    #load data
+    data = HDF5.h5open("/home/zorekmat/MIL/GenerativeMIL/data/modelnet10/modelnet10_$(npoints).h5")
+    X_train, X_test, Y_train, Y_test = data["X_train"]|>read, data["X_test"]|>read, data["Y_train"]|>read, data["Y_test"]|>read
+
+    titles = ["bathtub", "bed", "chair", "desk", "dresser", "monitor", "night_stand", "sofa", "table", "toilet"]
+
+    if validation
+        (X_train,Y_train), (X_val,Y_val) = train_test_split(X_train, Y_train, ratio, seed=seed)
+        if type in titles
+            idx = findmax(titles .== type)[2]
+            X_train = X_train[:, :, Y_train .== idx]
+            Y_train = Y_train[Y_train .== idx]
+            Y_val = Y_val .!= idx
+            Y_test = Y_test .!= idx
+        end
+        data = ((X_train, Y_train), (X_val, Y_val), (X_test, Y_test)) 
+    else
+        if type in titles
+            idx = findmax(titles .== type)[2]
+            X_train = X_train[:, :, Y_train .== idx]
+            Y_train = Y_train[Y_train .== idx]
+            Y_test = Y_test .!= idx
+        end
+        data = ((X_train, Y_train), (X_test, Y_test)) 
+    end
+    return data
 end

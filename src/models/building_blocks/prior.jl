@@ -19,6 +19,9 @@ function Base.show(io::IO, m::MixtureOfGaussians)
     print(io, "\n\t - trainable = $(m.trainable) \n\t ) ")
 end
 
+AbstractTrees.children(m::MixtureOfGaussians) = (("α", m.α), ("μ", m.μ), ("Σ", m.Σ))
+AbstractTrees.printnode(io::IO, m::MixtureOfGaussians) = print(io, "MixtureOfGaussians - (mixtures ~ $(m.K) | dim ~ $(m.Ds) | trainable: $(m.trainable))")
+
 Flux.@functor MixtureOfGaussians
 
 Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (MoG.α, MoG.μ, MoG.Σ) : ()
@@ -138,3 +141,7 @@ function Base.show(io::IO, m::ConstGaussPrior)
     print(io, "\n\t - μ = $(m.μ |> size) | $(m.μ |> typeof) | mean ~ $(m.μ |> Flux.mean)")
     print(io, "\n\t - Σ = $(m.Σ |> size) | $(m.Σ |> typeof) | mean ~ $(m.Σ |> Flux.mean) \n\t ) ")
 end
+
+
+AbstractTrees.children(m::ConstGaussPrior) = (("μ", m.μ), ("Σ", m.Σ))
+AbstractTrees.printnode(io::IO, m::ConstGaussPrior) = print(io, "ConstGaussPrior - (#component ~ $(size(m.μ,1)) | dim ~ $(size(m.μ,2)))")

@@ -24,6 +24,9 @@ function Base.show(io::IO, m::MultiheadAttentionBlock)
     print(io, "\n\t - Mulithead = $(m.Multihead) \n\t - FF = $(m.FF) \n\t - LN1 = $(m.LN1) \n\t - LN2 = $(m.LN2) \n ) ")
 end
 
+AbstractTrees.children(m::MultiheadAttentionBlock) = (m.Multihead, ("FeedForward", m.FF), ("LayerNorm 1", m.LN1), ("LayerNorm 2", m.LN2))
+AbstractTrees.printnode(io::IO, m::MultiheadAttentionBlock) = print(io, "MultiheadAttentionBlock")
+
 function (mab::MultiheadAttentionBlock)(V::AbstractArray{T}) where T <: Real
     # Self Attention
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
@@ -66,6 +69,9 @@ function Base.show(io::IO, m::InducedSetAttentionBlock)
     print(io, "InducedSetAttentionBlock(")
     print(io, " - MAB1 = $(m.MAB1)\n - MAB2 = $(m.MAB2) \n - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
 end
+
+AbstractTrees.children(m::InducedSetAttentionBlock) = (m.MAB1, m.MAB2, ("Induced Set", m.I))
+AbstractTrees.printnode(io::IO, m::InducedSetAttentionBlock) = print(io, "InducedSetAttentionBlock - ($(size(m.I,2)) Induced Sets)")
 
 # simple constructor
 function InducedSetAttentionBlock(m::Int, hidden_dim::Int, heads::Int)
@@ -113,6 +119,9 @@ function Base.show(io::IO, m::InducedSetAttentionHalfBlock)
     print(io, " - MAB1 = $(m.MAB1)\n - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
 end
 
+AbstractTrees.children(m::InducedSetAttentionHalfBlock) = (m.MAB1, ("Induced Set", m.I))
+AbstractTrees.printnode(io::IO, m::InducedSetAttentionHalfBlock) = print(io, "InducedSetAttentionHalfBlock - ($(size(m.I,2)) Induced Sets)")
+
 # simple constructor
 function InducedSetAttentionHalfBlock(m::Int, hidden_dim::Int, heads::Int)
     mab1 = MultiheadAttentionBlock(hidden_dim, heads)
@@ -155,6 +164,9 @@ function Base.show(io::IO, m::VariationalBottleneck)
     print(io, "\n\t - prior = $(m.prior) \n\t - posterior = $(m.posterior)")
     print(io, "\n\t - decoder = $(m.decoder) \n ) ")
 end
+
+AbstractTrees.children(m::VariationalBottleneck) = (("Prior", m.prior), ("Posterior", m.posterior), ("Decoder", m.decoder))
+AbstractTrees.printnode(io::IO, m::VariationalBottleneck) = print(io, "VariationalBottleneck - ($(size(m.decoder[1].weight, 2)) zdim)")
 
 function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: Real
     # computing prior μ, Σ from h
@@ -226,6 +238,9 @@ function Base.show(io::IO, m::AttentiveBottleneckLayer)
     print(io, " - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
 end
 
+AbstractTrees.children(m::AttentiveBottleneckLayer) = (m.MAB1, m.MAB2, m.VB, ("Induced Sets", m.I))
+AbstractTrees.printnode(io::IO, m::AttentiveBottleneckLayer) = print(io, "AttentiveBottleneckLayer - ($(size(m.I,2)) Induced Sets)")
+
 function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
     # generation
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
@@ -296,6 +311,9 @@ function Base.show(io::IO, m::AttentiveHalfBlock)
     print(io, " - MAB1 = $(m.MAB1)\n")
     print(io, " - VB = $(m.VB) \n ) ")
 end
+
+AbstractTrees.children(m::AttentiveHalfBlock) = (m.MAB1, m.VB)
+AbstractTrees.printnode(io::IO, m::AttentiveHalfBlock) = print(io, "AttentiveHalfBlock")
 
 function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
     x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real

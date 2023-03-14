@@ -30,6 +30,9 @@ function Base.show(io::IO, m::MultiheadAttention)
     print(io, "\n\t - WV = $(m.WV) \n\t - WO = $(m.WO) \n\t - attention = $(m.attention) \n\t ) ")
 end
 
+AbstractTrees.children(m::MultiheadAttention) = (("W_Query ", m.WQ), ("W_Key   ", m.WK), ("W_Value ", m.WV), ("W_Output", m.WO), m.attention)
+AbstractTrees.printnode(io::IO, m::MultiheadAttention) = print(io, "MultiheadAttention - ($(m.heads) heads)")
+
 function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}) where T <: Real
     # Project Q, K, V to new ones
     Q = mh.WQ(Q)

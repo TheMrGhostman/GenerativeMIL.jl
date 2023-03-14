@@ -16,27 +16,6 @@ function (m::SplitLayer)(x)
 	return (m.μ(x), m.σ(x))
 end
 
-
-struct MaskedDense
-    dense::Flux.Dense
-end
-
-Flux.@functor MaskedDense
-
-function MaskedDense(in, out, σ=identity; bias=true)
-    m = Flux.Dense(in, out, σ, bias=bias)
-    return MaskedDense(m)
-end
-
-function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::Nothing=nothing)
-    return m.dense(x)
-end
-
-function (m::MaskedDense)(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real}) 
-    # masking of input as well as of output
-    return m.dense(x .* mask) .* mask
-end
-
 # mask function
 function mask(x::AbstractArray{<:Real}, mask::Nothing=nothing)
     return x
@@ -84,8 +63,11 @@ function shifted_tanh(x, bias=1, scale=2)
     x = (x .+ bias) ./ scale
 end
 
+function transform_batch(x::AbstractArray{T,3}, kwargs...) where T<:Real
+    return MLUtils.getobs(x), ones(Bool,size(x[1:1,:,:]))
+end
 
-function transform_batch(x, max=false)
+function transform_batch(x::AbstractArray{T,1}, max=false) where T<:AbstractArray
     a_mask = [ones(size(a)) for a in x];
     feature_dim = size(x[1],1)
     if max
@@ -100,6 +82,7 @@ function transform_batch(x, max=false)
     c_mask = Array(c_mask[1:1,:,:]);
     return c, c_mask
 end
+
 
 """
 scheduler with warmup
@@ -156,3 +139,16 @@ function unpack_mill(dt::T) where T <: Tuple{Array,Any}
 	bag_data = dt[1]
     return bag_data, bag_labels
 end
+
+AbstractTrees.children((name, m)::Tuple{String, Union{Flux.Dense, Flux.LayerNorm}}) = () # expand for all flux layers
+AbstractTrees.printnode(io::IO, (name, m)::Tuple{String, Union{Flux.Dense, Flux.LayerNorm}}) = print(io, "$(name) -- $(m)")
+
+AbstractTrees.children((name, m)::Tuple{String, Flux.Chain}) = (m) # expand for all flux layers
+AbstractTrees.printnode(io::IO, (name, m)::Tuple{String, Flux.Chain}) = print(io, "$(name) -- Chain")
+
+AbstractTrees.children((name, m)::Tuple{String, SplitLayer}) = (("μ", m.μ), ("σ", m.σ)) 
+AbstractTrees.printnode(io::IO, (name, m)::Tuple{String, SplitLayer}) = print(io, "$(name) -- SplitLayer")
+
+AbstractTrees.children((name, m)::Tuple{String, AbstractArray}) = () 
+AbstractTrees.printnode(io::IO, (name, x)::Tuple{String, AbstractArray}) = print(io, "$(name) -- \
+    $(size(x)) | $(typeof(x)) | mean~$(round(Flux.mean(x), digits=3)) | xᵢ≠0: $(sum(x .!= 0)) | n(x): $(prod(size(x))) ")
