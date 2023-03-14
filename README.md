@@ -9,7 +9,7 @@ Models are implemented in the most optimal which we could think of. So there mig
 | Implemented models | CPU training | GPU training | variable cardinality[^1] (in/out) [^2] | note |
 |---|---|---|---|---|
 | [SetVAE][setvae] | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
-| [FoldingNet VAE][foldingnet] | yes | yes [^5] | yes/no | batched training on CPU via broadcasting |
+| [FoldingNet VAE][foldingnet] | yes | yes [^5] | yes/no | batched training on CPU via broadcasting / GPU training in special case [^5]|
 | PoolModel (ours) | yes | yes [^*] | yes/yes | TODO masked forward pass for variable cardinality on GPU |
 | [SetTransformer][settransformer] | yes | yes | yes/no | classifier version only | 
 | [Masked Autoencoder for Distribution Estimation][made] (MADE) | yes | yes | possible[^3]/no |  TODO: add support for multiple masks[^4].|
