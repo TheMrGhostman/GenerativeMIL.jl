@@ -42,10 +42,17 @@ function (m::CrossAttentionDecoder)(x::AbstractArray{T, 3}, kv::AbstractArray{T,
 end
 
 struct SetVAEformer
-    Encoder::AbstractTransformerEncoder
-    Vae
-    Decoder::AbstractTransformerDecoder
-    Prior::AbstractPriorDistribution
+    encoder::AbstractTransformerEncoder
+    vae
+    decoder::AbstractTransformerDecoder
+    prior::AbstractPriorDistribution
 end
 
+
+function (m::SetVAEformer)(x::AbstractArray{<:Real, 3}, x_mask::Union{AbstractArray{<:Real}, Nothing}=nothing)
+    h = m.encoder(x, x_mask)
+    zₖᵥ = m.vae(h)
+    zₚᵣᵢₒᵣ = m.prior(x)
+    x̂ = m.decoder(zₚᵣᵢₒᵣ, zₖᵥ)
+end
 

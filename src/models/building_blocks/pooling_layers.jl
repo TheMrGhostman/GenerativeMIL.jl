@@ -40,6 +40,9 @@ function PMA(m::Int, hidden_dim::Int, heads::Int)
     PMA(InducedSetAttentionHalfBlock(m, hidden_dim, heads))
 end
 
+masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2)
+masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=2) #FIXME set masked values to -Inf
+
 # placeholder structure for pooling encoder 
 struct PoolEncoder
     prepool

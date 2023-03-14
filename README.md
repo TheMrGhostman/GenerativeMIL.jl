@@ -10,7 +10,7 @@ Models are implemented in the most optimal which we could think of. So there mig
 |---|---|---|---|---|
 | [SetVAE][setvae] | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
 | [FoldingNet VAE][foldingnet] | yes | no | yes/no | batched training on CPU via broadcasting |
-| PoolModel (ours) | yes | no (Todo) | yes/yes | |
+| PoolModel (ours) | yes | yes [^*] | yes/yes | TODO masked forward pass for variable cardinality on GPU |
 | [SetTransformer][settransformer] | yes | yes | yes/no | classifier version only | 
 | [Masked Autoencoder for Distribution Estimation][made] (MADE) | yes | yes | possible[^3]/no |  TODO: add support for multiple masks[^4].|
 | [Masked Autoregressive Flow][maf] (MAF)| ? | ? |  | not finished |
@@ -26,6 +26,7 @@ Models are implemented in the most optimal which we could think of. So there mig
 
 [^4]: This model is essentially building block for MAF, IAF and SoftPointFlow
 
+[^*]: At this point PoolModel works only for constant cardinality.
 
 
 
