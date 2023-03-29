@@ -25,10 +25,10 @@ function procedure()
 end
 
 
-function standardize_list(X)
-    m = zeros(3,1)
-    m2 = zeros(3,1)
-    samples = 0
+function standardize_list(X; T::Type=Float32)
+    m = zeros(T,3,1)
+    m2 = zeros(T,3,1)
+    samples = T(0)
     for x in X
         m += Flux.sum(x, dims=2)
         m2 += Flux.sum(x.^2, dims=2)
@@ -204,20 +204,24 @@ function transform_batch(x::AbstractArray{T,1}, max=false) where T<:AbstractArra
     return c, c_mask
 end
 
+lastdim_indexing(x::AbstractArray{<:Any, 1}, index_array::AbstractArray{Bool}) = x[index_array]
+lastdim_indexing(x::AbstractArray{<:Real, 2}, index_array::AbstractArray{Bool}) = x[:,index_array]
+lastdim_indexing(x::AbstractArray{<:Real, 3}, index_array::AbstractArray{Bool}) = x[:,:,index_array]
+
 
 function train_test_split(X, y, ratio=0.2; seed=nothing)
     # simple util function
     (seed!==nothing) ? Random.seed!(seed) : nothing
 
-    N = size(X,3)
+    N = size(X)[end]
     idx_samples = sample(1:N, Int(floor(N*ratio)), replace=false)
     idx_bool = zeros(Bool,N)
     idx_bool[idx_samples] .= true
     
-    X_val = X[:,:,idx_bool]
-    Y_val = y[idx_bool]
-    X_train = X[:,:,.!idx_bool]
-    Y_train = y[.!idx_bool]
+    X_val = lastdim_indexing(X, idx_bool) #X[:,:,idx_bool]
+    Y_val = lastdim_indexing(y, idx_bool) #y[idx_bool]
+    X_train = lastdim_indexing(X, .!idx_bool) #X[:,:,.!idx_bool]
+    Y_train = lastdim_indexing(y, .!idx_bool) #y[.!idx_bool]
 
     (seed!==nothing) ? Random.seed!() : nothing
     return (X_train, Y_train), (X_val, Y_val)
