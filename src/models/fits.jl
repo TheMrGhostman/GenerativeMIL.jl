@@ -246,7 +246,7 @@ function StatsBase.fit!(model::FoldingNet_VAE, data::Tuple, loss::Function; epoc
     (history = history, iterations = length(get(history, :training_loss)), model = best_model, npars = sum(map(p -> length(p), Flux.params(model))))
 end
 
-
+#Union{PoolModel, VQVAE}
 function StatsBase.fit!(model::PoolModel, data::Tuple, loss::Function; epochs=1000, max_train_time=82800, 
     batchsize=64, lr=0.001, patience=50, check_interval::Int=20, hmil_data::Bool=true, kwargs...)
     #TODO fix for masked version
@@ -371,6 +371,111 @@ function StatsBase.fit!(model::PoolModel, data::Tuple, loss::Function; epochs=10
     best_model = best_model |> cpu # copy model back to cpu
     (history = history, iterations = length(get(history, :training_loss)), model = best_model, npars = sum(map(p -> length(p), Flux.params(model))), nan = nan_)
 end
+
+
+
+function StatsBase.fit!(model::Union{VQVAE,VQ_PoolAE,VGQ_PoolAE}, data::Tuple, loss::Function; epochs=1000, max_train_time=82800, 
+    batchsize=64, lr=0.001, beta=1f0, patience=50, check_interval::Int=20, ad_data::Bool=false, kwargs...)
+    #logging_loss::Union{Function, Nothing}=nothing,
+    # purely cpu training
+
+    # setup history log 
+    history = ValueHistories.MVHistory()
+    # save original model into best model and save orignal patience
+    best_model = deepcopy(model)
+    patience_ = deepcopy(patience)
+
+    println(model)
+    # prepare data for bag model 
+    x_train, l_training = unpack_mill(data[1])
+    x_val_, l_val = unpack_mill(data[2])
+    x_val = nothing
+    try 
+        x_val = (ad_data) ? x_val_[l_val .== 0] : x_val_ #FIXME if X_val is 3D or 2D tensor it is not working for hmil_data=true
+    catch e
+        x_val = (ad_data) ? x_val_[:,:,l_val .== 0] : x_val_
+        @info "inside try catch \"hmil data\" "
+    end
+
+    # Convert epochs to iterations
+    if fld(length(x_train), batchsize) == 0
+        max_iters = epochs
+        @info "dataset//batchsize == 0 -> max_iters = $(epochs)"
+    else
+        max_iters = epochs * fld(length(x_train), batchsize) # epochs to iters
+        @info "dataset//batchsize > 0 -> max_iters = $(max_iters)"
+    end
+
+    # create dataloaders
+    dataloader = MLDataPattern.RandomBatches(x_train, size=batchsize, count=max_iters)
+    val_dl = Flux.Data.DataLoader(x_val, batchsize=batchsize)
+
+    # prepere early stopping criterion and start time
+    best_val_loss = Inf
+    start_time = time()
+
+    global final_beta = beta
+    opt = ADAM(lr)
+    ps = Flux.params(model)
+
+    loss_f(x) = loss(model, x; β=final_beta)
+
+    for (i, batch) in enumerate(dataloader)
+        # forward
+        loss_, back = Flux.pullback(ps) do 
+            Flux.mean(loss_f.(batch))#loss(model, x)
+        end;
+        # backward
+        grad = back(1f0);
+        # optimise
+        Flux.Optimise.update!(opt, ps, grad);
+        # Logging
+        push!(history, :training_loss, i, loss_)
+        #push!(history, :training_kld_ori_loss, i, loss_[2])
+        #push!(history, :training_kld_rec_loss, i, loss_[3])
+        push!(history, :beta, i, final_beta)
+
+        # Validation stage
+        if mod(i, check_interval) == 0
+            # compute validation loss
+            total_val_loss = 0
+            for batch in val_dl
+                v_loss = Flux.mean(loss_f.(batch))
+                total_val_loss += v_loss;
+            end   
+            # compute losses
+            total_val_loss /= length(val_dl)
+            push!(history, :val_loss, i, total_val_loss)
+            @info "$i - training -> loss: $(loss_) || validation -> loss: $(total_val_loss)"
+            # check for nans
+            if isnan(total_val_loss) || isnan(loss_)
+                error("Encountered invalid values in loss function.")
+			end
+            # Early stopping 
+            if total_val_loss < best_val_loss
+				best_val_loss = total_val_loss
+				patience_ = deepcopy(patience)
+                best_model = deepcopy(model)
+            else # else stop if the model has not improved for `patience` iterations
+				patience_ -= 1
+				# @info "Patience is: $_patience."
+				if patience_ == 0
+					@info "Stopped training after $(i) iterations."
+					break
+				end
+			end
+        end
+        # Time constrain and iteratins constrain
+        if (time() - start_time > max_train_time) | (i > max_iters) # stop early if time is running out
+            best_model = deepcopy(model)
+            @info "Stopped training after $(i) iterations, $((time() - start_time) / 3600) hours."
+            break
+        end
+    end
+    best_model = best_model |> cpu # copy model back to cpu
+    (history = history, iterations = length(get(history, :training_loss)), model = best_model, npars = sum(map(p -> length(p), Flux.params(model))))
+end
+
 
 function fit_gpu_ready!(model::FoldingNet_VAE, data::Tuple, loss::Function; epochs=1000, max_train_time=82800, 
     batchsize=64, lr=0.001, beta=1f0, patience=50, check_interval::Int=20, hmil_data::Bool=true, kwargs...)

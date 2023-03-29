@@ -14,7 +14,7 @@ end
 
 Flux.@functor VectorQuantizer
 Flux.@functor VectorQuantizerEMA
-Flux.trainable(q::Quantizer) = (q.embedding)
+Flux.trainable(q::Quantizer) = (q.embedding,)
 
 function (q::Quantizer)(z::AbstractArray{<:Real})
     # flatten input zₑ #d, n, bs = size(zₑ)
@@ -30,7 +30,7 @@ function (q::Quantizer)(z::AbstractArray{<:Real})
     # Encoding
     encoding_indices = argmin(dist, dims=1)
     encodings = zeros_like(zₑ, (size(q.embedding, 2), n_elements)) # there has to be transposition or dropdims
-    Zygote.ignore(()->(encodings[encoding_indices] .+= 1)) # need to exclude gradient or i will crash
+    Zygote.ignore(()->(encodings[encoding_indices] .+= 1)) # need to exclude gradient or it will crash
 
     # Quantize and unflatten
     quantized = q.embedding * encodings # (d, e) * (e, bs) -> (d, bs)
@@ -57,7 +57,7 @@ struct VQVAE
 end
 
 Flux.@functor VQVAE
-Flux.trainable(model::VQVAE) = (model.encoder, model.quantizer, model.decoder)
+#Flux.trainable(model::VQVAE) = (model.encoder, model.quantizer, model.decoder)
 
 function (model::VQVAE)(x::AbstractArray{T}) where T<:Real
     zₑ =  model.encoder(x)
@@ -68,7 +68,7 @@ function (model::VQVAE)(x::AbstractArray{T}) where T<:Real
 end
 
 
-function loss_gradient(model::VQVAE, x::AbstractArray{T}; β::T=T(1)) where T<:Real
+function loss_gradient(model::VQVAE, x::AbstractArray{T}; β=0.25) where T<:Real
     zₑ =  model.encoder(x)
     quantized, _ = model.quantizer(zₑ)
     
@@ -81,11 +81,13 @@ function loss_gradient(model::VQVAE, x::AbstractArray{T}; β::T=T(1)) where T<:R
     # Bypass of gradients from decoder to encoder 
     quantized = zₑ + stopgrad(quantized - zₑ)
     x̂ = model.decoder(quantized)  
-    
+    #Zygote.ignore() do
+    #    println("rec_loss: $(round(Flux.Losses.mse(x, x̂), digits=4)), q_loss: $(round(q_latent_loss, digits=4)), e_loss: $(round(e_latent_loss, digits=4))")
+    #end
     𝓛 = Flux.Losses.mse(x, x̂) + 𝓛ₗₐₜₑₙₜ # in paper was mse(x, x̂) / data_variance
 end
 
-function loss_ema(model::VQVAE, x::AbstractArray{T}; β::T=T(1), γ::T=T(0.99), ϵ::T=T(1e-5), trainmode::Bool=true) where T<:Real
+function loss_ema(model::VQVAE, x::AbstractArray{T}; β=0.25f0, γ::T=T(0.99), ϵ::T=T(1e-5), trainmode::Bool=true) where T<:Real
     zₑ =  model.encoder(x)
     quantized, encodings = model.quantizer(zₑ)
     # Commitment loss (zₑ -> embedding)
@@ -103,4 +105,57 @@ function loss_ema(model::VQVAE, x::AbstractArray{T}; β::T=T(1), γ::T=T(0.99), 
     x̂ = model.decoder(quantized)  
     
     𝓛 = Flux.Losses.mse(x, x̂) + 𝓛ₗₐₜₑₙₜ 
+end
+
+
+function vqvae_constructor_from_named_tuple(
+    ;idim=3, hdim=64, depth=3, zdim=3, n_embed=128, ema::Bool=false, 
+    activation="swish", init_seed=nothing, kwargs...)
+    
+    activation = eval(:($(Symbol(activation))))
+    (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
+
+    enc = []
+    dec = []
+    if depth==1
+        enc = [Dense(idim, zdim)]
+        dec = [Dense(zdim, idim)]
+    elseif depth > 1
+        push!(enc, Dense(idim, hdim, activation))
+        push!(dec, Dense(zdim, hdim, activation))
+        for i=1:depth-2
+            push!(enc, Dense(hdim, hdim, activation))
+            push!(dec, Dense(hdim, hdim, activation))
+        end
+        push!(enc, Dense(hdim, zdim))
+        push!(dec, Dense(hdim, idim))
+    end
+
+    if ema
+        emb = randn(Float32, zdim, n_embed) 
+        quan = VectorQuantizerEMA(emb, zeros(Float32, n_embed, 1), rand_like(emb))
+    else
+        emb = randn(Float32, zdim, n_embed) 
+        #emb = Float32.(rand(Uniform(-1/n_embed, 1/n_embed), zdim, n_embed))
+        quan = VectorQuantizer(emb)
+    end
+    model = VQVAE(
+        Chain(enc...),
+        quan,
+        Chain(dec...))
+
+    (init_seed !== nothing) ? Random.seed!() : nothing
+    return model
+end
+
+function Base.show(io::IO, m::VectorQuantizer)
+    print(io, "VectorQuantizer")
+    print(io, "\n- embedding = $(m.embedding |> size) | $(m.embedding  |> typeof) | mean ~ $(m.embedding  |> Flux.mean)")
+end
+
+function Base.show(io::IO, m::VectorQuantizerEMA)
+    print(io, "VectorQuantizerEMA")
+    print(io, "\n- embedding = $(m.embedding |> size) | $(m.embedding  |> typeof) | mean ~ $(m.embedding  |> Flux.mean)")
+    print(io, "\n- nᵗᵢ = $(m.n |> size) | $(m.n  |> typeof) | mean ~ $(m.n  |> Flux.mean)")
+    print(io, "\n- mᵗᵢ = $(m.m |> size) | $(m.m  |> typeof) | mean ~ $(m.m  |> Flux.mean)")
 end

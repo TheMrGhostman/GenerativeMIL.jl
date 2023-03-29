@@ -34,6 +34,7 @@ include("building_blocks/losses.jl") # masked_chamfer_distance_cpu
 include("SetVAE.jl")
 include("FoldingVAE.jl")
 include("PoolAE.jl")
+include("VQVAE.jl")
 include("fits.jl")
 #include("SetTransformer.jl")
 
