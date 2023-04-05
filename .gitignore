@@ -427,3 +427,4 @@ SetVAE/mwe.jl
 scripts/setvae_mnist_test.jl
 scripts/vae_test.jl
 scripts/vae_test.jl
+.vscode/
