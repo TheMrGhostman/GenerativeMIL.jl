@@ -8,7 +8,8 @@ using MLDataPattern
 using AbstractTrees
 using Random
 
-export check
+dict2nt(x) = (; (Symbol(k) => v for (k,v) in x)...)
+export check, dict2nt, Models
 
 include("dataset.jl")
 include("models/Models.jl")
