@@ -374,7 +374,7 @@ end
 
 
 
-function StatsBase.fit!(model::Union{VQVAE,VQ_PoolAE,VGQ_PoolAE}, data::Tuple, loss::Function; epochs=1000, max_train_time=82800, 
+function StatsBase.fit!(model::Union{VQVAE,VGQ_PoolAE}, data::Tuple, loss::Function; epochs=1000, max_train_time=82800, 
     batchsize=64, lr=0.001, beta=1f0, patience=50, check_interval::Int=20, ad_data::Bool=false, kwargs...)
     #logging_loss::Union{Function, Nothing}=nothing,
     # purely cpu training

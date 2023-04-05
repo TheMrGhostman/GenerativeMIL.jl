@@ -38,6 +38,7 @@ include("VQVAE.jl")
 include("VQVAE_PoolAE.jl")
 include("fits.jl")
 include("training.jl")
+include("train_steps.jl")
 #include("SetTransformer.jl")
 
 

@@ -2,7 +2,7 @@ function StatsBase.fit!(model, data::Tuple, loss::Function;
     batchsize=64, epochs=1000, early_stopping::Bool=true, patience::Int=50, 
     lr_sch=false, lr=0.001, milestones=[0.02, 0.8], lrscale=5,
     beta=1.0, beta_anealing=50,
-    val_check=20, max_train_time=82800, verbose=true, kwargs...)
+    check_every=20, max_train_time=82800, verbose=true, kwargs...)
 
     # 1) save start time for checking of time budget
     start_time = time()
@@ -34,7 +34,7 @@ function StatsBase.fit!(model, data::Tuple, loss::Function;
     max_iters = get_max_iters(tr_data, batchsize, epochs; verbose=verbose)
 
     # 7) create dataloaders for train and validation dataset # batchsize
-    dataloaders = CreateDataloaders(tr_data, val_data, batchsize, epochs, verbose=verbose, as_dict=true)
+    dataloaders = CreateDataloaders(tr_data, val_data, batchsize, max_iters, verbose=verbose, as_dict=true)
 
     # 8) initialize optimizer
     optimizer = ADAM(lr)
@@ -49,15 +49,15 @@ function StatsBase.fit!(model, data::Tuple, loss::Function;
     # 11) iterate over dataloader
     for (i, batch) in enumerate(dataloaders["train"])
         # 11)a) logging = train_step(model, batch, loss_function, optimizer, lr_scheduler, anealer)
-        logging = train_step(ps, model, batch, loss, optimizer, scheduler; iter=i, anealer=anealer, gpu=to_gpu)
+        logging = train_step(ps, model, batch, loss, optimizer, scheduler; iter=i, anealer=anealer, to_gpu=to_gpu)
 
         # 11)b) logging to history
         foreach(key->push!(history, key, i, logging[key]), keys(logging))
         push!(history, :iter, i, i)
 
-        if mod(i, val_check) == 0  
+        if mod(i, check_every) == 0  
             # 11)c) es_loss, logging = valid_step(model, val_dataloader, anealer)
-            es_loss, logging_v = valid_loop(model, loss, dataloaders["valid"]; anealer=anealer, iter=i, gpu=to_gpu)
+            es_loss, logging_v = valid_loop(model, loss, dataloaders["valid"]; anealer=anealer, iter=i, to_gpu=to_gpu)
 
             # 11)d) val logging to history
             foreach(key->push!(history, key, i, logging_v[key]), keys(logging_v))
@@ -85,7 +85,7 @@ function StatsBase.fit!(model, data::Tuple, loss::Function;
     best_model = early_stop.best_model |> cpu
     iter_performed = length(get(history, :iter)[1])
     npars = sum(map(p -> length(p), Flux.params(best_model)))
-    (history = history, iterations = iter_performed, model = best_model, npars = npars)
+    return (history = history, iterations = iter_performed, model = best_model, npars = npars)
 end
 
 # Default functions train_step and valid_step | can be specialized for each model
