@@ -45,7 +45,7 @@ train, test = load_and_standardize_mnist();
 train, val = train_test_split(train[1], train[2], 0.2; seed=seed);
 
 # construct model
-modelname = "VQ_PoolAE"
+modelname = "S-VQ_PoolAE"
 model = vq_poolae_constructor_from_named_tuple(;idim=3, parameters...);
 
 # loss function
@@ -55,7 +55,7 @@ loss_f = (parameters[:ema]) ? loss_ema : loss_gradient
 # training
 try
 	global info, fit_t, _, _, _ = @timed fit!(model, (train, val, test), loss_f; max_train_time=Int((time_limit-0.5)*3600), 
-            patience=parameters[:patience], check_interval=parameters[:check_every], 
+            patience=parameters[:patience], check_every=parameters[:check_every], 
 			ad_data=true, parameters...);
 catch e
     # return an empty array if fit fails so nothing is computed

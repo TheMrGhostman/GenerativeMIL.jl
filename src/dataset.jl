@@ -165,7 +165,7 @@ function load_and_standardize_mnist()
     x_train, mu, sigma = standardize_list(Array{Float32}.(train[:data]))
     @info "train standardized μ = $(mu), σ = $(sigma)"
     x_test = [(x .- mu) ./ sigma for x in Array{Float32}.(test[:data])]
-    return (x_train, train[:labels]), (x_test, test[:labels])
+    return (x_train, train[:labels] .+ 1 ), (x_test, test[:labels] .+ 1)
 end
 
 function load_and_scale_mnist(lowerb=0, upperb=1)
