@@ -8,8 +8,7 @@ end
 
 Flux.@functor SetClassifier
 
-function (m::SetClassifier)(x::AbstractArray{<:Real}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing)
+function (m::SetClassifier)(x::AbstractArray{<:Real}, x_mask::Mask=nothing)
 
     x = mask(m.reduction(x), x_mask)
     for layer in m.isabs
@@ -25,8 +24,7 @@ function (m::SetClassifier)(x::AbstractArray{<:Real},
 end
 
 function loss(
-    m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, 
-    x_mask::Union{AbstractArray{Bool}, AbstractArray{T}, Nothing}=nothing) T<:Real
+    m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, x_mask::MaskT{T}=nothing) T<:Real
     
     ŷ = m(x, x_mask);
     loss_ = Flux.crossentropy(ŷ, y)

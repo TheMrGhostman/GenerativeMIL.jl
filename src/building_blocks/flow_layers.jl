@@ -1,3 +1,15 @@
+"""
+    Special layers for Flow models
+
+    *Block*                          | Used in (papers)
+    ---------------------------------|-------------------------------
+    1) ActNorm                       | SoftPointFlow, MAF, IAF, Glow
+    2) Invertible1x1Conv             | SoftPointFlow, Glow
+    3) ConcatSquashDense             | SoftPointFlow
+    4) AffineCoupling     (TODO)     | SoftPointFlow, MAF, IAF, Glow
+
+"""
+
 
 struct ActNorm{T <: Real}
     loc::AbstractArray{T}

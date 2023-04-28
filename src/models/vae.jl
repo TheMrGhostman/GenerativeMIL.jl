@@ -1,13 +1,11 @@
 
 
 struct VariationalAutoencoder
-    encoder::Flux.Chain
-    decoder::Flux.Chain
+    encoder::Flux.Chain # TODO update to AbstractEncoders
+    decoder::Flux.Chain # TODO update to AbstractDecoders
 end
 
 Flux.@functor VariationalAutoencoder
-
-kl_divergence(μ, Σ) = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σ.^2) - μ.^2  - Σ.^2, dims=1)) 
 
 function (vae::VariationalAutoencoder)(x::AbstractArray{T}) where T <: Real
     μ, Σ = vae.encoder(x)
@@ -21,7 +19,7 @@ function loss(vae::VariationalAutoencoder, x::AbstractArray{T}, β::Float32=1f0)
     z = μ + Σ * randn(Float32)
     x̂ = vae.decoder(z)
 
-    𝓛_rec = mse(x, x̂) #Flux.Losses.mse(x, x̂)
+    𝓛_rec = Flux.Losses.mse(x, x̂)
     𝓛_kld = kl_divergence(μ, Σ) 
     return 𝓛_rec + β * 𝓛_kld
 end

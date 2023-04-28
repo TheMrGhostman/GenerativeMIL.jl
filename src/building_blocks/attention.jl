@@ -58,7 +58,7 @@ function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::A
 end
 
 function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T}, 
-    X_mask::Union{AbstractArray{Bool}, Nothing}=nothing, Y_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+    X_mask::Mask=nothing, Y_mask::Mask=nothing) where T <: Real
     # X_mask ~ (1, m, BS)
     # Y_mask ~ (1, n, BS)
     # masking of WQ,WK, and WV is not needed since bias=false
@@ -131,8 +131,7 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     return batchedmul(V, A)  # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
 end
 
-function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4},
-    mask::Union{AbstractArray{Bool}, AbstractArray{T}, Nothing}=nothing) where T <: Real
+function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, mask::MaskT{T}=nothing) where T <: Real
     # Attention for 4D tensors
     # Q ∈ ℝ^{h,m,d} ~ (d, m, h, bs)
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)
@@ -148,8 +147,7 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
 end
 
 
-function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3},
-    mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
+function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}, mask::MaskT{T}=nothing) where T <: Real
     # tensor shape -> (feature_dim, n - samples in set, BS)
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # K ∈ ℝ^{n,d} ~ (d, n, bs)
@@ -158,8 +156,7 @@ function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::Abstr
     return _slot_attention(Q, K, V, batched_mul, (2,1,3), mask=mask)
 end
 
-function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, 
-    mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
+function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, mask::MaskT{T}=nothing) where T <: Real
     # Attention for 4D tensors
     # Q ∈ ℝ^{h,m,d} ~ (d, m, h, bs)
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)
@@ -169,7 +166,7 @@ function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::Abstr
 end
 
 function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, matrixmul::Function, pdims::Tuple;
-    mask::Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}=nothing) where T <: Real
+    mask::MaskT{T}=nothing) where T <: Real
     dₖ = size(K, 1)
     dₖ = convert(Float32, 1/sqrt(dₖ))
     Kᵀ = permutedims(K, pdims)
