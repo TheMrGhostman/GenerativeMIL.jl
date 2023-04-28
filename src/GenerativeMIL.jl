@@ -42,8 +42,8 @@ include("dataset.jl")
 
 # Model's Building Blocks
 include("building_blocks/attention.jl")
-include("building_blocks/transformer_blocks.jl")
 include("building_blocks/prior.jl")
+include("building_blocks/transformer_blocks.jl")
 include("building_blocks/layers.jl")
 include("building_blocks/made.jl")
 include("building_blocks/pooling_layers.jl")

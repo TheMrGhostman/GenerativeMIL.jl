@@ -45,26 +45,6 @@ function shifted_tanh(x, bias=1, scale=2)
     x = (x .+ bias) ./ scale
 end
 
-function transform_batch(x::AbstractArray{T,3}, kwargs...) where T<:Real
-    return MLUtils.getobs(x), ones(Bool,size(x[1:1,:,:]))
-end
-
-function transform_batch(x::AbstractArray{T,1}, max=false) where T<:AbstractArray
-    a_mask = [ones(size(a)) for a in x];
-    feature_dim = size(x[1],1)
-    if max
-        max_set = maximum(size.(x))[end];
-    else
-        max_set = minimum(size.(x))[end]; #minimum
-    end
-    b = map(a->Array{Float32}(PaddedView(0, a, (feature_dim, max_set))), x);
-    b_mask = map(a->Array(PaddedView(0, a, (feature_dim, max_set))), a_mask);
-    c = cat(b..., dims=3);
-    c_mask = cat(b_mask..., dims=3) .> 0; # mask as BitArray
-    c_mask = Array(c_mask[1:1,:,:]);
-    return c, c_mask
-end
-
 
 """
 scheduler with warmup

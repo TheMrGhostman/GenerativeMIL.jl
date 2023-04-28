@@ -23,8 +23,7 @@ function (m::SetClassifier)(x::AbstractArray{<:Real}, x_mask::Mask=nothing)
     return Flux.softmax(x)
 end
 
-function loss(
-    m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, x_mask::MaskT{T}=nothing) T<:Real
+function loss(m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, x_mask::MaskT{T}=nothing) where T<:Real
     
     ŷ = m(x, x_mask);
     loss_ = Flux.crossentropy(ŷ, y)
