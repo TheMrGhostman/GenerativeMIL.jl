@@ -1,8 +1,7 @@
 function StatsBase.fit!(model, data::Tuple, loss::Function; 
     batchsize=64, epochs=1000, early_stopping::Bool=true, patience::Int=50, 
     lr_sch=false, lr=0.001, milestones=[0.02, 0.8], lrscale=5,
-    beta=1.0, beta_anealing=50,
-    check_every=20, max_train_time=82800, verbose=true, kwargs...)
+    beta=1.0, beta_anealing=50, check_every=20, max_train_time=82800, verbose=true, kwargs...)
 
     # 1) save start time for checking of time budget
     start_time = time()
