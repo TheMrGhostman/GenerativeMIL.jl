@@ -1,3 +1,17 @@
+"""
+    Special Transformer blocks with attention
+
+    *Block*                                 | Used in (papers)
+    ----------------------------------------|------------------------
+    1) Multihead Attention Blocks           | SetTransformer, SetVAE
+    2) InducedSetAttentionBlock             | SetTransformer, SetVAE
+    3) InducedSetAttentionHalfBlock ≈ PMA   | SetTransformer, SetVAE
+    4) VariationalBottleneck                | SetVAE
+    5) AttentiveBottleneckLayer             | SetVAE
+    6) AttentiveHalfBlock                   | SetVAE
+
+"""
+
 struct MultiheadAttentionBlock
     FF::Union{Flux.Dense, Flux.Chain}
     Multihead::MultiheadAttention
@@ -42,7 +56,7 @@ function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}
 end
 
 function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, 
-    Q_mask::Union{AbstractArray{Bool}, Nothing}=nothing, V_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+    Q_mask::Mask=nothing, V_mask::Mask=nothing) where T <: Real
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     # Q_mask ∈ ℝ^{m} ~ (1, m, bs) 
@@ -91,8 +105,7 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
     return isab.MAB2(x, h), h # (d, n, bs), (d, m, bs)
 end
 
-function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
@@ -138,8 +151,7 @@ function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Re
     return x, h
 end
 
-function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T},
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
@@ -269,8 +281,7 @@ function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArr
     return abl.MAB2(x, ĥ), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
 
-function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
@@ -315,8 +326,7 @@ end
 AbstractTrees.children(m::AttentiveHalfBlock) = (m.MAB1, m.VB)
 AbstractTrees.printnode(io::IO, m::AttentiveHalfBlock) = print(io, "AttentiveHalfBlock")
 
-function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing) where T <: Real
+function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 

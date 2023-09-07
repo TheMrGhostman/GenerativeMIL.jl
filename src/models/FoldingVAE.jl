@@ -55,7 +55,7 @@ function knn(x::AbstractArray{<:Real, 3}, k::Int)
 end
 
 
-function local_maxpool(x::AbstractArray{<:Real, 2},kx::AbstractArray{<:Real, 2})
+function local_maxpool(x::AbstractArray{<:Real, 2}, kx::AbstractArray{<:Real, 2})
     """ ORIGINAL IMPLEMENTATION
     def local_maxpool(x, idx):
         batch_size = x.size(0)
@@ -77,7 +77,7 @@ function local_maxpool(x::AbstractArray{<:Real, 2},kx::AbstractArray{<:Real, 2})
     return x
 end
 
-function local_maxpool(x::AbstractArray{<:Real, 3},kx::AbstractArray{<:Real, 3})
+function local_maxpool(x::AbstractArray{<:Real, 3}, kx::AbstractArray{<:Real, 3})
     # works on CPU and GPU
     cat(map(y->local_maxpool(y[1], y[2]), zip(eachslice(x, dims=3), eachslice(kx, dims=3)))..., dims=3)
 end
@@ -108,7 +108,7 @@ function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Re
     return cat(pts, x, dims=1)
 end
 
-function local_covariance(pts::AbstractArray{<:Real, 3},idx::AbstractArray{<:Real, 3})
+function local_covariance(pts::AbstractArray{<:Real, 3}, idx::AbstractArray{<:Real, 3})
     # works on CPU and GPU; slower on GPU but it works
     cat(map(y->local_covariance(y[1], y[2]), zip(eachslice(pts, dims=3), eachslice(idx, dims=3)))..., dims=3)
 end
@@ -418,80 +418,3 @@ function foldingnet_constructor_from_named_tuple(
 
 end
 
-
-
-function test_enc_backward(x)
-    e = FoldingNet_encoder()
-    ps = Flux.params(e);
-    opt = ADAM(1f-3)
-
-    loss_, back = Flux.pullback(ps) do 
-        Flux.mean(e(x)[1]) 
-    end;
-    grad = back(1f0);
-    Flux.Optimise.update!(opt, ps, grad)
-end
-
-
-function test_backward_1(x)
-    model = FoldingNet_VAE(
-        FoldingNet_encoder(),
-        FoldingNet_decoder(),
-        false,
-        true
-    )
-    #loss(model, x)
-    #e = FoldingNet_encoder()
-    #d = FoldingNet_decoder()
-
-    #m, s = e(x);
-    #z = m .+ s .* randn(Float32, size(m)...);
-    #d(z);
-    ps = Flux.params(model);
-    opt = ADAM(1f-3)
-    loss_, back = Flux.pullback(ps) do 
-        loss(model, x)
-    end;
-    grad = back(1f0);
-    Flux.Optimise.update!(opt, ps, grad)
-end
-
-function test_backward_batch(x)
-    model = FoldingNet_VAE(
-        FoldingNet_encoder(),
-        FoldingNet_decoder(),
-        false,
-        true
-    )
-    #loss(model, x)
-    #e = FoldingNet_encoder()
-    #d = FoldingNet_decoder()
-
-    #m, s = e(x);
-    #z = m .+ s .* randn(Float32, size(m)...);
-    #d(z);
-    ps = Flux.params(model);
-    opt = ADAM(1f-3)
-    loss_f(x) = loss(model, x)
-
-    loss_, back = Flux.pullback(ps) do 
-        Flux.mean(loss_f.(x))#loss(model, x)
-    end;
-    grad = back(1f0);
-    Flux.Optimise.update!(opt, ps, grad)
-    println(loss_)
-end
-
-function test_backward_batch_train(x)
-    model = FoldingNet_VAE(
-        FoldingNet_encoder(),
-        FoldingNet_decoder(),
-        false,
-        true
-    )
-    ps = Flux.params(model);
-    opt = ADAM(1f-3)
-    loss_f(x) = loss(model, x)
-
-    Flux.train!(loss_f, ps, xx, opt)
-end

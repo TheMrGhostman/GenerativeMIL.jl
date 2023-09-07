@@ -1,21 +1,3 @@
-struct SplitLayer
-    μ::Flux.Dense
-    σ::Flux.Dense
-end
-
-Flux.@functor SplitLayer
-
-function SplitLayer(in::Int, out::NTuple{2, Int}, acts::NTuple{2, Function})
-	SplitLayer(
-		Flux.Dense(in, out[1], acts[1]),
-		Flux.Dense(in, out[2], acts[2])
-	)
-end
-
-function (m::SplitLayer)(x)
-	return (m.μ(x), m.σ(x))
-end
-
 # mask function
 function mask(x::AbstractArray{<:Real}, mask::Nothing=nothing)
     return x
@@ -61,26 +43,6 @@ end
 function shifted_tanh(x, bias=1, scale=2)
     x = Flux.tanh.(x)
     x = (x .+ bias) ./ scale
-end
-
-function transform_batch(x::AbstractArray{T,3}, kwargs...) where T<:Real
-    return MLUtils.getobs(x), ones(Bool,size(x[1:1,:,:]))
-end
-
-function transform_batch(x::AbstractArray{T,1}, max=false) where T<:AbstractArray
-    a_mask = [ones(size(a)) for a in x];
-    feature_dim = size(x[1],1)
-    if max
-        max_set = maximum(size.(x))[end];
-    else
-        max_set = minimum(size.(x))[end]; #minimum
-    end
-    b = map(a->Array{Float32}(PaddedView(0, a, (feature_dim, max_set))), x);
-    b_mask = map(a->Array(PaddedView(0, a, (feature_dim, max_set))), a_mask);
-    c = cat(b..., dims=3);
-    c_mask = cat(b_mask..., dims=3) .> 0; # mask as BitArray
-    c_mask = Array(c_mask[1:1,:,:]);
-    return c, c_mask
 end
 
 

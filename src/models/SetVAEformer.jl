@@ -10,7 +10,7 @@ end
 
 Flux.@functor PercieverIO
 
-function (m::PercieverIO)(x::AbstractArray{<:Real, 3}, x_mask::Union{AbstractArray{<:Real}, Nothing}=nothing)
+function (m::PercieverIO)(x::AbstractArray{<:Real, 3}, x_mask::Mask=nothing)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     x = mask(m.Prepool(x), x_mask) # (d, n, bs) -> (d₁, n, bs)
@@ -49,7 +49,7 @@ struct SetVAEformer
 end
 
 
-function (m::SetVAEformer)(x::AbstractArray{<:Real, 3}, x_mask::Union{AbstractArray{<:Real}, Nothing}=nothing)
+function (m::SetVAEformer)(x::AbstractArray{<:Real, 3}, x_mask::Mask=nothing)
     h = m.encoder(x, x_mask)
     zₖᵥ = m.vae(h)
     zₚᵣᵢₒᵣ = m.prior(x)

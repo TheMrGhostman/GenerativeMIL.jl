@@ -30,7 +30,7 @@ end
 
 Flux.@functor PMA
 
-function (m::PMA)(x::AbstractArray{<:Real, 3}, x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; squeeze::Bool=false) 
+function (m::PMA)(x::AbstractArray{<:Real, 3}, x_mask::Mask=nothing; squeeze::Bool=false) 
     d, n, bs = size(x)
     _, h = m.layer(x, x_mask)
     h = (size(h, 2) == 1 && squeeze) ? dropdims(h, dims=2) : h 
@@ -40,8 +40,8 @@ function PMA(m::Int, hidden_dim::Int, heads::Int)
     PMA(InducedSetAttentionHalfBlock(m, hidden_dim, heads))
 end
 
-masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2)
-masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=2) #FIXME set masked values to -Inf
+masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2) # TODO find if i did not figure this out anywhere
+masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=dims) #FIXME set masked values to -Inf
 
 # placeholder structure for pooling encoder 
 struct PoolEncoder
@@ -64,7 +64,7 @@ function (m::PoolEncoder)(x::AbstractArray{<:Real})
     h = m.postpool(h)
 end
 
-function (m::PoolEncoder)(x::AbstractArray{<:Real}, x_mask::Union{AbstractArray{Bool}, Nothing})
+function (m::PoolEncoder)(x::AbstractArray{<:Real}, x_mask::Mask)
     h = mask(m.prepool(x), x_mask)
     h = m.pooling(h, mask) # TODO fix
     h = m.postpool(h)
