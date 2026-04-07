@@ -429,3 +429,4 @@ scripts/vae_test.jl
 scripts/vae_test.jl
 .vscode/
 wandb/
+Project-backup.toml
