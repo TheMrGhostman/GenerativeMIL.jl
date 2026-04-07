@@ -117,7 +117,7 @@ struct ConcatSquashDense
     context_bias
 end
 
-Flux.@functor ConcatSquashDense
+Flux.@layer ConcatSquashDense
 
 (m::ConcatSquashDense)(x::Tuple{AbstractArray{T}, Matrix{T}}) where T<:Real = m(x...) 
 
@@ -150,7 +150,7 @@ struct AffineCoupling
     layers₂::Flux.Chain
 end
 
-Flux.@functor AffineCoupling
+Flux.@layer AffineCoupling
 
 function (m::AffineCoupling)(x::T, std_in::T, context::T, reverse::Bool=false) where T<:AbstractArray{<:Real}
     #TODO

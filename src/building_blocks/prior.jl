@@ -22,11 +22,11 @@ end
 AbstractTrees.children(m::MixtureOfGaussians) = (("α", m.α), ("μ", m.μ), ("Σ", m.Σ))
 AbstractTrees.printnode(io::IO, m::MixtureOfGaussians) = print(io, "MixtureOfGaussians - (mixtures ~ $(m.K) | dim ~ $(m.Ds) | trainable: $(m.trainable))")
 
-Flux.@functor MixtureOfGaussians
+Flux.@layer MixtureOfGaussians
 
 Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (MoG.α, MoG.μ, MoG.Σ) : ()
 
-#Flux.@functor MixtureOfGaussians # all parameters α, μ and Σ are now trainable
+#Flux.@layer MixtureOfGaussians # all parameters α, μ and Σ are now trainable
 
 function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size)
     device = get_device(MoG.μ)
@@ -117,7 +117,7 @@ struct ConstGaussPrior
     Σ::AbstractArray
 end
 
-Flux.@functor ConstGaussPrior
+Flux.@layer ConstGaussPrior
 
 Flux.trainable(cgp::ConstGaussPrior) = (cgp.μ, cgp.Σ)
 

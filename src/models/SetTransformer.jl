@@ -6,7 +6,7 @@ struct SetClassifier
     dropout :: Union{Flux.Dropout, Nothing} # Dropout around pooling
 end
 
-Flux.@functor SetClassifier
+Flux.@layer SetClassifier
 
 function (m::SetClassifier)(x::AbstractArray{<:Real}, x_mask::Mask=nothing)
 

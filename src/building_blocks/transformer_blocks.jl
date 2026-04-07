@@ -19,7 +19,7 @@ struct MultiheadAttentionBlock
     LN2::Flux.LayerNorm
 end
 
-Flux.@functor MultiheadAttentionBlock
+Flux.@layer MultiheadAttentionBlock
 
 function MultiheadAttentionBlock(hidden_dim::Int, heads::Int, activation::Function=relu)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
@@ -75,7 +75,7 @@ struct InducedSetAttentionBlock
     I::AbstractArray{<:Real} 
 end
 
-Flux.@functor InducedSetAttentionBlock
+Flux.@layer InducedSetAttentionBlock
 
 Flux.trainable(isab::InducedSetAttentionBlock) = (isab.MAB1, isab.MAB2, isab.I)
 
@@ -123,7 +123,7 @@ struct InducedSetAttentionHalfBlock
     I::AbstractArray{<:Real} # Inducing points 
 end
 
-Flux.@functor InducedSetAttentionHalfBlock
+Flux.@layer InducedSetAttentionHalfBlock
 
 Flux.trainable(isab::InducedSetAttentionHalfBlock) = (isab.MAB1, isab.I)
 
@@ -169,7 +169,7 @@ struct VariationalBottleneck
     decoder::Flux.Chain
 end
 
-Flux.@functor VariationalBottleneck
+Flux.@layer VariationalBottleneck
 
 function Base.show(io::IO, m::VariationalBottleneck)
     print(io, "VariationalBottleneck(")
@@ -239,7 +239,7 @@ struct AttentiveBottleneckLayer
     I::AbstractArray{<:Real}
 end
 
-Flux.@functor AttentiveBottleneckLayer
+Flux.@layer AttentiveBottleneckLayer
 
 Flux.trainable(abl::AttentiveBottleneckLayer) = (abl.MAB1, abl.MAB2, abl.VB, abl.I)
 
@@ -313,7 +313,7 @@ struct AttentiveHalfBlock
     VB::VariationalBottleneck
 end
 
-Flux.@functor AttentiveHalfBlock
+Flux.@layer AttentiveHalfBlock
 
 Flux.trainable(abl::AttentiveHalfBlock) = (abl.MAB1, abl.VB)
 

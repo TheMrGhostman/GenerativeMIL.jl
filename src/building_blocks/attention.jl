@@ -1,5 +1,3 @@
-using Transformers: batchedmul # can do 4D tensors
-
 struct MultiheadAttention
     # Dense layers without bias !! or it will break masking
     heads::Int32
@@ -10,7 +8,7 @@ struct MultiheadAttention
     attention::Function # type of attention -> attention or slot_attention
 end
 
-Flux.@functor MultiheadAttention
+Flux.@layer MultiheadAttention
 
 Flux.trainable(mh::MultiheadAttention) = (mh.WQ, mh.WK, mh.WV, mh.WO)
 
@@ -126,9 +124,9 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     dₖ = convert(Float32, 1/sqrt(dₖ))
     Kᵀ = permutedims(K, (2,1,3,4))
     # batched_mul can do only 3D tensors 
-    A = batchedmul(Kᵀ, Q) .* dₖ  #  (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
+    A = batched_mul(Kᵀ, Q) .* dₖ  #  (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
     A = Flux.softmax(A, dims=1) # softmax over n for each m, standard softmax; 
-    return batchedmul(V, A)  # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
+    return batched_mul(V, A)  # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
 end
 
 function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractArray{T, 4}, mask::MaskT{T}=nothing) where T <: Real
@@ -140,10 +138,10 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     dₖ = convert(Float32, 1/sqrt(dₖ))
     Kᵀ = permutedims(K, (2,1,3,4))
     # batched_mul can do only 3D tensors 
-    A = batchedmul(Kᵀ, Q) .* dₖ  #  (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
+    A = batched_mul(Kᵀ, Q) .* dₖ  #  (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
     A = (mask !== nothing) ? A .* mask : A
     A = Flux.softmax(A, dims=1) # softmax over n for each m, standard softmax; 
-    return batchedmul(V, A)  # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
+    return batched_mul(V, A)  # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
 end
 
 
@@ -162,7 +160,7 @@ function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::Abstr
     # K ∈ ℝ^{h,n,d} ~ (d, n, h, bs)
     # V ∈ ℝ^{h,n,vd} ~ (vd, n, h, bs) 
     # Output: (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
-    return _slot_attention(Q, K, V, batchedmul, (2,1,3,4), mask=mask)
+    return _slot_attention(Q, K, V, batched_mul, (2,1,3,4), mask=mask)
 end
 
 function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, matrixmul::Function, pdims::Tuple;

@@ -4,7 +4,7 @@ struct PoolModel
     decoder
 end
 
-Flux.@functor PoolModel
+Flux.@layer PoolModel
 
 AbstractTrees.children(m::PoolModel) = (("Encoder", m.encoder), ("Generator", m.generator), ("Decoder", m.decoder))
 AbstractTrees.printnode(io::IO, m::PoolModel) = print(io, "PoolModel")

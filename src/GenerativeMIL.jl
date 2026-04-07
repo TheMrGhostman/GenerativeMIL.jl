@@ -1,5 +1,6 @@
 module GenerativeMIL
 
+
 # Basic Packages
 using DrWatson
 using Random
@@ -9,20 +10,23 @@ using LinearAlgebra
 using Statistics
 # Deep Learning & Gradients Packages
 using Flux
-using Flux3D
 using Zygote
 using CUDA
 using MLUtils
 # Training related Packages
-using MLDataPattern
+#using MLDataPattern
 using ParameterSchedulers # schedulers and warmups
-using ValueHistories
-# Preprocessing
+#using ValueHistories
+# Preprocessing & Data
 using PaddedViews
+using HDF5
+using Serialization
 # Multi Instance Learning Library
 using Mill
 # Visualization
 using AbstractTrees
+# Auxilary
+using Distances
 
 
 
@@ -64,6 +68,8 @@ include("models/VQVAE_PoolAE.jl")
 include("model_training/fits.jl")
 include("model_training/training.jl")
 include("model_training/train_steps.jl")
+include("model_training/chamfer_distance.jl")
+export chamfer_distance
 
 # Utils and helper functions
 include("utils.jl")

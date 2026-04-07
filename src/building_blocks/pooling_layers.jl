@@ -6,7 +6,7 @@ struct AttentionPooling <: AbstractPooling
     ff::Union{Flux.Chain, Flux.Dense}
 end
 
-Flux.@functor AttentionPooling
+Flux.@layer AttentionPooling
 
 function (m::AbstractPooling)(x::AbstractArray{<:Real, 3}; squeeze::Bool=false) # TODO add masked version
     # equivalent to single head attention with trainable query
@@ -28,7 +28,7 @@ struct PMA <: AbstractPooling
     layer::InducedSetAttentionHalfBlock # ISAHB is generalized PMA
 end
 
-Flux.@functor PMA
+Flux.@layer PMA
 
 function (m::PMA)(x::AbstractArray{<:Real, 3}, x_mask::Mask=nothing; squeeze::Bool=false) 
     d, n, bs = size(x)
@@ -50,7 +50,7 @@ struct PoolEncoder
     postpool
 end
 
-Flux.@functor PoolEncoder
+Flux.@layer PoolEncoder
 
 AbstractTrees.children(m::PoolEncoder) = (("Pre-Pool", m.prepool), ("Pooling", m.pooling), ("Post-Pool", m.postpool))
 AbstractTrees.children((name, m)::Tuple{String, PoolEncoder}) = (("Pre-Pool", m.prepool), ("Pooling", m.pooling), ("Post-Pool", m.postpool))

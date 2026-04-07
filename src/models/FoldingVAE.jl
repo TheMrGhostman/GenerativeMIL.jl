@@ -120,7 +120,7 @@ struct FoldingNet_encoder
     n_neighbors
 end
 
-Flux.@functor FoldingNet_encoder
+Flux.@layer FoldingNet_encoder
 
 function Base.show(io::IO, m::FoldingNet_encoder)
     print(io, "FoldingNet_encoder(")
@@ -238,7 +238,7 @@ struct FoldingNet_decoder
     n_samples
 end
 
-Flux.@functor FoldingNet_decoder
+Flux.@layer FoldingNet_decoder
 
 function (dec::FoldingNet_decoder)(x::AbstractArray{<:Real, 2})
     x = repeat(x, 1, dec.n_samples)
@@ -318,7 +318,7 @@ struct FoldingNet_VAE
     skip::Bool
 end
 
-Flux.@functor FoldingNet_VAE
+Flux.@layer FoldingNet_VAE
 
 function (model::FoldingNet_VAE)(x::AbstractArray{<:Real, 3})
     μ, Σ = model.encoder(x; local_cov=model.local_cov, skip=model.skip);
