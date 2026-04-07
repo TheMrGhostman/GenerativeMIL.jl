@@ -41,7 +41,7 @@ struct VQ_PoolAE
     decoder
 end
 
-Flux.@functor VQ_PoolAE
+Flux.@layer VQ_PoolAE
 
 function (model::VQ_PoolAE)(x::AbstractArray{T,2}) where T<:Real
     d, n = size(x) 
@@ -219,7 +219,7 @@ struct VectorGaussianQuantizerEMA <: Quantizer
     s::AbstractArray{<:Real, 2}
 end
 
-Flux.@functor VectorGaussianQuantizerEMA
+Flux.@layer VectorGaussianQuantizerEMA
 Flux.trainable(q::VectorGaussianQuantizerEMA) = ()#q.embedding_mean, q.embedding_std, 
 # no tranable of ema
 
@@ -269,7 +269,7 @@ struct VGQ_PoolAE
     decoder
 end
 
-Flux.@functor VGQ_PoolAE
+Flux.@layer VGQ_PoolAE
 
 function (model::VGQ_PoolAE)(x::AbstractArray{<:Real, 2})
     d, n = size(x) # (d, n)

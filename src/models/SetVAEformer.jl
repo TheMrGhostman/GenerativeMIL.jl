@@ -8,7 +8,7 @@ struct PercieverIO <: AbstractTransformerEncoder
     MABs # Chain{MultiheadAttentionBlock}
 end
 
-Flux.@functor PercieverIO
+Flux.@layer PercieverIO
 
 function (m::PercieverIO)(x::AbstractArray{<:Real, 3}, x_mask::Mask=nothing)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
@@ -27,7 +27,7 @@ struct CrossAttentionDecoder <: AbstractTransformerDecoder
     PostMAB::Union{Flux.Dense, Flux.Chain}
 end
 
-Flux.@functor CrossAttentionDecoder
+Flux.@layer CrossAttentionDecoder
 
 function (m::CrossAttentionDecoder)(x::AbstractArray{T, 3}, kv::AbstractArray{T, 3}) where T <:Real
     # x ∈ ℝ^{d,d} ~ (d, n, bs)  ... Random samples from prior / Query

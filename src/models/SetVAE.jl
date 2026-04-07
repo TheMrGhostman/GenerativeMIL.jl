@@ -3,7 +3,7 @@ struct HierarchicalEncoder
     layers
 end
 
-Flux.@functor HierarchicalEncoder
+Flux.@layer HierarchicalEncoder
 
 function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool})
     x = m.expansion(x) .* x_mask
@@ -24,7 +24,7 @@ struct HierarchicalDecoder
     reduction::Flux.Dense
 end
 
-Flux.@functor HierarchicalDecoder
+Flux.@layer HierarchicalDecoder
 
 function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::AbstractArray{Bool})
     x = m.expansion(z) .* x_mask
@@ -53,7 +53,7 @@ struct SetVAE
     prior::AbstractPriorDistribution
 end
 
-Flux.@functor SetVAE
+Flux.@layer SetVAE
 
 function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0)
     _, h_encs = vae.encoder(x, x_mask) # no need for x

@@ -5,7 +5,7 @@ struct VariationalAutoencoder
     decoder::Flux.Chain # TODO update to AbstractDecoders
 end
 
-Flux.@functor VariationalAutoencoder
+Flux.@layer VariationalAutoencoder
 
 function (vae::VariationalAutoencoder)(x::AbstractArray{T}) where T <: Real
     μ, Σ = vae.encoder(x)
