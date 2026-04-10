@@ -23,11 +23,11 @@ function (m::PoolModel)(x::AbstractArray{T, 3}; kld::Bool=false) where T <: Real
     end 
 end
 
-loss(model::PoolModel, x::AbstractArray{<:Real, 3}) = Flux3D.chamfer_distance(model(x), x)
+loss(model::PoolModel, x::AbstractArray{<:Real, 3}) = chamfer_distance(model(x), x)
 
 function loss_with_kld(model::PoolModel, x::AbstractArray{<:Real, 3}; β::Float32=1f0, logging::Bool=false)
     x̂, 𝓛ₖₗ = model(x, kld=true)
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x)
+    𝓛ᵣₑ = chamfer_distance(x̂, x)
     𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗ
     return (logging) ? (𝓛, 𝓛ᵣₑ, 𝓛ₖₗ) : 𝓛
 end

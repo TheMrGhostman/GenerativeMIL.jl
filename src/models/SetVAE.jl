@@ -75,7 +75,7 @@ function loss_gpu(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{B
     _, sample_size, bs = size(x_mask)
     z = vae.prior(sample_size, bs)
     x̂, _, _, klds = vae.decoder(z, h_encs, x_mask)
-    loss = Flux3D.chamfer_distance(x, x̂) +  β * klds
+    loss = chamfer_distance(x, x̂) +  β * klds
     return loss, klds
 end
 

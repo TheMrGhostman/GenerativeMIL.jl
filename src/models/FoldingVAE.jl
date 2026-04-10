@@ -334,7 +334,7 @@ function loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 3}; β=1f0, γ=1f0
     # 𝓛ᵣₑ = reconstruction error
     # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
     # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x) 
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
     𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
     𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
     #println( 𝓛ᵣₑ, "|", 𝓛ₖₗₒᵣᵢ, "|" , 𝓛ₖₗᵣₑ)
@@ -350,7 +350,7 @@ function simple_loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 3}; β=1f0,
     # 𝓛ᵣₑ = reconstruction error
     # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
     # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x) 
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
     𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
     #𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
     𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗₒᵣᵢ # default β = 1  & γ = 1
@@ -364,7 +364,7 @@ function simple_loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 3}, kidx::A
     # 𝓛ᵣₑ = reconstruction error
     # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
     # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x) 
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
     𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
     #𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
     𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗₒᵣᵢ # default β = 1  & γ = 1
@@ -378,7 +378,7 @@ function logging_loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 2}; β=1f0
     # 𝓛ᵣₑ = reconstruction error
     # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
     # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x) 
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
     𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
     𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
     𝓛 = 𝓛ᵣₑ .+ β .* (𝓛ₖₗₒᵣᵢ + 𝓛ₖₗᵣₑ) # default β = 1 

@@ -1,3 +1,5 @@
+# TODO remove and move to GenerativeMIL.jl
+
 
 include("SetVAE.jl")
 export SetVae, loss, loss_gpu, setvae_constructor_from_named_tuple
