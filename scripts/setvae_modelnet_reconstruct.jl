@@ -8,7 +8,6 @@ using ValueHistories
 #generative MIL
 using GenerativeMIL
 using Flux
-using Flux3D
 using Zygote
 using CUDA
 using GenerativeMIL: transform_batch
@@ -54,7 +53,7 @@ titles = [ "bathtub","bed","chair","desk","dresser","monitor","night_stand","sof
 
 l = @layout [a b c d e f g h ch i ; j k l m n o p q r s]
 plots_x = [scatter3d(x[1,:,i], x[2,:,i], x[3,:,i], alpha=1, legend=false, showaxis = false, ticks=false, title=titles[i]) for i=1:10];
-plots_y = [scatter3d(y[1,:,i], y[2,:,i], y[3,:,i], alpha=1, legend=false, showaxis = false, ticks=false, title=string(Flux3D.chamfer_distance(x[:,:,i],y[:,:,i]))) for i=1:10];
+plots_y = [scatter3d(y[1,:,i], y[2,:,i], y[3,:,i], alpha=1, legend=false, showaxis = false, ticks=false, title=string(chamfer_distance(x[:,:,i],y[:,:,i]))) for i=1:10];
 plot(plots_x..., plots_y..., layout = l, size=(2500,500));
 
 savefig("X_test-CD-recon-$(now()).png");

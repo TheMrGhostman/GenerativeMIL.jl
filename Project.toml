@@ -1,7 +1,7 @@
 name = "GenerativeMIL"
 uuid = "f587a668-c5e7-5861-9bd6-a75883e5a803"
-version = "1.1.0"
 authors = ["Matej Zorek <ghostmanthe@gmail.com>"]
+version = "1.1.0"
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
@@ -32,7 +32,7 @@ Distributions = "0.25.123"
 DrWatson = "2.19.1"
 Flux = "0.16.9"
 HDF5 = "0.17.2"
-LinearAlgebra = "1.12.0"
+LinearAlgebra = "1.11.0"
 MLUtils = "0.4.8"
 Mill = "2.12.2"
 PaddedViews = "0.5.12"

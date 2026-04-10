@@ -8,7 +8,6 @@ using ValueHistories
 #generative MIL
 using GenerativeMIL
 using Flux
-using Flux3D
 using Zygote
 using CUDA
 using GenerativeMIL: transform_batch, train_test_split, load_modelnet10, simple_experiment_evaluation

@@ -1,7 +1,6 @@
 using DrWatson
 using GenerativeMIL
 using Flux
-using Flux3D: chamfer_distance
 using MLDataPattern
 using ProgressMeter: Progress, next!
 using PaddedViews

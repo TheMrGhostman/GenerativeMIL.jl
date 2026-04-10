@@ -1,20 +1,17 @@
-module Models
 
-include("models/SetVAE.jl")
+include("SetVAE.jl")
 export SetVae, loss, loss_gpu, setvae_constructor_from_named_tuple
 
-include("models/FoldingVAE.jl")
+include("FoldingVAE.jl")
 
-include("models/PoolAE.jl")
+include("PoolAE.jl")
 
-include("models/SetTransformer.jl")
+include("SetTransformer.jl")
 
-include("models/SetVAEformer.jl") # TODO finish this
+include("SetVAEformer.jl") # TODO finish this
 
-include("models/vae.jl")
+include("vae.jl")
 
-include("models/VQVAE.jl")
+include("VQVAE.jl")
 
-include("models/VQVAE_PoolAE.jl")
-
-end
+include("VQVAE_PoolAE.jl")

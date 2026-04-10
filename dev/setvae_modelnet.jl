@@ -1,10 +1,10 @@
-using DrWatson
+using DrWatson 
 @quickactivate
 using ArgParse
 using StatsBase
-using BSON
+#using BSON
 using Random
-using ValueHistories
+#using ValueHistories
 #generative MIL
 using GenerativeMIL
 using Flux
@@ -12,8 +12,8 @@ using Zygote
 using CUDA
 using GenerativeMIL: transform_batch, train_test_split, load_modelnet10
 using GenerativeMIL.Models: check, loss, loss_gpu, unpack_mill
-using MLDataPattern
-
+#using MLDataPattern
+using MLUtils
 #using FileIO #for loading of data
 using HDF5
 
@@ -37,12 +37,13 @@ s = ArgParseSettings()
 		arg_type = Int
 		help = "Time (in hours) reserved for training. After exceeding this time model training will be stopped regardless of epoch"
 end
-parsed_args = parse_args(ARGS, s)
-@unpack npoints, seed, random_seed, time_limit = parsed_args
+parsed_args = parse_args(ARGS, s; as_symbols=true)
+ap = NamedTuple{Tuple(keys(parsed_args))}(values(parsed_args))
+@info ap
 # npoints, seed, random_seed, time_limit = 512, 1, 1, 1
 
 if random_seed != 0
-	Random.seed!(random_seed)
+	Random.seed!(ap.random_seed)
 end
 
 
@@ -90,10 +91,10 @@ function sample_params(seed=nothing)
 	return merge(model_params,(is_sizes=is_sizes, zdims=zdims), training_params)
 end
 
-sample_params_() = (random_seed != 0) ? sample_params(random_seed) : sample_params()
+sample_params_() = (ap.random_seed != 0) ? sample_params(ap.random_seed) : sample_params()
 
 #load data
-data = load_modelnet10(npoints, "all", validation=true, seed=seed)
+data = load_modelnet10(ap.npoints, "all", validation=true, seed=ap.seed)
 
 @info "Data loaded -- train -> $(X_train|>size) | test -> $(X_test|>size)"
 
@@ -122,7 +123,7 @@ function fit(data, parameters; time_limit=365*24) #time_limit = one year
 		model = info.model,
 		nan = info.nan
 		)
-
+	
 	# now return the info to be saved and an array of tuples (anomaly score function, hyperparatemers)
 	return training_info, [
 		(x -> GenerativeMIL.Models.transform_and_reconstruct(info.model, x), 
