@@ -10,7 +10,7 @@ end
 
 Flux.@layer MultiheadAttention
 
-Flux.trainable(mh::MultiheadAttention) = (mh.WQ, mh.WK, mh.WV, mh.WO)
+Flux.trainable(mh::MultiheadAttention) = (WQ = mh.WQ, WK = mh.WK, WV = mh.WV, WO = mh.WO)
 
 # simple constructor
 function MultiheadAttention(input_dim::Int, hidden_dim::Int, heads::Int, attention::Function=attention)
