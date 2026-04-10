@@ -77,7 +77,7 @@ end
 
 Flux.@layer InducedSetAttentionBlock
 
-Flux.trainable(isab::InducedSetAttentionBlock) = (isab.MAB1, isab.MAB2, isab.I)
+Flux.trainable(isab::InducedSetAttentionBlock) = (MAB1 = isab.MAB1, MAB2 = isab.MAB2, I = isab.I)
 
 function Base.show(io::IO, m::InducedSetAttentionBlock)
     print(io, "InducedSetAttentionBlock(")
@@ -125,7 +125,7 @@ end
 
 Flux.@layer InducedSetAttentionHalfBlock
 
-Flux.trainable(isab::InducedSetAttentionHalfBlock) = (isab.MAB1, isab.I)
+Flux.trainable(isab::InducedSetAttentionHalfBlock) = (MAB1 = isab.MAB1, I = isab.I)
 
 function Base.show(io::IO, m::InducedSetAttentionHalfBlock)
     print(io, "InducedSetAttentionHalfBlock(")
@@ -241,7 +241,7 @@ end
 
 Flux.@layer AttentiveBottleneckLayer
 
-Flux.trainable(abl::AttentiveBottleneckLayer) = (abl.MAB1, abl.MAB2, abl.VB, abl.I)
+Flux.trainable(abl::AttentiveBottleneckLayer) = (MAB1 = abl.MAB1, MAB2 = abl.MAB2, VB = abl.VB, I = abl.I)
 
 function Base.show(io::IO, m::AttentiveBottleneckLayer)
     print(io, "AttentiveBottleneckLayer(")
@@ -315,7 +315,7 @@ end
 
 Flux.@layer AttentiveHalfBlock
 
-Flux.trainable(abl::AttentiveHalfBlock) = (abl.MAB1, abl.VB)
+Flux.trainable(abl::AttentiveHalfBlock) = (MAB1 = abl.MAB1, VB = abl.VB)
 
 function Base.show(io::IO, m::AttentiveHalfBlock)
     print(io, "AttentiveHalfBlock(")
