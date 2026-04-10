@@ -13,10 +13,11 @@ using Flux
 using Zygote
 using CUDA
 using MLUtils
+using Optimisers
 # Training related Packages
 #using MLDataPattern
 using ParameterSchedulers # schedulers and warmups
-#using ValueHistories
+using ValueHistories
 # Preprocessing & Data
 using PaddedViews
 using HDF5

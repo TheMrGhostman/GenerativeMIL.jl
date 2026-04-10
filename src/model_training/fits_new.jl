@@ -1,6 +1,105 @@
-function train_model!(model::SetVAE, )
+function log_to_file(logs::NamedTuple, model_dir::String)
+    file_path = joinpath(model_dir, "trainlog.txt")
+
+    if !isfile(file_path)
+        open(file_path, "w") do io
+            println(io, join(keys(logs), "\t"))
+            println(io, join(values(logs), "\t"))
+        end
+        println("Creating Training Log")
+    else
+        open(file_path, "a") do IO
+            println(io, join(values(logs), "\t"))
+        end
+    end
+end
+
+function validation_check(
+    model, 
+    dataloader::DataLoader,  
+    βs::Union{Vector, Real, Nothing}, 
+    loss_function::Function, 
+    best_vloss::T=0; 
+    device::Function=cpu, 
+    save_best::Bool=false, 
+    model_dir::String=""
+) where T <: Real
+
+    # I assume that valid step just one for every method  .... valid_step::Function,
+    # TODO if we consider valid_step to exist, this will be done
+
+    vloss, vlogs = valid_step(model, dataloader, βs, loss_function; device = device)
+    if (vloss < best_vloss) & (save_best)
+        best_vloss = vloss
+        serialize(
+            joinpath(model_dir, "models", "best_model.jls"),
+            (:model = model |> cpu, :epoch = epoch, :iter = iter, :βs = βs)
+        )
+    end
+    vlogs, best_vloss
+end
+
+pad_epoch(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
 
 
+function train_model!(
+    model, 
+    dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
+    optim_step::Function, 
+    state_tree::NamedTuple, 
+    βs::Function, 
+    loss_function::Function=chamfer_distance; # here starts kwargs
+    valid_step::Function=valid_step,
+    use_gpu::Bool=true,
+    model_dir::String="", 
+    valid_check_interval::Int = 1000,
+    checkpoint_interval_epochs::Int=10,
+    save_best::Bool=true,
+    epochs::Int=1000, 
+    max_train_time::Int=82800, # TODO incorporate me
+    grad_skip::Union{Real, Bool}=false
+)
+
+    history = ValueHistories.MVHistory()
+    best_vloss = Inf
+
+    device = use_gpu ? gpu : cpu
+    max_iters = length(dataloaders.train)
+
+    for epoch in 1:epochs
+        for (it, batch) in tqdm(enumerate(dataloaders.train))
+            # perform one optimization step
+            β = βs(epoch)
+            model, state_tree, logs = optim_step(model, batch |> device, state_tree, β, loss_function; ∇skip=grad_skip);
+            # logs will contaion betas, and is named tuple
+            # Logging and checking
+            ## Logging to value histores
+            foreach(p->push!(history, p.first, p.second), pairs(logs))
+            ## do validation if time
+            if mod(it, valid_check_interval) == 0
+                vlogs, best_vloss = validation_check(
+                    model, dataloaders.valid, β, loss_function, best_vloss; 
+                    device=device, save_best=save_best, model_dir=model_dir
+                )
+                foreach(p->push!(history, p.first, p.second), pairs(vlogs))
+                #TODO fix log_to_file for val loss. 
+            else 
+                ## logging to txt file
+                log_to_file(logs, model_dir)
+            end
+        end 
+        if mod(epoch, checkpoint_interval_epochs) == 0
+            serialize(
+                joinpath(model_dir, "models", "model_$(pad_epoch(epoch, epochs))ep_$(max_iters)iter.jls"), 
+                (:model = model |> cpu, :epoch = epoch, :iter = max_iters, :βs = β)
+            )
+        end
+        # TODO add validation check after epoch
+    end
+
+    # TODO put exception to NaN and Infs
+    return model, history
+end
 
 
 
