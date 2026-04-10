@@ -24,7 +24,7 @@ AbstractTrees.printnode(io::IO, m::MixtureOfGaussians) = print(io, "MixtureOfGau
 
 Flux.@layer MixtureOfGaussians
 
-Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (MoG.α, MoG.μ, MoG.Σ) : ()
+Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (α = MoG.α, μ = MoG.μ, Σ = MoG.Σ) : ()
 
 #Flux.@layer MixtureOfGaussians # all parameters α, μ and Σ are now trainable
 
@@ -119,7 +119,7 @@ end
 
 Flux.@layer ConstGaussPrior
 
-Flux.trainable(cgp::ConstGaussPrior) = (cgp.μ, cgp.Σ)
+Flux.trainable(cgp::ConstGaussPrior) = (μ = cgp.μ, Σ = cgp.Σ)
 
 function (cgp::ConstGaussPrior)(h::AbstractArray{<:Real, 3})
     # computing prior μ, Σ from h
