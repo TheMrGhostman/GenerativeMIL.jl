@@ -43,7 +43,7 @@ function _chamfer_distance(
     w1::Float32 = 1.0f0,
     w2::Float32 = 1.0f0,
 )
-    nn_for_A, nn_for_B = @ignore _nearest_neighbors(A, B)
+    nn_for_A, nn_for_B = Zygote.@ignore _nearest_neighbors(A, B)
 
     dist_A_to_B = mean((A .- B[:, nn_for_A]) .^ 2) * 3.0f0
     dist_B_to_A = mean((B .- A[:, nn_for_B]) .^ 2) * 3.0f0

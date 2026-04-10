@@ -43,6 +43,7 @@ MaskT{T} = Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}
 
 # Loading & Helper functions for datasets
 include("dataset.jl")
+export load_modelnet10, load_mnist
 
 # Model's Building Blocks
 include("building_blocks/attention.jl")
@@ -55,14 +56,7 @@ include("building_blocks/losses.jl") # masked_chamfer_distance_cpu
 include("building_blocks/encoders_and_decoders.jl")
 
 # Model Zoo 
-include("models/SetVAE.jl")
-include("models/FoldingVAE.jl")
-include("models/PoolAE.jl")
-include("models/SetTransformer.jl")
-include("models/SetVAEformer.jl") # TODO finish this
-include("models/vae.jl")
-include("models/VQVAE.jl")
-include("models/VQVAE_PoolAE.jl")
+include("models/Models.jl")
 
 # Everything related to model training
 include("model_training/fits.jl")
@@ -73,6 +67,8 @@ export chamfer_distance
 
 # Utils and helper functions
 include("utils.jl")
+export unpack_mill, check, get_device, mask, unmask
+export WarmupCosine, WarmupLinear
 
 # Temporary evaluation function
 include("evaluation.jl")
