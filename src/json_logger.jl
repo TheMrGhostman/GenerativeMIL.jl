@@ -14,6 +14,13 @@ function log!(logger::JSONLLogger, log::NamedTuple)
     flush(logger.io)
 end
 
+function log!(logger::JSONLLogger, log::NamedTuple, mode::String)
+    log = merge(log, (;mode = mode))
+    JSON3.write(logger.io, log)
+    write(logger.io, '\n')
+    flush(logger.io)
+end
+
 function close(logger::JSONLLogger)
     close(logger.io)
 end
