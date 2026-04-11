@@ -47,7 +47,7 @@ AbstractTrees.children(m::HierarchicalDecoder) = (("Expansion", m.expansion), m.
 AbstractTrees.printnode(io::IO, m::HierarchicalDecoder) = print(io, "HierarchicalDecoder - ($(length(m.layers)) depth)")
 
 
-struct SetVAE 
+struct SetVAE <: AbstractGenModel
     encoder::HierarchicalEncoder
     decoder::HierarchicalDecoder
     prior::AbstractPriorDistribution

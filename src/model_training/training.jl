@@ -1,9 +1,9 @@
 pad_epoch(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
 
 function train_model!(
-    model, 
+    model::AbstractGenModel, 
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
-    optim_step::Function, 
+    optim_step::Function, #TODO think if keep as argument of necessary part of AbstractGenModel
     opt::NamedTuple, 
     loss_function::Function=chamfer_distance,
     β_scheduler::Function = x->0f0, 
@@ -14,7 +14,6 @@ function train_model!(
     verbose::Bool=false, 
     valid_check_interval::Int = 1000,
     checkpoint_interval_epochs::Int=10,
-    save_best::Bool=true,
     epochs::Int=1000, 
     early_stopping::Bool=true,
     patience::Int = 10^4,
@@ -69,7 +68,7 @@ function train_model!(
                 log!(json_logger, logs)
 
                 # 7) do validation and early stopping if necessery
-                if mod(it, valid_check_interval) == 0
+                if mod(it, valid_check_interval) == 0 # TODO put this whole into separate function validation_check
                     # 7a) validation loop or step
                     vlogs, es_loss = valid_step(model, dataloaders.valid, loss_function, β; device=device)
                     # 7b) logging of validation step
@@ -83,22 +82,31 @@ function train_model!(
                     end
 
                     # 7d) early stopping step & terminate training criterion
-                    if early_stop(es_loss, model) 
+                    if early_stop(es_loss, model)
                         @info "Stopped training after $(i) iterations."
                         stop_training = true
                         break
                     end
-                end 
-                
-            end 
-            if 
+                end
+                # 8) time termination criterion
+                if (time() - start_time > max_train_time)
+                    stop_training = true
+                    break
+                end
+            end # end of training within epoch
+            stop_training ? break : continue # propagation of early stopping criterion
+            # 9) save checkpoint
             if mod(epoch, checkpoint_interval_epochs) == 0
                 serialize(
                     joinpath(model_dir, "models", "model_$(pad_epoch(epoch, epochs))ep_$(max_iters)iter.jls"), 
                     (:model = model |> cpu, :epoch = epoch, :iter = max_iters, :βs = β)
                 )
             end
-            # TODO add validation check after epoch
+            # 10) after epoch validation stop #TODO change this to validation_check
+            vlogs, _ = valid_step(model, dataloaders.valid, loss_function, β; device=device)
+            # 11) after epoch logging of valid log
+            foreach(p->push!(history, p.first, epoch*max_iters, p.second), pairs(vlogs))
+            log!(json_logger, vlogs)
         end
     catch
 
@@ -113,7 +121,40 @@ function train_model!(
     return model, history
 end
 
+function validation_check(
+    model::AbstractGenModel, 
+    dataloader::DataLoader, 
+    loss_function::Function, 
+    β::AbstractArray, 
+    device::Function, 
+    history::MVHistory, 
+    logger::JSONLLogger, 
+    early_stopper::EarlyStopping; 
+    tr_log::Union{NamedTuple, Nothing}=nothing,
+    verbose::Bool=false,
+    kwargs...
+)
+    # 7a) validation loop or step
+    vlogs, es_loss = valid_step(model, dataloader, loss_function, β; device=device)
+    # 7b) logging of validation step
+    foreach(p->push!(history, p.first, idx, p.second), pairs(vlogs))
+    log!(logger, vlogs)
+    # 7c) verbose losses 
+    if verbose
+        tr_logs = !isnothing(tr_log) ? tr_log : (;)
+        tr_l = join(map(key->" $(key): $(round(tr_logs[key], digits=9, RoundUp)) |", keys(tr_logs)))
+        va_l = join(map(key->" $(key): $(round(vlogs[key], digits=9, RoundUp)) |", keys(vlogs)))
+        @info join(("ep: $(pad_epoch(epoch, epochs)) | it: $(pad_epoch(iter, max_iters)) - training -> ", tr_l, "| validation -> ", va_l))
+    end
 
+    # 7d) early stopping step & terminate training criterion
+    if early_stop(es_loss, model)
+        @info "Stopped training after $(i) iterations."
+        stop_training = true
+    end
+    
+    stop_training
+end
 
 
 

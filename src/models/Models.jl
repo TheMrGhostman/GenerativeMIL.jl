@@ -1,5 +1,11 @@
 # TODO remove and move to GenerativeMIL.jl
 
+abstract type AbstractGenModel end 
+# if you want to use build-in functions you have to specify this for every new model!
+loss(model::AbstractGenModel, args...) = error("train not implemented for $(typeof(model))")
+reconstruct(model::AbstractGenModel, args...) = error("valid not implemented for $(typeof(model))")
+valid_loop(model::AbstractGenModel, args...) = error("reconstruct not implemented for $(typeof(model))")
+
 
 include("SetVAE.jl")
 export SetVae, loss, loss_gpu
