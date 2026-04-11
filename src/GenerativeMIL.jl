@@ -29,6 +29,8 @@ using Mill
 using AbstractTrees
 # Auxilary
 using Distances
+# for chamfer distance
+using NearestNeighbors 
 
 
 

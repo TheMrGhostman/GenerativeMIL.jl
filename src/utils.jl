@@ -35,7 +35,7 @@ function get_device(m)
     Fuction get_device returns CUDA/Base
      according to type of stored weights of model "m"
     """
-    p = Flux.params(m)
+    p = Flux.trainables(m)
     tp = typeof(p[1])
     (tp <: CUDA.CuArray) ? CUDA : Base
 end
