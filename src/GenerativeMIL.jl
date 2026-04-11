@@ -67,6 +67,8 @@ include("models/Models.jl")
 include("model_training/fits.jl")
 include("model_training/training.jl")
 include("model_training/train_steps.jl")
+include("model_training/schedulers.jl")
+export WarmupCosine, WarmupLinear, CreateLRScheduler, CreateAnealer
 include("model_training/early_stopping.jl")
 export EarlyStopping
 include("model_training/chamfer_distance.jl")
@@ -75,7 +77,6 @@ export chamfer_distance
 # Utils and helper functions
 include("utils.jl")
 export unpack_mill, check, get_device, mask, unmask
-export WarmupCosine, WarmupLinear
 include("json_logger.jl")
 export JSONLLogger, log!
 

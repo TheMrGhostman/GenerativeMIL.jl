@@ -321,11 +321,6 @@ function CreateLrScheduler(sch_name, lr, max_iters; milestones=[0.02, 0.8], scal
     return scheduler
 end
 
-
-function CreateAnealer(max_value, milestone)
-    new_value = it->max_value * min(1f0, it/milestone)
-end
-
 function num2dig(x, max)
     (map(x->"0", 1:(floor(log10(max))-floor(log10(x))))...,string(x)) |> join
 end

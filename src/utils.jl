@@ -45,38 +45,6 @@ function shifted_tanh(x, bias=1, scale=2)
     x = (x .+ bias) ./ scale
 end
 
-
-"""
-scheduler with warmup
-using ParameterSchedulers
-x = [1:1200...]
-s = WarmupLinear(0, 0.1, 0.001, 200, 1000, CosAnneal(λ0=0.001, λ1=0.1, period=1000))
-
-lineplot(x, s.(x); border= :none)
-    ┌─────────────────────────────────────────────┐ 
-0.1 │⠀⠀⠀⣸⠉⠉⠓⠢⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-    │⠀⠀⢀⡇⠀⠀⠀⠀⠀⠙⢦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-    │⠀⠀⡼⠀⠀⠀⠀⠀⠀⠀⠀⠙⢦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-    │⠀⢠⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-    │⠀⡞⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠳⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-    │⢰⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠓⢦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-  0 │⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠲⢤⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ 
-    └─────────────────────────────────────────────┘ 
-    0                                          2000 
-"""
-WarmupLinear(startlr, initlr, warmup, total_iters, schedule) =
-    ParameterSchedulers.Sequence(
-        ParameterSchedulers.Triangle(λ0 = startlr, λ1 = initlr, period = 2 * warmup) => warmup,
-        schedule => total_iters
-    )
-
-WarmupCosine(startlr, initlr, finallr, warmup, total_iters) =
-    ParameterSchedulers.Sequence(
-        ParameterSchedulers.Triangle(λ0 = startlr, λ1 = initlr, period = 2 * warmup) => warmup,
-        ParameterSchedulers.CosAnneal(λ0 = finallr, λ1 = initlr, period=total_iters) => total_iters,
-        finallr => Inf # to prevent periodicity of cosine
-    )
-
 # Some functions stolen from GroupAD
 """
 	unpack_mill(dt<:Tuple{BagNode,Any})
