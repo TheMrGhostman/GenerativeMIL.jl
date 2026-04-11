@@ -1,7 +1,147 @@
-function StatsBase.fit!(model, data::Tuple, loss::Function; 
-    batchsize=64, epochs=1000, early_stopping::Bool=true, patience::Int=50, 
-    lr_sch=false, lr=0.001, milestones=[0.02, 0.8], lrscale=5,
-    beta=1.0, beta_anealing=50, check_every=20, max_train_time=82800, verbose=true, kwargs...)
+pad_epoch(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
+
+function train_model!(
+    model, 
+    dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
+    optim_step::Function, 
+    opt::NamedTuple, 
+    loss_function::Function=chamfer_distance,
+    β_scheduler::Function = x->0f0, 
+    lr_scheduler::Union{Function, Nothing} = nothing; # here starts kwargs
+    valid_step::Function=valid_step,
+    use_gpu::Bool=true,
+    model_dir::String="", 
+    verbose::Bool=false, 
+    valid_check_interval::Int = 1000,
+    checkpoint_interval_epochs::Int=10,
+    save_best::Bool=true,
+    epochs::Int=1000, 
+    early_stopping::Bool=true,
+    patience::Int = 10^4,
+    max_train_time::Int=82800, # TODO incorporate me
+    grad_skip::Union{Real, Bool}=false
+)
+
+    # 1) save start time for checking of time budget
+    start_time = time()
+    
+    # 2) logging | setup history log
+    history = ValueHistories.MVHistory()
+    json_logger = JSONLLogger(joinpath(model_dir, "trainlog.jsonl"))
+
+    # 3) check for GPU / if found model is set to GPU 
+    if use_gpu & CUDA.functional() 
+        device = cuda
+        @info "GPU go brrrrr"
+    else
+        device = cpu
+        @info "No GPU found"
+    end
+    # 3b) move model to device, either GPU or CPU
+    model = model |> device
+
+    # 4) initialize early stipping procedure
+    early_stop = (early_stopping) ? EarlyStopping(model, patience) : x->0 
+    stop_training = false
+
+    # 5) get max iteration 
+    max_iters = length(dataloaders.train)
+
+    try
+        for epoch in 1:epochs
+            # 6a) β anealing, if default x->0, If β not needed for model, it is just ommited. **args
+            β = β_scheduler(epoch)
+            # 6b) learning rate scheduler
+            if !isnothing(lr_scheduler)
+                ηₙ = lr_scheduler(epoch) #TODO if switched to iters here fix!!
+                Optimisers.adjust!(opt, ηₙ)
+                push!(history, η, ηₙ)
+            end
+
+            for (it, batch) in tqdm(enumerate(dataloaders.train))
+                # 6c) global iter 
+                idx = (epoch-1)*max_iters + it
+                # 6d) perform one optimization step
+                model, opt, logs = optim_step(model, batch |> device, opt, loss_function, β; ∇skip=grad_skip); # β is part of log if used
+                # 6e)  Logging and checking
+                ## Logging to value histores and jsonl file
+                foreach(p->push!(history, p.first, idx, p.second), pairs(logs))
+                log!(json_logger, logs)
+
+                # 7) do validation and early stopping if necessery
+                if mod(it, valid_check_interval) == 0
+                    # 7a) validation loop or step
+                    vlogs, es_loss = valid_step(model, dataloaders.valid, loss_function, β; device=device)
+                    # 7b) logging of validation step
+                    foreach(p->push!(history, p.first, idx, p.second), pairs(vlogs))
+                    log!(json_logger, vlogs)
+                    # 7c) verbose losses 
+                    if verbose
+                        tr_l = join(map(key->" $(key): $(round(logs[key], digits=9, RoundUp)) |", keys(logs)))
+                        va_l = join(map(key->" $(key): $(round(vlogs[key], digits=9, RoundUp)) |", keys(vlogs)))
+                        @info join(("ep: $(pad_epoch(epoch, epochs)) | it: $(pad_epoch(iter, max_iters)) - training -> ", tr_l, "| validation -> ", va_l))
+                    end
+
+                    # 7d) early stopping step & terminate training criterion
+                    if early_stop(es_loss, model) 
+                        @info "Stopped training after $(i) iterations."
+                        stop_training = true
+                        break
+                    end
+                end 
+                
+            end 
+            if 
+            if mod(epoch, checkpoint_interval_epochs) == 0
+                serialize(
+                    joinpath(model_dir, "models", "model_$(pad_epoch(epoch, epochs))ep_$(max_iters)iter.jls"), 
+                    (:model = model |> cpu, :epoch = epoch, :iter = max_iters, :βs = β)
+                )
+            end
+            # TODO add validation check after epoch
+        end
+    catch
+
+    finally
+        # close logger
+        close(json_logger)
+        # save best model
+
+    end
+
+    # TODO put exception to NaN and Infs
+    return model, history
+end
+
+
+
+
+
+
+
+
+
+
+function fit!(
+    model, 
+    data::Tuple, 
+    optim_step::Function,
+    loss_function::Function=chamfer_distance; 
+    batchsize=64, 
+    epochs=1000, 
+    early_stopping::Bool=true, 
+    patience::Int=50, 
+    lr_sch=false, 
+    lr=0.001, 
+    milestones=[0.02, 0.8], 
+    lrscale=5,
+    beta=1.0, 
+    beta_anealing=50, 
+    check_every=20, 
+    max_train_time=82800, 
+    verbose=true, 
+    kwargs...
+)
 
     # 1) save start time for checking of time budget
     start_time = time()
@@ -117,29 +257,6 @@ function valid_loop(model, loss, dataloader; kwargs...)
     end
     total_loss /= length(dataloader)
     return total_loss, (val_loss = total_loss, )
-end
-
-
-mutable struct EarlyStopping
-    best_model
-    best_loss
-    patience
-    curr_patience
-end
-
-function EarlyStopping(model, patience)
-    return EarlyStopping(deepcopy(model), Inf, copy(patience), copy(patience))
-end
-
-function (es::EarlyStopping)(loss, model)
-    if loss < es.best_loss
-        es.best_loss = loss
-        es.curr_patience = deepcopy(es.patience)
-        es.best_model = deepcopy(model)
-    else
-        es.curr_patience -= 1 
-    end
-    (es.curr_patience == 0) ? true : false # to stop: true/false
 end
 
 size_last_dim(data::AbstractArray{T, N}) where {T,N} = size(data, N)
