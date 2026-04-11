@@ -6,6 +6,7 @@ version = "1.1.0"
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Distances = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -31,6 +32,7 @@ cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [compat]
 AbstractTrees = "0.4.5"
+BenchmarkTools = "1.7.0"
 CUDA = "5.11.0"
 Distances = "0.10.12"
 Distributions = "0.25.123"

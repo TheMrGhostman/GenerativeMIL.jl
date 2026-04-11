@@ -13,7 +13,7 @@ function (m::AbstractPooling)(x::AbstractArray{<:Real, 3}; squeeze::Bool=false) 
     # x ~ (d, n, BS)
     # for classification purposes -> ff output_dim (d_ff) == 1 for pooling
     scores = Flux.softmax(m.ff(x), dims=2) # scores ~ (d_ff, n, BS)
-    scores = PermutedDimsArray(scores, (2,1,3)) # (1, n, BS)^T -> (n, 1, BS)
+    scores = permutedims(scores, (2,1,3)) # (1, n, BS)^T -> (n, 1, BS)
     h = Flux.batched_mul(x, scores) # (d, n, BS) *(n, 1, BS) -> (d, 1, BS)
     # decide whether to drop redundant dimension or not (typicaly true for classification)
     # if true (d, 1, BS) -> (d, BS)

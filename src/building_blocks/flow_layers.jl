@@ -93,12 +93,12 @@ function (m::Invertible1x1Conv)(x::AbstractArray{T, 3}, logdet::AbstractArray{T,
         # inv ≈ LinearAlgebra.inv
         weight_inv = LinearAlgebra.inv(dropdims(m.weight, dims=1))
         x = Flux.conv(x, reshape(weight_inv, 1, size(m.weight)...))
-        x = PermutedDimsArray(x, (2,1,3))
+        x = permutedims(x, (2,1,3))
     else
         # logabsdet ≈ LinearAlgebra.logabsdet -> (value, sign)
         logdet = logdet .+ LinearAlgebra.logabsdet(dropdims(m.weight, dims=1))[1]
         x = Flux.conv(x, m.weight)
-        x = PermutedDimsArray(x, (2,1,3))
+        x = permutedims(x, (2,1,3))
     end
     return x, logdet
 end
