@@ -175,7 +175,7 @@ function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractAr
     A = matrixmul(Kᵀ, Q) .* dₖ 
     A = (mask !== nothing) ? A .* mask : A
     # softmax around dims=2 cause problem with CUDA
-    A = _softmax(A, dims=2) # Flux.softmax(A) # softmax over m for each n; normalizes samples not features
+    A = _softmax(A, dims=2)  # softmax over m for each n; normalizes samples not features
     W = matrixmul(V, A)
     W = W ./ Flux.sum(A .+ 1f-5 , dims=1) # weighted mean; normalizes features for each sample
     return W

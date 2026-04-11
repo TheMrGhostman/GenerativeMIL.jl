@@ -55,14 +55,14 @@ end
 function _nearest_neighbors(x::Array{Float32,3}, y::Array{Float32,3})
     nn_for_x = cat(
         [
-            CartesianIndex.(reduce(vcat, knn(KDTree(y[:, :, i]), x[:, :, i], 1)[1]), i)
+            CartesianIndex.(reduce(vcat, NearestNeighbors.knn(KDTree(y[:, :, i]), x[:, :, i], 1)[1]), i)
             for i = 1:size(x, 3)
         ]...,
         dims = 2,
     )
     nn_for_y = cat(
         [
-            CartesianIndex.(reduce(vcat, knn(KDTree(x[:, :, i]), y[:, :, i], 1)[1]), i)
+            CartesianIndex.(reduce(vcat, NearestNeighbors.knn(KDTree(x[:, :, i]), y[:, :, i], 1)[1]), i)
             for i = 1:size(x, 3)
         ]...,
         dims = 2,

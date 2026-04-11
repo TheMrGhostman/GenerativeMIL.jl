@@ -91,7 +91,7 @@ function gumbel_softmax(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, e
     #.+ rand(Gumbel(Float32(0), Float32(1)), size(logits))
     gumbel_samples = -log.(-log.(Random.rand!(logits) .+ eps) .+ eps)
     y = logits .+ gumbel_samples
-    y = Flux.softmax(y./τ)
+    y = _softmax(y./τ)
 
     if !hard
         return y
