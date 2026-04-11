@@ -6,7 +6,7 @@ function train_model!(
     optim_step::Function, #TODO think if keep as argument of necessary part of AbstractGenModel
     opt::NamedTuple, 
     loss_function::Function=chamfer_distance,
-    β_scheduler::Function = x->0f0, 
+    β_scheduler::Function = x->0f0, #TODO if β is not used for model, it is just ommited. **args but still think about this
     lr_scheduler::Union{Function, Nothing} = nothing; # here starts kwargs
     valid_step::Function=valid_step,
     use_gpu::Bool=true,
@@ -17,7 +17,7 @@ function train_model!(
     epochs::Int=1000, 
     early_stopping::Bool=true,
     patience::Int = 10^4,
-    max_train_time::Int=82800, # TODO incorporate me
+    max_train_time::Int=82800, 
     grad_skip::Union{Real, Bool}=false
 )
 
@@ -65,28 +65,14 @@ function train_model!(
                 # 6e)  Logging and checking
                 ## Logging to value histores and jsonl file
                 foreach(p->push!(history, p.first, idx, p.second), pairs(logs))
-                log!(json_logger, logs)
-
+                log!(json_logger, logs) #TODO add epoch, iter or idx counter into loger 
                 # 7) do validation and early stopping if necessery
-                if mod(it, valid_check_interval) == 0 # TODO put this whole into separate function validation_check
-                    # 7a) validation loop or step
-                    vlogs, es_loss = valid_step(model, dataloaders.valid, loss_function, β; device=device)
-                    # 7b) logging of validation step
-                    foreach(p->push!(history, p.first, idx, p.second), pairs(vlogs))
-                    log!(json_logger, vlogs)
-                    # 7c) verbose losses 
-                    if verbose
-                        tr_l = join(map(key->" $(key): $(round(logs[key], digits=9, RoundUp)) |", keys(logs)))
-                        va_l = join(map(key->" $(key): $(round(vlogs[key], digits=9, RoundUp)) |", keys(vlogs)))
-                        @info join(("ep: $(pad_epoch(epoch, epochs)) | it: $(pad_epoch(iter, max_iters)) - training -> ", tr_l, "| validation -> ", va_l))
-                    end
-
-                    # 7d) early stopping step & terminate training criterion
-                    if early_stop(es_loss, model)
-                        @info "Stopped training after $(i) iterations."
-                        stop_training = true
-                        break
-                    end
+                if mod(it, valid_check_interval) == 0 
+                    stop_training = validation_check(
+                        model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, idx;
+                        tr_log=logs, verbose=verbose
+                    )
+                    stop_training ? break : continue
                 end
                 # 8) time termination criterion
                 if (time() - start_time > max_train_time)
@@ -103,21 +89,18 @@ function train_model!(
                 )
             end
             # 10) after epoch validation stop #TODO change this to validation_check
-            vlogs, _ = valid_step(model, dataloaders.valid, loss_function, β; device=device)
-            # 11) after epoch logging of valid log
-            foreach(p->push!(history, p.first, epoch*max_iters, p.second), pairs(vlogs))
-            log!(json_logger, vlogs)
+            validation_check(model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, epoch*max_iters; verbose=verbose);
         end
-    catch
-
+    catch e   
+        # if error happens stop training and log error, return what we have
+        @info "Stopped training after $((time() - start_time) / 3600) hours due to error \n $(e)"
     finally
         # close logger
         close(json_logger)
         # save best model
-
+        # TODO save early stop model. 
     end
 
-    # TODO put exception to NaN and Infs
     return model, history
 end
 
@@ -129,13 +112,14 @@ function validation_check(
     device::Function, 
     history::MVHistory, 
     logger::JSONLLogger, 
-    early_stopper::EarlyStopping; 
+    early_stopper::EarlyStopping,
+    idx::Int; 
     tr_log::Union{NamedTuple, Nothing}=nothing,
     verbose::Bool=false,
     kwargs...
 )
     # 7a) validation loop or step
-    vlogs, es_loss = valid_step(model, dataloader, loss_function, β; device=device)
+    vlogs, es_loss = valid_step(model, dataloader, loss_function, β; device=device, kwargs...)
     # 7b) logging of validation step
     foreach(p->push!(history, p.first, idx, p.second), pairs(vlogs))
     log!(logger, vlogs)
@@ -144,7 +128,7 @@ function validation_check(
         tr_logs = !isnothing(tr_log) ? tr_log : (;)
         tr_l = join(map(key->" $(key): $(round(tr_logs[key], digits=9, RoundUp)) |", keys(tr_logs)))
         va_l = join(map(key->" $(key): $(round(vlogs[key], digits=9, RoundUp)) |", keys(vlogs)))
-        @info join(("ep: $(pad_epoch(epoch, epochs)) | it: $(pad_epoch(iter, max_iters)) - training -> ", tr_l, "| validation -> ", va_l))
+        @info join(("ep: $(pad_epoch(epoch, epochs)) | it: $(pad_epoch(iter, max_iters)) - training -> ", tr_l, "| validation -> ", va_l)) #FIXME epochs & iters
     end
 
     # 7d) early stopping step & terminate training criterion
