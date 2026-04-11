@@ -49,7 +49,7 @@ function knn(x::AbstractArray{<:Real, 3}, k::Int)
     # inner product between transposed and normal ~ (N, N, BS)
     xx = Flux.sum(x.^2,dims=1)
     # expectation of x^2 .... ~ (1,N,BS) 
-    pairwise_distance = -xx .- inner .- permutedims(xx, (2,1,3))
+    pairwise_distance = -xx .- inner .- PermutedDimsArray(xx, (2,1,3))
     # pairwise_distance ~ (N,N,BS)
     idx = mapslices(z->sortperm(z, rev=true)[1:k], pairwise_distance, dims=(1))
 end
@@ -103,7 +103,7 @@ function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Re
     bs = size(pts, 2)
     x = pts[:, idx]
     x = x[:,2:end,:] # the closest one is original point => filter it out 
-    x = batched_mul(x, permutedims(x, (2,1,3))) # x @ x^t
+    x = batched_mul(x, PermutedDimsArray(x, (2,1,3))) # x @ x^t
     x = reshape(x, (:, bs))
     return cat(pts, x, dims=1)
 end

@@ -28,8 +28,8 @@ function MultiheadAttentionBlock(hidden_dim::Int, heads::Int, activation::Functi
         Flux.Dense(hidden_dim, hidden_dim, activation),
         Flux.Dense(hidden_dim, hidden_dim)
     )
-    ln1 = Flux.LayerNorm((hidden_dim,1))
-    ln2 = Flux.LayerNorm((hidden_dim,1))
+    ln1 = Flux.LayerNorm(hidden_dim)
+    ln2 = Flux.LayerNorm(hidden_dim)
     return MultiheadAttentionBlock(ff, mh, ln1, ln2)
 end
 

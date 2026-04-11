@@ -44,13 +44,13 @@ function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::A
     head_qk = Int(d // mh.heads)
     head_v = Int(d_v // mh.heads)
     # split into separate Heads and permute dims
-    Q = permutedims(reshape(Q, (head_qk, mh.heads, m, bs)), (1,3,2,4))
-    K = permutedims(reshape(K, (head_qk, mh.heads, n, bs)), (1,3,2,4))
-    V = permutedims(reshape(V, (head_v, mh.heads, n, bs)), (1,3,2,4))
+    Q = PermutedDimsArray(reshape(Q, (head_qk, mh.heads, m, bs)), (1,3,2,4))
+    K = PermutedDimsArray(reshape(K, (head_qk, mh.heads, n, bs)), (1,3,2,4))
+    V = PermutedDimsArray(reshape(V, (head_v, mh.heads, n, bs)), (1,3,2,4))
     # run through attention 
     values = mh.attention(Q, K, V)
     # permute dims back and reshape
-    values = reshape(permutedims(values, (1,3,2,4)), (d_v, m, bs))
+    values = reshape(PermutedDimsArray(values, (1,3,2,4)), (d_v, m, bs))
     # project values
     return mh.WO(values)
 end
@@ -71,9 +71,9 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     head_qk = Int(d // mh.heads)
     head_v = Int(d_v // mh.heads)
     # split into separate Heads and permute dims
-    Q = permutedims(reshape(Q, (head_qk, mh.heads, m, bs)), (1,3,2,4))
-    K = permutedims(reshape(K, (head_qk, mh.heads, n, bs)), (1,3,2,4))
-    V = permutedims(reshape(V, (head_v, mh.heads, n, bs)), (1,3,2,4))
+    Q = PermutedDimsArray(reshape(Q, (head_qk, mh.heads, m, bs)), (1,3,2,4))
+    K = PermutedDimsArray(reshape(K, (head_qk, mh.heads, n, bs)), (1,3,2,4))
+    V = PermutedDimsArray(reshape(V, (head_v, mh.heads, n, bs)), (1,3,2,4))
 
     if (X_mask === nothing) & (Y_mask === nothing)
         att_mask = nothing
@@ -93,7 +93,7 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T},
     end 
     values = mh.attention(Q, K, V, att_mask) 
     # permute dims back and reshape
-    values = reshape(permutedims(values, (1,3,2,4)), (d_v, m, bs))
+    values = reshape(PermutedDimsArray(values, (1,3,2,4)), (d_v, m, bs))
     values = mask(values, X_mask)
     # masking of WO(values) is not needed since bias=false
     return mh.WO(values)
@@ -108,7 +108,7 @@ function attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractAr
     # V ∈ ℝ^{n,vd} ~ (vd, n, bs)         
     dₖ = size(K, 1)
     dₖ = convert(Float32, 1/sqrt(dₖ))
-    Kᵀ = permutedims(K, (2,1,3))
+    Kᵀ = PermutedDimsArray(K, (2,1,3))
     # batched_mul \boxtimes
     A = (Kᵀ ⊠ Q) .* dₖ  # (n, d, BS) ⊠ (d, m, BS) -> (n, m, BS)
     A = Flux.softmax(A, dims=1) # softmax over n for each m, standard softmax; 
@@ -122,7 +122,7 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     # V ∈ ℝ^{h,n,vd} ~ (vd, n, h, bs)         
     dₖ = size(K, 1)
     dₖ = convert(Float32, 1/sqrt(dₖ))
-    Kᵀ = permutedims(K, (2,1,3,4))
+    Kᵀ = PermutedDimsArray(K, (2,1,3,4))
     # batched_mul can do only 3D tensors 
     A = batched_mul(Kᵀ, Q) .* dₖ  #  (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
     A = Flux.softmax(A, dims=1) # softmax over n for each m, standard softmax; 
@@ -136,7 +136,7 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     # V ∈ ℝ^{h,n,vd} ~ (vd, n, h, bs)         
     dₖ = size(K, 1)
     dₖ = convert(Float32, 1/sqrt(dₖ))
-    Kᵀ = permutedims(K, (2,1,3,4))
+    Kᵀ = PermutedDimsArray(K, (2,1,3,4))
     # batched_mul can do only 3D tensors 
     A = batched_mul(Kᵀ, Q) .* dₖ  #  (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
     A = (mask !== nothing) ? A .* mask : A
@@ -167,13 +167,16 @@ function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractAr
     mask::MaskT{T}=nothing) where T <: Real
     dₖ = size(K, 1)
     dₖ = convert(Float32, 1/sqrt(dₖ))
-    Kᵀ = permutedims(K, pdims)
+    Kᵀ = PermutedDimsArray(K, pdims)
     # 3D Singlehead # (n, d, BS) ⊠ (d, m, BS) -> (n, m, BS)
     # 3D Multihead # (n, d, h) ⊠ (d, m, h) -> (n, m, h)
     # 4D Mulithead # (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS)
     A = matrixmul(Kᵀ, Q) .* dₖ 
     A = (mask !== nothing) ? A .* mask : A
-    A = Flux.softmax(A, dims=2) # softmax over m for each n; normalizes samples not features
+    A = PermutedDimsArray(A, (2,1,3,4))
+    # softmax around dims=2 cause problem with CUDA
+    A = Flux.softmax(A) # softmax over m for each n; normalizes samples not features
+    A = PermutedDimsArray(A, (2,1,3,4))
     W = matrixmul(V, A)
     W = W ./ Flux.sum(A .+ 1f-5 , dims=1) # weighted mean; normalizes features for each sample
     return W

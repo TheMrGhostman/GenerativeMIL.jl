@@ -70,7 +70,7 @@ function loss_gpu(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{B
     - special case only for modelnet due to the same dimensions of samples
     - it can be used for all datasets but masked datasets will return inaccurate loss values
     """
-        _, h_encs = vae.encoder(x, x_mask) # no need for x
+    _, h_encs = vae.encoder(x, x_mask) # no need for x
     #h_encs = reverse(h_encs)
     _, sample_size, bs = size(x_mask)
     z = vae.prior(sample_size, bs)
