@@ -1,11 +1,10 @@
 function train_model!(
     model::AbstractGenModel, 
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
-    opt::NamedTuple, 
+    optimiser::Optimisers.AbstractRule, 
     loss_function::Function=chamfer_distance,
     β_scheduler::Function = x->0f0, #TODO if β is not used for model, it is just ommited. **args but still think about this
     lr_scheduler::Union{Function, Nothing} = nothing; # here starts kwargs
-    #valid_step::Function=valid_step,
     use_gpu::Bool=true,
     model_dir::String="", 
     verbose::Bool=false, 
@@ -132,14 +131,14 @@ function train_model!(
     finally
         # close logger
         close(json_logger)
-        # save best model
-        epoch_=floor(Int, idx / max_iters)
-        it_ = mod(idx, max_iters)
-        serialize( #TODO fix me to best model if available
-            joinpath(model_dir, "models", "best_model_ep=$(pad_epoch(epoch_, epochs))_iter=$(pad_epoch(it_, max_iters)).jls"), 
-            (model = model |> cpu, epoch = epoch_, iter = it_, idx = idx)
-        )
     end
+    # save best model
+    epoch_=floor(Int, idx / max_iters)
+    it_ = mod(idx, max_iters)
+    serialize(
+        joinpath(model_dir, "models", "best_model_ep=$(pad_epoch(epoch_, epochs))_iter=$(pad_epoch(it_, max_iters)).jls"), 
+        (model = model |> cpu, epoch = epoch_, iter = it_, idx = idx)
+    )
 
     return model, history
 end
