@@ -5,11 +5,11 @@ mutable struct EarlyStopping
     curr_patience
 end
 
-function EarlyStopping(model, patience)
+function EarlyStopping(model, patience::Real)
     return EarlyStopping(deepcopy(model), Inf, copy(patience), copy(patience))
 end
 
-function (es::EarlyStopping)(loss, model)
+function (es::EarlyStopping)(loss::Real, model)
     if loss < es.best_loss
         es.best_loss = loss
         es.curr_patience = deepcopy(es.patience)

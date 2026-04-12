@@ -50,35 +50,32 @@ MaskT{T} = Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}
 include("dataset.jl")
 export load_modelnet10, load_mnist
 
-# Model's Building Blocks
-include("building_blocks/attention.jl")
-include("building_blocks/prior.jl")
-include("building_blocks/transformer_blocks.jl")
-include("building_blocks/layers.jl")
-include("building_blocks/made.jl")
-include("building_blocks/pooling_layers.jl")
-include("building_blocks/losses.jl") # masked_chamfer_distance_cpu
-include("building_blocks/encoders_and_decoders.jl")
+# logger for 
+include("json_logger.jl")
+export JSONLLogger, log!, close
+
+# Utils and helper functions
+include("utils.jl")
+export unpack_mill, check, get_device, mask, unmask, pad_epoch
+
+# Losses
+inlcude("losses/Losses.jl")
+
+# Model's Building building_blocks
+include("building_blocks/Building_Blocks.jl")
 
 # Model Zoo 
 include("models/Models.jl")
 
 # Everything related to model training
-include("model_training/fits.jl")
-include("model_training/training.jl")
-include("model_training/train_steps.jl")
 include("model_training/schedulers.jl")
 export WarmupCosine, WarmupLinear, CreateLRScheduler, CreateAnealer
 include("model_training/early_stopping.jl")
 export EarlyStopping
-include("model_training/chamfer_distance.jl")
-export chamfer_distance
-
-# Utils and helper functions
-include("utils.jl")
-export unpack_mill, check, get_device, mask, unmask
-include("json_logger.jl")
-export JSONLLogger, log!
+include("model_training/fits.jl")
+include("model_training/train_steps.jl")
+include("model_training/training.jl")
+export train_model!, validation_check
 
 
 # Temporary evaluation function

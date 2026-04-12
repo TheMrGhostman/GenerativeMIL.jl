@@ -1,14 +1,11 @@
-pad_epoch(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
-
 function train_model!(
     model::AbstractGenModel, 
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
-    optim_step::Function, #TODO think if keep as argument of necessary part of AbstractGenModel
     opt::NamedTuple, 
     loss_function::Function=chamfer_distance,
     β_scheduler::Function = x->0f0, #TODO if β is not used for model, it is just ommited. **args but still think about this
     lr_scheduler::Union{Function, Nothing} = nothing; # here starts kwargs
-    valid_step::Function=valid_step,
+    #valid_step::Function=valid_step,
     use_gpu::Bool=true,
     model_dir::String="", 
     verbose::Bool=false, 
@@ -18,33 +15,65 @@ function train_model!(
     early_stopping::Bool=true,
     patience::Int = 10^4,
     max_train_time::Int=82800, 
-    grad_skip::Union{Real, Bool}=false
+    grad_skip::Union{Real, Bool}=false,
+    kwargs...
+)
+
+    train_model!(model, dataloaders, opt; loss_function=loss_function, β_scheduler=β_scheduler, lr_scheduler=lr_scheduler, valid_step=valid_step, use_gpu=use_gpu, model_dir=model_dir, verbose=verbose, valid_check_interval=valid_check_interval, checkpoint_interval_epochs=checkpoint_interval_epochs, epochs=epochs, early_stopping=early_stopping, patience=patience, max_train_time=max_train_time, grad_skip=grad_skip, kwargs...)
+
+end
+
+
+function train_model!(
+    model::AbstractGenModel, 
+    dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}}, 
+    optimiser::Optimisers.AbstractRule; ## KWARGS FROM HERE
+    loss_function::Function=chamfer_distance, 
+    β_scheduler::Function = x->0f0, #TODO if β is not used for model, it is just ommited. **args but still think about this
+    lr_scheduler::Union{Function, Nothing} = nothing,
+    use_gpu::Bool=true,
+    model_dir::String="", 
+    verbose::Bool=false, 
+    valid_check_interval::Int = 1000,
+    checkpoint_interval_epochs::Int=10,
+    epochs::Int=1000, 
+    early_stopping::Bool=true,
+    patience::Int = 10^4,
+    max_train_time::Int=82800, 
+    grad_skip::Union{Real, Bool}=false,
+    kwargs...
 )
 
     # 1) save start time for checking of time budget
     start_time = time()
     
-    # 2) logging | setup history log
+    # 2a) logging | setup history log
     history = ValueHistories.MVHistory()
+    # 2b) initialize jsonl logger
+    if !isdir(model_dir); begin mkdir(model_dir); mkdir(joinpath(model_dir, "models")); end; end;
     json_logger = JSONLLogger(joinpath(model_dir, "trainlog.jsonl"))
 
     # 3) check for GPU / if found model is set to GPU 
     if use_gpu & CUDA.functional() 
-        device = cuda
-        @info "GPU go brrrrr"
+        device = gpu
+        @info "GPU goes brrrrr"
     else
         device = cpu
         @info "No GPU found"
     end
     # 3b) move model to device, either GPU or CPU
     model = model |> device
+    # 3c) init optim from model
+    opt = Optimisers.setup(optimiser, model)
+    η = optimiser.eta;
 
     # 4) initialize early stipping procedure
-    early_stop = (early_stopping) ? EarlyStopping(model, patience) : x->0 
+    early_stop = (early_stopping) ? EarlyStopping(model, patience) : EarlyStopping(model, Inf)
     stop_training = false
 
-    # 5) get max iteration 
+    # 5) get max iteration and idx
     max_iters = length(dataloaders.train)
+    global idx = 0
 
     try
         for epoch in 1:epochs
@@ -52,27 +81,28 @@ function train_model!(
             β = β_scheduler(epoch)
             # 6b) learning rate scheduler
             if !isnothing(lr_scheduler)
-                ηₙ = lr_scheduler(epoch) #TODO if switched to iters here fix!!
+                ηₙ = lr_scheduler(epoch) 
                 Optimisers.adjust!(opt, ηₙ)
-                push!(history, η, ηₙ)
+                push!(history, :η, ηₙ)
+                η = ηₙ
             end
 
             for (it, batch) in tqdm(enumerate(dataloaders.train))
                 # 6c) global iter 
                 idx = (epoch-1)*max_iters + it
                 # 6d) perform one optimization step
-                model, opt, logs = optim_step(model, batch |> device, opt, loss_function, β; ∇skip=grad_skip); # β is part of log if used
+                model, opt, logs = optim_step(model, batch, opt, loss_function, device; β=β, ∇skip=grad_skip, kwargs...); # β is part of log if used
                 # 6e)  Logging and checking
                 ## Logging to value histores and jsonl file
                 foreach(p->push!(history, p.first, idx, p.second), pairs(logs))
-                log!(json_logger, logs) #TODO add epoch, iter or idx counter into loger 
+                log!(json_logger, merge((;idx=idx, epoch=epoch, iter=it, mode="train"), logs, (;η = η))) 
                 # 7) do validation and early stopping if necessery
                 if mod(it, valid_check_interval) == 0 
                     stop_training = validation_check(
                         model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, idx;
-                        tr_log=logs, verbose=verbose
+                        tr_log=logs, verbose=verbose, epoch_info=(epoch, epochs), iter_info=(it, max_iters)
                     )
-                    stop_training ? break : continue
+                    if stop_training; break; end
                 end
                 # 8) time termination criterion
                 if (time() - start_time > max_train_time)
@@ -80,16 +110,21 @@ function train_model!(
                     break
                 end
             end # end of training within epoch
-            stop_training ? break : continue # propagation of early stopping criterion
+            if stop_training; break; end # propagation of early stopping criterion
             # 9) save checkpoint
+
             if mod(epoch, checkpoint_interval_epochs) == 0
+                @info "Saving checkpoint after epoch $(epoch)"
                 serialize(
-                    joinpath(model_dir, "models", "model_$(pad_epoch(epoch, epochs))ep_$(max_iters)iter.jls"), 
-                    (:model = model |> cpu, :epoch = epoch, :iter = max_iters, :βs = β)
+                    joinpath(model_dir, "models", "model_ep=$(pad_epoch(epoch, epochs)).jls"), 
+                    (model = model |> cpu, epoch = epoch, iter = max_iters, idx = idx)
                 )
             end
-            # 10) after epoch validation stop #TODO change this to validation_check
-            validation_check(model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, epoch*max_iters; verbose=verbose);
+            # 10) after epoch validation stop
+            validation_check(
+                model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, epoch*max_iters; 
+                verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters)
+            );
         end
     catch e   
         # if error happens stop training and log error, return what we have
@@ -98,7 +133,12 @@ function train_model!(
         # close logger
         close(json_logger)
         # save best model
-        # TODO save early stop model. 
+        epoch_=floor(Int, idx / max_iters)
+        it_ = mod(idx, max_iters)
+        serialize( #TODO fix me to best model if available
+            joinpath(model_dir, "models", "best_model_ep=$(pad_epoch(epoch_, epochs))_iter=$(pad_epoch(it_, max_iters)).jls"), 
+            (model = model |> cpu, epoch = epoch_, iter = it_, idx = idx)
+        )
     end
 
     return model, history
@@ -108,35 +148,36 @@ function validation_check(
     model::AbstractGenModel, 
     dataloader::DataLoader, 
     loss_function::Function, 
-    β::AbstractArray, 
+    β::Union{Vector{T}, T}, 
     device::Function, 
     history::MVHistory, 
     logger::JSONLLogger, 
     early_stopper::EarlyStopping,
-    idx::Int; 
+    idx::Union{Int, Nothing}=nothing; 
     tr_log::Union{NamedTuple, Nothing}=nothing,
     verbose::Bool=false,
+    epoch_info::Tuple{Int, Int}=(0, 0),
+    iter_info::Tuple{Int, Int}=(0, 0),
     kwargs...
-)
+) where T <: Real
     # 7a) validation loop or step
-    vlogs, es_loss = valid_step(model, dataloader, loss_function, β; device=device, kwargs...)
+    vlogs, es_loss = valid_step(model, dataloader, loss_function; β=β, device=device, kwargs...)
     # 7b) logging of validation step
-    foreach(p->push!(history, p.first, idx, p.second), pairs(vlogs))
-    log!(logger, vlogs)
+    push_fn = !isnothing(idx) ? p->push!(history, p.first, idx, p.second) : p->push!(history, p.first, p.second)
+    foreach(push_fn, pairs(vlogs))
+
+    log!(logger, merge((;idx=idx, epoch=epoch_info[1], iter=iter_info[1], mode="valid"), vlogs))
     # 7c) verbose losses 
     if verbose
         tr_logs = !isnothing(tr_log) ? tr_log : (;)
         tr_l = join(map(key->" $(key): $(round(tr_logs[key], digits=9, RoundUp)) |", keys(tr_logs)))
         va_l = join(map(key->" $(key): $(round(vlogs[key], digits=9, RoundUp)) |", keys(vlogs)))
-        @info join(("ep: $(pad_epoch(epoch, epochs)) | it: $(pad_epoch(iter, max_iters)) - training -> ", tr_l, "| validation -> ", va_l)) #FIXME epochs & iters
+        @info join(("ep: $(pad_epoch(epoch_info...)) | it: $(pad_epoch(iter_info...)) - training -> ", tr_l, "| validation -> ", va_l)) #FIXME epochs & iters
     end
 
     # 7d) early stopping step & terminate training criterion
-    if early_stop(es_loss, model)
-        @info "Stopped training after $(i) iterations."
-        stop_training = true
-    end
-    
+    stop_training =  early_stop(es_loss, model) ? begin @info "Stopped training after $(i) iterations."; true; end : false
+
     stop_training
 end
 
