@@ -3,7 +3,6 @@ struct JSONLLogger
 end
 
 function JSONLLogger(path::String)
-    @assert ispath(path) "Path must be a valid file path"
     io = open(path, "a")
     return JSONLLogger(io)
 end
@@ -22,5 +21,5 @@ function log!(logger::JSONLLogger, log::NamedTuple, mode::String)
 end
 
 function close(logger::JSONLLogger)
-    close(logger.io)
+    Base.close(logger.io)
 end
