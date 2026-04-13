@@ -45,9 +45,9 @@ masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=dims) #FIXME set maske
 
 # placeholder structure for pooling encoder 
 struct PoolEncoder
-    prepool
+    prepool::Union{Chain, Dense}
     pooling::Union{AbstractPooling, Function}
-    postpool
+    postpool::Union{Chain, Dense}
 end
 
 Flux.@layer PoolEncoder

@@ -3,8 +3,8 @@ function train_model!(
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
     optimiser::Optimisers.AbstractRule, 
     loss_function::Function=chamfer_distance,
-    β_scheduler::Function = x->0f0, #TODO if β is not used for model, it is just ommited. **args but still think about this
-    lr_scheduler::Union{Function, Nothing} = nothing; # here starts kwargs
+    β_scheduler::Union{Function, Scheduler, Sequence, Nothing} = x->0f0, 
+    lr_scheduler::Union{Function, Scheduler, Sequence, Nothing} = nothing; # here starts kwargs
     use_gpu::Bool=true,
     model_dir::String="", 
     verbose::Bool=false, 
@@ -28,8 +28,8 @@ function train_model!(
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}}, 
     optimiser::Optimisers.AbstractRule; ## KWARGS FROM HERE
     loss_function::Function=chamfer_distance, 
-    β_scheduler::Function = x->0f0, #TODO if β is not used for model, it is just ommited. **args but still think about this
-    lr_scheduler::Union{Function, Nothing} = nothing,
+    β_scheduler::Union{Function, Scheduler, Sequence, Nothing} = x->0f0,
+    lr_scheduler::Union{Function, Scheduler, Sequence, Nothing} = nothing,
     use_gpu::Bool=true,
     model_dir::String="", 
     verbose::Bool=false, 
@@ -125,6 +125,7 @@ function train_model!(
                 verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters)
             );
         end
+        close(json_logger)
     catch e   
         # if error happens stop training and log error, return what we have
         @info "Stopped training after $((time() - start_time) / 3600) hours due to error \n $(e)"
@@ -137,7 +138,7 @@ function train_model!(
     it_ = mod(idx, max_iters)
     serialize(
         joinpath(model_dir, "models", "best_model_ep=$(pad_epoch(epoch_, epochs))_iter=$(pad_epoch(it_, max_iters)).jls"), 
-        (model = model |> cpu, epoch = epoch_, iter = it_, idx = idx)
+        (model = early_stop.best_model |> cpu, epoch = epoch_, iter = it_, idx = idx)
     )
 
     return model, history
@@ -175,7 +176,7 @@ function validation_check(
     end
 
     # 7d) early stopping step & terminate training criterion
-    stop_training =  early_stop(es_loss, model) ? begin @info "Stopped training after $(i) iterations."; true; end : false
+    stop_training =  early_stopper(es_loss, model) ? begin @info "Stopped training after $(i) iterations."; true; end : false
 
     stop_training
 end
@@ -185,7 +186,7 @@ end
 
 
 
-
+# TODO delete after this
 
 function fit!(
     model, 
