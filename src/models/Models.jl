@@ -16,7 +16,7 @@ export FoldingNet_VAE, simple_loss, logging_loss
 export foldingnet_constructor_from_named_tuple
 
 include("PoolAE.jl")
-export PoolModel, loss, loss_with_kld
+export PoolModel, loss, loss_with_logging, loss
 export poolmodel_constructor_from_named_tuple
 
 include("SetTransformer.jl")

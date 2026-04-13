@@ -3,7 +3,7 @@ function train_model!(
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
     optimiser::Optimisers.AbstractRule, 
     loss_function::Function=chamfer_distance,
-    β_scheduler::Union{Function, Scheduler, Sequence, Nothing} = x->0f0, 
+    β_scheduler::Union{Function, Scheduler, Sequence} = x->0f0, 
     lr_scheduler::Union{Function, Scheduler, Sequence, Nothing} = nothing; # here starts kwargs
     use_gpu::Bool=true,
     model_dir::String="", 
