@@ -115,7 +115,7 @@ function train_model!(
             if mod(epoch, checkpoint_interval_epochs) == 0
                 @info "Saving checkpoint after epoch $(epoch)"
                 serialize(
-                    joinpath(model_dir, "models", "model_ep=$(pad_epoch(epoch, epochs)).jls"), 
+                    joinpath(model_dir, "models", "model_ep=$(lpad_number(epoch, epochs)).jls"), 
                     (model = model |> cpu, epoch = epoch, iter = max_iters, idx = idx)
                 )
             end
@@ -124,6 +124,7 @@ function train_model!(
                 model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, epoch*max_iters; 
                 verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters)
             );
+
         end
     catch e   
         # if error happens stop training and log error, return what we have
@@ -174,7 +175,7 @@ function validation_check(
         tr_logs = !isnothing(tr_log) ? tr_log : (;)
         tr_l = join(map(key->" $(key): $(round(tr_logs[key], digits=9, RoundUp)) |", keys(tr_logs)))
         va_l = join(map(key->" $(key): $(round(vlogs[key], digits=9, RoundUp)) |", keys(vlogs)))
-        @info join(("ep: $(pad_epoch(epoch_info...)) | it: $(pad_epoch(iter_info...)) - training -> ", tr_l, "| validation -> ", va_l)) #FIXME epochs & iters
+        @info join(("ep: $(lpad_number(epoch_info...)) | it: $(lpad_number(iter_info...)) - training -> ", tr_l, "| validation -> ", va_l)) #FIXME epochs & iters
     end
 
     # 7d) early stopping step & terminate training criterion

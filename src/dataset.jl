@@ -197,19 +197,19 @@ function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=
     if validation
         (X_train,Y_train), (X_val,Y_val) = train_test_split(X_train, Y_train, ratio, seed=seed)
         if type in titles
-            idx = findmax(titles .== type)[2]
-            X_train = X_train[:, :, Y_train .== idx]
-            Y_train = Y_train[Y_train .== idx]
-            Y_val = Y_val .!= idx
-            Y_test = Y_test .!= idx
+            class_idx = only(findall(titles .== type))
+            X_train = X_train[:, :, Y_train .== class_idx]
+            Y_train = Y_train[Y_train .== class_idx]
+            Y_val = Y_val .!= class_idx
+            Y_test = Y_test .!= class_idx
         end
         data = ((X_train, Y_train), (X_val, Y_val), (X_test, Y_test)) 
     else
         if type in titles
-            idx = findmax(titles .== type)[2]
-            X_train = X_train[:, :, Y_train .== idx]
-            Y_train = Y_train[Y_train .== idx]
-            Y_test = Y_test .!= idx
+            class_idx = only(findall(titles .== type))
+            X_train = X_train[:, :, Y_train .== class_idx]
+            Y_train = Y_train[Y_train .== class_idx]
+            Y_test = Y_test .!= class_idx
         end
         data = ((X_train, Y_train), (X_test, Y_test)) 
     end

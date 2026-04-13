@@ -1,5 +1,5 @@
 # mask function
-pad_epoch(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
+lpad_number(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
 
 function mask(x::AbstractArray{<:Real}, mask::Nothing=nothing)
     return x
