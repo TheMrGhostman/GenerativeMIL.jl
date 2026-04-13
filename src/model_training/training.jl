@@ -125,21 +125,23 @@ function train_model!(
                 verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters)
             );
         end
-        close(json_logger)
     catch e   
         # if error happens stop training and log error, return what we have
         @info "Stopped training after $((time() - start_time) / 3600) hours due to error \n $(e)"
     finally
         # close logger
         close(json_logger)
+        # save best model
+        epoch_=floor(Int, idx / max_iters)
+        it_ = mod(idx, max_iters)
+        serialize(
+            joinpath(model_dir, "models", "best_model.jls"), 
+            (model = early_stop.best_model |> cpu, best_loss=early_stop.best_loss, reached_epoch = epoch_, reached_iter = it_, idx = idx)
+        )
+        # saving best model and if error is occured it saved the last model, so we have something to work with
+        # reached_epoch and reached_iter are for logging purposes, to know how long the training went on before error happened, if it happens. If not, they will just be the same as last checkpoint.
+        # it saves BEST model not LAST model
     end
-    # save best model
-    epoch_=floor(Int, idx / max_iters)
-    it_ = mod(idx, max_iters)
-    serialize(
-        joinpath(model_dir, "models", "best_model_ep=$(pad_epoch(epoch_, epochs))_iter=$(pad_epoch(it_, max_iters)).jls"), 
-        (model = early_stop.best_model |> cpu, epoch = epoch_, iter = it_, idx = idx)
-    )
 
     return model, history
 end
