@@ -13,7 +13,7 @@ function (es::EarlyStopping)(loss::Real, model)
     if loss < es.best_loss
         es.best_loss = loss
         es.curr_patience = deepcopy(es.patience)
-        es.best_model = deepcopy(model)
+        es.best_model = deepcopy(model |> cpu) # to avoid GPU memory issues
     else
         es.curr_patience -= 1 
     end
