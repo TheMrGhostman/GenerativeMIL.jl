@@ -8,6 +8,7 @@ using StatsBase
 using Distributions
 using LinearAlgebra
 using Statistics
+using ProgressBars
 # Deep Learning & Gradients Packages
 using Flux
 using Zygote
@@ -59,7 +60,7 @@ include("utils.jl")
 export unpack_mill, check, get_device, mask, unmask, pad_epoch
 
 # Losses
-inlcude("losses/Losses.jl")
+include("losses/Losses.jl")
 
 # Model's Building building_blocks
 include("building_blocks/Building_Blocks.jl")
@@ -80,6 +81,8 @@ export train_model!, validation_check
 
 # Temporary evaluation function
 include("evaluation.jl")
+
+include("printing.jl")
 
 # TODO export functions
 
