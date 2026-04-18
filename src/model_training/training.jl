@@ -40,6 +40,7 @@ function train_model!(
     patience::Int = 10^4,
     max_train_time::Int=82800, 
     grad_skip::Union{Real, Bool}=false,
+    validation_verbose::Bool=false,
     kwargs...
 )
 
@@ -99,7 +100,7 @@ function train_model!(
                 if mod(it, valid_check_interval) == 0 
                     stop_training = validation_check(
                         model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, idx;
-                        tr_log=logs, verbose=verbose, epoch_info=(epoch, epochs), iter_info=(it, max_iters)
+                        tr_log=logs, verbose=validation_verbose, epoch_info=(epoch, epochs), iter_info=(it, max_iters)
                     )
                     if stop_training; break; end
                 end
@@ -112,7 +113,7 @@ function train_model!(
             if stop_training; break; end # propagation of early stopping criterion
             # 9) save checkpoint
 
-            if mod(epoch, checkpoint_interval_epochs) == 0
+            if mod(epoch, checkpoint_interval_epochs) == 0 || epoch == epochs
                 @info "Saving checkpoint after epoch $(epoch)"
                 serialize(
                     joinpath(model_dir, "models", "model_ep=$(lpad_number(epoch, epochs)).jls"), 
@@ -143,8 +144,8 @@ function train_model!(
         # reached_epoch and reached_iter are for logging purposes, to know how long the training went on before error happened, if it happens. If not, they will just be the same as last checkpoint.
         # it saves BEST model not LAST model
     end
-
-    return model, history
+    @info "training took $(time() - start_time) s " #TODO make me nicer
+    return (model=model, opt=opt, history=history)
 end
 
 function validation_check(

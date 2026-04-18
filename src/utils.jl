@@ -1,14 +1,6 @@
 # mask function
 lpad_number(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
 
-function mask(x::AbstractArray{<:Real}, mask::Nothing=nothing)
-    return x
-end
-
-function mask(x::AbstractArray{<:Real}, mask::AbstractArray{<:Real})
-    return x .* mask
-end
-
 function unmask(x, mask)
     output_dim = size(x, 1)
     x = reshape(x, (output_dim,:))
