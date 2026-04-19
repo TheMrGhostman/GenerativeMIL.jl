@@ -2,7 +2,7 @@
 # TODO do structure properly
 
 include("attention.jl")
-export MultiheadAttention, attention, slot_attention, _softmax
+export MultiheadAttention, attention, slot_attention, additive_masking, multiplicative_masking
 
 include("prior.jl")
 export sample_sphere, gumbel_softmax
