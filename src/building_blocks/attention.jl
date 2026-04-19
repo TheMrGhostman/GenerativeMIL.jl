@@ -195,8 +195,8 @@ function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractAr
     A = additive_masking(A, mask) # if mask not nothing A will be masked
     # softmax around dims=2 cause problem with CUDA
     A = _softmax(A, dims=2)  # softmax over m for each n; normalizes samples not features
-    W = A ./ Flux.sum(A .+ 1f-5, dims=1) # weighted mean; normalizes features for each sample
-    return batched_mul(V, W)
+    O = batched_mul(V, A)
+    O = O ./ Flux.sum(A .+ 1f-5, dims=1) # weighted mean; normalizes features for each sample
 end
 
 function _softmax(x::AbstractArray{T}; dims::Int=1) where T<: AbstractFloat
