@@ -1,6 +1,9 @@
 # middle step in organizing this repository
 # TODO do structure properly
 
+include("mlps.jl")
+export SplitLayer, create_mlp, create_gaussian_mlp
+
 include("attention.jl")
 export MultiheadAttention, attention, slot_attention, additive_masking, multiplicative_masking
 
@@ -12,9 +15,6 @@ include("transformer_blocks.jl")
 export MultiheadAttentionBlock, InducedSetAttentionBlock, InducedSetAttentionHalfBlock
 export VariationalBottleneck, AttentiveBottleneckLayer, AttentiveHalfBlock
 
-include("layers.jl")
-export SplitLayer
-
 include("made.jl")
 export MaskedDense, MaskedGaussian, MADE
 
@@ -25,6 +25,6 @@ include("pooling_layers.jl")
 export AbstractPooling
 export AttentionPooling, PMA, PoolEncoder
 
-#include("encoders_and_decoders.jl")
+include("show_methods.jl")
 
 
