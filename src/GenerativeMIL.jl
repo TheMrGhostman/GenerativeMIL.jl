@@ -57,7 +57,7 @@ export JSONLLogger, log!, close
 
 # Utils and helper functions
 include("utils.jl")
-export unpack_mill, check, get_device, mask, unmask, lpad_number
+export unpack_mill, check, get_device, unmask, lpad_number
 
 # Losses
 include("losses/Losses.jl")
