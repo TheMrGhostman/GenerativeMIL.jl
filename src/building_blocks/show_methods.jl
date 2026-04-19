@@ -136,7 +136,6 @@ AbstractTrees.printnode(io::IO, m::AttentiveBottleneckLayer) = print(io, "Attent
 
 
 # AttentiveHalfBlock ------------------------------------------------------------
-
 function Base.show(io::IO, ::MIME"text/plain", m::AttentiveHalfBlock)
     styled_io = IOContext(io, :color => true)
     trainables = collect(Flux.trainables(m))
@@ -156,3 +155,39 @@ end
 
 AbstractTrees.children(m::AttentiveHalfBlock) = (m.MAB1, m.VB)
 AbstractTrees.printnode(io::IO, m::AttentiveHalfBlock) = print(io, "AttentiveHalfBlock")
+
+
+# MultiheadAttention ------------------------------------------------------------
+
+function Base.show(io::IO, ::MIME"text/plain", m::MultiheadAttention{F}) where F
+    attention_name = m.attention === attention ? "standard" : 
+                     m.attention === slot_attention ? "slot" : 
+                     "attention (custom)"
+    styled_io = IOContext(io, :color => true)
+    
+    print(io, "MultiheadAttention{$(F)}\n")
+    print(io, "  Heads: $(m.heads), Attention: $attention_name\n\n")
+    
+    # Počítej parametry pro každou vrstvu
+    layers = [("WQ", m.WQ), ("WK", m.WK), ("WV", m.WV), ("WO", m.WO)]
+    total_params = 0
+    total_bytes = 0
+    num_arrays = 0
+    
+    for (name, layer) in layers
+        params = length(layer.weight) # no bias
+        bytes = params * sizeof(eltype(layer.weight))
+        total_params += params
+        total_bytes += bytes
+        num_arrays += 1
+        
+        print(io, "  $name: $(layer)")
+        Base.printstyled(styled_io, ", # $params parameters\n"; color=:light_black)
+    end
+    
+    Base.printstyled(styled_io, ")  # Total: $num_arrays arrays, $total_params parameters, $total_bytes bytes."; color=:light_black)
+end
+
+AbstractTrees.children(m::MultiheadAttention) = (("W_Query ", m.WQ), ("W_Key ", m.WK), ("W_Value ", m.WV), ("W_Output", m.WO), m.attention)
+AbstractTrees.printnode(io::IO, m::MultiheadAttention) = print(io, "MultiheadAttention - ($(m.heads) heads)")
+

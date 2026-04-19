@@ -1,3 +1,16 @@
+"""
+    MultiheadAttention{F}
+
+Multi-head attention module with learnable projections for queries, keys, values, and output.
+
+# Fields
+- `heads::Int`: number of attention heads.
+- `WQ`: query projection layer (no bias).
+- `WK`: key projection layer (no bias).
+- `WV`: value projection layer (no bias).
+- `WO`: output projection layer (no bias).
+- `attention::F`: attention function (standard or slot attention).
+"""
 struct MultiheadAttention{F}
     # Dense layers without bias !! or it will break masking
     heads::Int
@@ -12,6 +25,23 @@ Flux.@layer MultiheadAttention
 
 Flux.trainable(mh::MultiheadAttention) = (WQ = mh.WQ, WK = mh.WK, WV = mh.WV, WO = mh.WO)
 
+"""
+    MultiheadAttention(input_dim, hidden_dim, heads, attention_fn=attention)
+
+Construct a multi-head attention module with learnable projections.
+
+# Arguments
+- `input_dim::Integer`: input feature dimension for Q, K, V.
+- `hidden_dim::Integer`: projected dimension, must be divisible by `heads`.
+- `heads::Integer`: number of parallel attention heads (must be > 0).
+- `attention_fn::Function`: attention kernel function (standard or slot attention).
+
+# Returns
+- `MultiheadAttention`: initialized multi-head attention module.
+
+# Throws
+- `ArgumentError`: if `heads <= 0` or `hidden_dim` not divisible by `heads`.
+"""
 function MultiheadAttention(input_dim::Integer, hidden_dim::Integer, heads::Integer, attention_fn::F = attention) where {F}
 
     in_dim = Int(input_dim)
@@ -29,39 +59,21 @@ function MultiheadAttention(input_dim::Integer, hidden_dim::Integer, heads::Inte
     return MultiheadAttention{F}(nheads, WQ, WK, WV, WO, attention_fn)
 end
 
-function Base.show(io::IO, ::MIME"text/plain", m::MultiheadAttention{F}) where F
-    attention_name = m.attention === attention ? "standard" : 
-                     m.attention === slot_attention ? "slot" : 
-                     "attention (custom)"
-    styled_io = IOContext(io, :color => true)
-    
-    print(io, "MultiheadAttention{$(F)}\n")
-    print(io, "  Heads: $(m.heads), Attention: $attention_name\n\n")
-    
-    # Počítej parametry pro každou vrstvu
-    layers = [("WQ", m.WQ), ("WK", m.WK), ("WV", m.WV), ("WO", m.WO)]
-    total_params = 0
-    total_bytes = 0
-    num_arrays = 0
-    
-    for (name, layer) in layers
-        params = length(layer.weight) # no bias
-        bytes = params * sizeof(eltype(layer.weight))
-        total_params += params
-        total_bytes += bytes
-        num_arrays += 1
-        
-        print(io, "  $name: $(layer)")
-        Base.printstyled(styled_io, ", # $params parameters\n"; color=:light_black)
-    end
-    
-    Base.printstyled(styled_io, ")  # Total: $num_arrays arrays, $total_params parameters, $total_bytes bytes."; color=:light_black)
-end
 
-AbstractTrees.children(m::MultiheadAttention) = (("W_Query ", m.WQ), ("W_Key ", m.WK), ("W_Value ", m.WV), ("W_Output", m.WO), m.attention)
-AbstractTrees.printnode(io::IO, m::MultiheadAttention) = print(io, "MultiheadAttention - ($(m.heads) heads)")
+"""
+    (mh::MultiheadAttention)(Q, K, V, mask=nothing)
 
+Apply multi-head attention with queries `Q`, keys `K`, and values `V`.
 
+# Arguments
+- `Q::AbstractArray{<:AbstractFloat}`: query tensor `(d, m, bs)`.
+- `K::AbstractArray{<:AbstractFloat}`: key tensor `(d, n, bs)`.
+- `V::AbstractArray{<:AbstractFloat}`: value tensor `(vd, n, bs)`.
+- `mask::Mask`: optional attention mask applied additively.
+
+# Returns
+- `AbstractArray`: attended output tensor `(vd, m, bs)`.
+"""
 function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, mask::Mask=nothing) where {T<:AbstractFloat}
     Qp = mh.WQ(Q)
     Kp = mh.WK(K)
@@ -69,6 +81,20 @@ function (mh::MultiheadAttention)(Q::AbstractArray{T}, K::AbstractArray{T}, V::A
     return _forward_mha(mh, Qp, Kp, Vp, mask, nothing)
 end
 
+"""
+    (mh::MultiheadAttention)(X, Y, X_mask=nothing, Y_mask=nothing)
+
+Masked multi-head attention variant with separate masks for queries and keys/values.
+
+# Arguments
+- `X::AbstractArray{<:AbstractFloat}`: query input tensor `(d, m, bs)`.
+- `Y::AbstractArray{<:AbstractFloat}`: key/value input tensor `(d, n, bs)`.
+- `X_mask::Mask`: optional mask for query positions.
+- `Y_mask::Mask`: optional mask for key/value positions.
+
+# Returns
+- `AbstractArray`: masked attended output tensor `(d, m, bs)`.
+"""
 function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T}, X_mask::Mask=nothing, Y_mask::Mask=nothing) where {T<:AbstractFloat}
     Qp = mh.WQ(X)
     Kp = mh.WK(Y)
@@ -77,8 +103,13 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T}, X_ma
     return _forward_mha(mh, Qp, Kp, Vp, att_mask, X_mask)
 end
 
+# Shared internals
+"""
+    _forward_mha(mh, Q, K, V, att_mask, out_mask)
 
-# Shared internals 
+Internal forward pass for multi-head attention.
+Splits heads, applies attention, merges heads, applies output projection.
+"""
 function _forward_mha(mh::MultiheadAttention, Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, att_mask::MaskT{T}, out_mask::Mask) where T<:AbstractFloat
 
     Qh, Kh, Vh, dᵥ, m, bs, _ = _split_heads(Q, K, V, mh.heads)
@@ -88,6 +119,13 @@ function _forward_mha(mh::MultiheadAttention, Q::AbstractArray{T}, K::AbstractAr
     return mh.WO(values)
 end
 
+"""
+    _split_heads(Q, K, V, heads)
+
+Reshape and permute tensors to separate multi-head dimensions.
+Q: (d, m, bs) → (d_head, m, heads, bs)
+K, V: (d, n, bs) → (d_head, n, heads, bs)
+"""
 function _split_heads(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, heads::Int) where T<:AbstractFloat
     d, m, bs = size(Q)
     _, n, _ = size(K)
@@ -103,6 +141,12 @@ function _split_heads(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray
     return Qh, Kh, Vh, dᵥ, m, bs, n
 end
 
+"""
+    _merge_heads(values, dᵥ, m, bs)
+
+Reverse split_heads operation. Merges multi-head dimension back.
+(d_head, m, heads, bs) → (d, m, bs)
+"""
 function _merge_heads(values::AbstractArray, dᵥ::Int, m::Int, bs::Int)
     reshape(permutedims(values, (1, 3, 2, 4)), (dᵥ, m, bs))
 end
@@ -118,6 +162,13 @@ to_additive_mask(::Type{T}, mask::AbstractArray{Bool}) where T<:AbstractFloat = 
 to_additive_mask(::Type{T}, mask::AbstractArray{T}) where T<:AbstractFloat = mask
 to_additive_mask(::Type{T}, ::Nothing) where T<:AbstractFloat = nothing
 
+"""
+    _build_attention_mask(T, X_mask, Y_mask, m, n, bs)
+
+Combine query and key masks into attention weight mask.
+Reshapes and broadcasts to (n, m, 1, bs) for attention matrix (n, m, heads, bs).
+Converts bool masks to additive form (0 for valid, -inf for invalid).
+"""
 function _build_attention_mask(::Type{T}, X_mask::Mask, Y_mask::Mask, m::Int, n::Int, bs::Int) where {T<:AbstractFloat}
     if X_mask === nothing && Y_mask === nothing
         return nothing
@@ -134,6 +185,21 @@ function _build_attention_mask(::Type{T}, X_mask::Mask, Y_mask::Mask, m::Int, n:
     end
 end
 
+"""
+    attention(Q, K, V, mask=nothing)
+
+Standard dot-product attention kernel with scaled softmax.
+Supports both 3D (single head) and 4D (multi-head) tensor formats.
+
+# Arguments
+- `Q::AbstractArray`: query tensor.
+- `K::AbstractArray`: key tensor.
+- `V::AbstractArray`: value tensor.
+- `mask::Mask`: optional additive mask for attention weights.
+
+# Returns
+- `AbstractArray`: weighted sum of values scaled by attention weights.
+"""
 function attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}, mask::MaskT{T}=nothing) where T <: AbstractFloat
     # Attention for 3D tensors
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
@@ -152,6 +218,13 @@ function attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::AbstractAr
     _attention(Q, K, V, (2,1,3,4), mask)
 end
 
+"""
+    _attention(Q, K, V, pdims, mask)
+
+Dot-product attention kernel: softmax(Q K^T / sqrt(d_k)) V.
+Softmax is applied over keys (dims=1), normalizing each query's attention.
+Used by standard attention mechanism.
+"""
 function _attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, pdims::Tuple, mask::Union{AbstractArray{T}, Nothing}) where T <: AbstractFloat
     #  batched_mul ... matrix multiplication in first (last two) dimensions
     dₖ = size(K, 1)
@@ -164,6 +237,22 @@ function _attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T
 end
 
 
+"""
+    slot_attention(Q, K, V, mask=nothing)
+
+Slot attention kernel normalizing attention over set positions (not features).
+Used in Set Transformer and Slot Attention mechanisms.
+Supports both 3D (single head) and 4D (multi-head) tensor formats.
+
+# Arguments
+- `Q::AbstractArray`: query tensor (slots).
+- `K::AbstractArray`: key tensor (set elements).
+- `V::AbstractArray`: value tensor (set elements).
+- `mask::Mask`: optional additive mask for attention weights.
+
+# Returns
+- `AbstractArray`: weighted mean of values per slot, normalized over set.
+"""
 function slot_attention(Q::AbstractArray{T, 3}, K::AbstractArray{T, 3}, V::AbstractArray{T, 3}, mask::MaskT{T}=nothing) where T <: AbstractFloat
     # tensor shape -> (feature_dim, n - samples in set, BS)
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
@@ -184,6 +273,13 @@ function slot_attention(Q::AbstractArray{T, 4}, K::AbstractArray{T, 4}, V::Abstr
     return _slot_attention(Q, K, V, (2,1,3,4), mask)
 end
 
+"""
+    _slot_attention(Q, K, V, pdims, mask)
+
+Slot attention: softmax over slots (dims=2), then weighted mean per set element.
+Normalizes output by sum of attention weights for numerical stability.
+Used in Set Transformer and set-based architectures.
+"""
 function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T}, pdims::Tuple, mask::Union{AbstractArray{T}, Nothing}) where T <: AbstractFloat
     dₖ = size(K, 1)
     dₖ = inv(sqrt(T(dₖ)))
@@ -199,6 +295,12 @@ function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractAr
     O = O ./ Flux.sum(A .+ 1f-5, dims=1) # weighted mean; normalizes features for each sample
 end
 
+"""
+    _softmax(x; dims)
+
+Numerically stable softmax. CPU uses Flux.softmax; CUDA uses custom implementation
+to avoid NNLib issues with Julia 1.11.3.
+"""
 function _softmax(x::AbstractArray{T}; dims::Int=1) where T<: AbstractFloat
     Flux.softmax(x; dims=dims)
 end
