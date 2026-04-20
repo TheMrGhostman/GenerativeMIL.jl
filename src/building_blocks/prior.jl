@@ -45,45 +45,6 @@ Flux.@layer MixtureOfGaussians
 Flux.trainable(MoG::MixtureOfGaussians) = MoG.trainable ? (α = MoG.α, μ = MoG.μ, Σ = MoG.Σ) : ()
 
 """
-    (MoG::MixtureOfGaussians)(sample_size, batch_size)
-
-Sample from mixture of Gaussians.
-Selects component via gumbel-softmax, then samples from selected Gaussians.
-
-# Arguments
-- `sample_size::Int`: number of samples per component.
-- `batch_size::Int`: batch size.
-
-# Returns
-- `AbstractArray`: samples of shape (Ds, sample_size, batch_size).
-"""
-function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size::Int)
-    Ds, K, _ = size(MoG.μ)
-    #αₒₕ = repeat(αₒₕ, 1, sample_size, 1, 1) # (K) -> (1, 1, K, 1) -> (1, ss, K, 1),
-    #cat([reshape(αₒₕ, (1, 1, K, 1)) for i=1:sample_size]..., dims=2)
-    #αₒₕ = repeat(αₒₕ, 1, 1, 1, batch_size)  # (1, ss, K, 1) -> (1, ss, K, bs)
-    # cat([αₒₕ for i =1:batch_size]..., dims=4)
-    αₒₕ = gumbel_softmax(MoG.α, hard=true)
-    αₒₕ = reshape(αₒₕ, (1, 1, K, 1))
-    αₒₕ = repeat(αₒₕ, 1, sample_size, 1, batch_size)
-
-    μ = reshape(MoG.μ, (Ds, 1, K, 1)) # (Ds, K, 1) -> (Ds, 1, K, 1)
-    Σ = reshape(MoG.Σ, (Ds, 1, K, 1)) # (Ds, K, 1) -> (Ds, 1, K, 1)
-
-    # (1, ss, K, bs) * (Ds, 1, K, 1) -> (Ds, ss, K, bs) -> (Ds, ss, 1, bs) -> (Ds, ss, bs)
-    #μ = Flux.sum( μ .* αₒₕ  , dims=3)[:,:,1,:] 
-    #Σ = Flux.sum( Σ .* αₒₕ  , dims=3)[:,:,1,:] 
-    μ_mixed = reshape(Flux.sum(μ .* αₒₕ, dims=3), (:, sample_size, batch_size))
-    Σ_mixed = reshape(Flux.sum(Σ .* αₒₕ, dims=3), (:, sample_size, batch_size))
-
-    # samples from N(0,1) -> (Ds, ss, bs)
-    ϵ = MLUtils.randn_like(μ_mixed)
-    # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
-    z = μ_mixed .+ Flux.softplus.(Σ_mixed) .* ϵ
-    return z
-end
-
-"""
     sample_sphere(dim, n_points)
 
 Sample n_points uniformly from the unit sphere in dim dimensions.
@@ -95,6 +56,27 @@ function sample_sphere(dim::Int, n_points::Int)
     return x ./ norm_(x, 1)
 end
 
+"""
+    MixtureOfGaussians(dim, n_mixtures, trainable=true; downscale=10f0, ϵ=1e-3)
+
+Convenience constructor for a spherical Gaussian mixture prior.
+
+The constructor initializes:
+- `α` as uniform logits over `n_mixtures`,
+- `μ` by sampling points on the unit sphere in `dim` dimensions,
+- `Σ` so that the components are initially well separated,
+- `trainable` as requested.
+
+# Arguments
+- `dim::Int`: latent dimensionality.
+- `n_mixtures::Int`: number of mixture components.
+- `trainable::Bool=true`: whether the parameters should be returned by `Flux.trainable`.
+- `downscale`: scales the initial component variance.
+- `ϵ`: small positive constant added for numerical stability.
+
+# Returns
+- `MixtureOfGaussians`: initialized mixture prior with shapes `α::(n_mixtures,)`, `μ::(dim, n_mixtures, 1)`, `Σ::(dim, n_mixtures, 1)`.
+"""
 function MixtureOfGaussians(dim::Int, n_mixtures::Int, trainable::Bool=true; downscale=10f0, ϵ=1f-3) #Union{Int, Tuple}
     # initial α ∈ 1^{k} ~ (n_mixtures, bs)
     # random initial μ ∈ R^{d, k} ~ (dim, n_mixtures, bs)
@@ -116,6 +98,43 @@ function MixtureOfGaussians(dim::Int, n_mixtures::Int, trainable::Bool=true; dow
     ## alpha is kept uniform at start
     αs = ones(Float32, n_mixtures)
     return MixtureOfGaussians(αs, μs, Σs, trainable)
+end
+
+"""
+    (MoG::MixtureOfGaussians)(sample_size, batch_size)
+
+Sample from mixture of Gaussians.
+Selects component via gumbel-softmax, then samples from selected Gaussians.
+
+# Arguments
+- `sample_size::Int`: number of samples per component.
+- `batch_size::Int`: batch size.
+
+# Returns
+- `AbstractArray`: samples of shape (Ds, sample_size, batch_size).
+"""
+function (MoG::MixtureOfGaussians)(sample_size::Int, batch_size::Int)
+    Ds, K, _ = size(MoG.μ)
+    # Match the PyTorch path without hold_seed: draw one component per sample and batch element.
+    # We expand logits first so gumbel_softmax sees independent Gumbel noise at every (sample, batch) position.
+    α_logits = repeat(reshape(MoG.α, (K, 1, 1, 1)), 1, sample_size, 1, batch_size)
+    αₒₕ = gumbel_softmax(α_logits, hard=true)
+    αₒₕ = permutedims(αₒₕ, (3, 2, 1, 4))  # (K, ss, 1, bs) -> (1, ss, K, bs)
+
+    μ = reshape(MoG.μ, (Ds, 1, K, 1)) # (Ds, K, 1) -> (Ds, 1, K, 1)
+    Σ = reshape(MoG.Σ, (Ds, 1, K, 1)) # (Ds, K, 1) -> (Ds, 1, K, 1)
+
+    # (1, ss, K, bs) * (Ds, 1, K, 1) -> (Ds, ss, K, bs) -> (Ds, ss, 1, bs) -> (Ds, ss, bs)
+    #μ = Flux.sum( μ .* αₒₕ  , dims=3)[:,:,1,:] 
+    #Σ = Flux.sum( Σ .* αₒₕ  , dims=3)[:,:,1,:] 
+    μ_mixed = reshape(Flux.sum(μ .* αₒₕ, dims=3), (:, sample_size, batch_size))
+    Σ_mixed = reshape(Flux.sum(Σ .* αₒₕ, dims=3), (:, sample_size, batch_size))
+
+    # samples from N(0,1) -> (Ds, ss, bs)
+    ϵ = MLUtils.randn_like(μ_mixed)
+    # (Ds, ss, bs) + (Ds, ss, bs) * (Ds, ss, bs) -> (Ds, ss, bs)
+    z = μ_mixed .+ Flux.softplus.(Σ_mixed) .* ϵ
+    return z
 end
 
 """
@@ -174,28 +193,7 @@ struct ConstGaussPrior{T <: AbstractFloat, A3 <: AbstractArray{T, 3}}
     end
 end
 
-#ConstGaussPrior(μ::A3, Σ::A3) where {T <: AbstractFloat, A3 <: AbstractArray{T, 3}} =
-#    ConstGaussPrior{T, A3}(μ, Σ)
-
 Flux.@layer ConstGaussPrior
-
-Flux.trainable(cgp::ConstGaussPrior) = (μ = cgp.μ, Σ = cgp.Σ)
-
-"""
-    (cgp::ConstGaussPrior)(h)
-
-Return constant prior parameters, ignoring context h.
-Outputs are broadcast to match h's batch dimension.
-
-# Arguments
-- `h::AbstractArray{Real}`: context tensor (ignored), used for batch/device inference.
-
-# Returns
-- `Tuple{AbstractArray, AbstractArray}`: (μ, Σ_softplus) with same batch size as h.
-"""
-function (cgp::ConstGaussPrior)(::AbstractArray{T}) where T
-    return cgp.μ, Flux.softplus.(cgp.Σ)
-end
 
 """
     ConstGaussPrior(n_slots, dimension)
@@ -213,4 +211,20 @@ function ConstGaussPrior(n_slots::Int, dimension::Int)
     μ = randn(Float32, dimension, n_slots, 1)
     Σ = ones(Float32, dimension, n_slots, 1)
     return ConstGaussPrior(μ, Σ)
+end
+
+"""
+    (cgp::ConstGaussPrior)(h)
+
+Return constant prior parameters, ignoring context h.
+Outputs are broadcast to match h's batch dimension.
+
+# Arguments
+- `h::AbstractArray{Real}`: context tensor (ignored), used for batch/device inference.
+
+# Returns
+- `Tuple{AbstractArray, AbstractArray}`: (μ, Σ_softplus) with same batch size as h.
+"""
+function (cgp::ConstGaussPrior)(::AbstractArray{T}) where T
+    return cgp.μ, Flux.softplus.(cgp.Σ)
 end
