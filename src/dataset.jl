@@ -137,7 +137,7 @@ function load_and_scale_mnist(lowerb=0, upperb=1)
     return (x_train, train[:labels]), (x_test, test[:labels])
 end
 
-function transform_batch(x::AbstractArray{T,3}, kwargs...) where T<:Real
+function transform_batch(x::AbstractArray{T,3}, kwargs...) where T <: AbstractFloat
     return MLUtils.getobs(x), ones(Bool,size(x[1:1,:,:]))
 end
 
@@ -158,8 +158,8 @@ function transform_batch(x::AbstractArray{T,1}, max=false) where T<:AbstractArra
 end
 
 lastdim_indexing(x::AbstractArray{<:Any, 1}, index_array::AbstractArray{Bool}) = x[index_array]
-lastdim_indexing(x::AbstractArray{<:Real, 2}, index_array::AbstractArray{Bool}) = x[:,index_array]
-lastdim_indexing(x::AbstractArray{<:Real, 3}, index_array::AbstractArray{Bool}) = x[:,:,index_array]
+lastdim_indexing(x::AbstractArray{<:AbstractFloat, 2}, index_array::AbstractArray{Bool}) = x[:,index_array]
+lastdim_indexing(x::AbstractArray{<:AbstractFloat, 3}, index_array::AbstractArray{Bool}) = x[:,:,index_array]
 
 
 function train_test_split(X, y, ratio=0.2; seed=nothing)

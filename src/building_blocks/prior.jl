@@ -154,7 +154,7 @@ Reference: https://arxiv.org/pdf/1611.01144.pdf
 """
 function gumbel_softmax(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, ϵ=T(1.0e-10)) where T <: AbstractFloat
     g = -log.(-log.(MLUtils.rand_like(logits) .+ ϵ) .+ ϵ)
-    y = _softmax((logits .+ g) ./ τ)
+    y = Flux.softmax((logits .+ g) ./ τ)
 
     if !hard
         return y

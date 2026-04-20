@@ -232,7 +232,7 @@ function _attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractArray{T
     Kᵀ = permutedims(K, pdims) 
     A = batched_mul(Kᵀ, Q) .* dₖ    # (n, d, h, BS) ⊠ (d, m, h, BS) -> (n, m, h, BS) 
     A = additive_masking(A, mask)   # if mask not nothing A will be masked
-    A = _softmax(A, dims=1)         # softmax over n for each m, standard softmax;
+    A = Flux.softmax(A, dims=1)         # softmax over n for each m, standard softmax;
     return batched_mul(V, A)        # (vd, n, h, bs) ⊠ (n, m, h, BS) -> (vd, m, h, BS)
 end
 
@@ -290,24 +290,7 @@ function _slot_attention(Q::AbstractArray{T}, K::AbstractArray{T}, V::AbstractAr
     A = batched_mul(Kᵀ, Q) .* dₖ 
     A = additive_masking(A, mask) # if mask not nothing A will be masked
     # softmax around dims=2 cause problem with CUDA
-    A = _softmax(A, dims=2)  # softmax over m for each n; normalizes samples not features
+    A = Flux.softmax(A, dims=2)  # softmax over m for each n; normalizes samples not features
     O = batched_mul(V, A)
     O = O ./ Flux.sum(A .+ 1f-5, dims=1) # weighted mean; normalizes features for each sample
-end
-
-"""
-    _softmax(x; dims)
-
-Numerically stable softmax. CPU uses Flux.softmax; CUDA uses custom implementation
-to avoid NNLib issues with Julia 1.11.3.
-"""
-function _softmax(x::AbstractArray{T}; dims::Int=1) where T<: AbstractFloat
-    Flux.softmax(x; dims=dims)
-end
-
-function _softmax(x::CuArray{T}; dims::Int=1) where T <: AbstractFloat
-    # numerically stable softmax for CUDA; NNLib.softmax causes problems with CUDA with Julia 1.11.3
-    m = maximum(x; dims=dims)
-    ex = exp.(x .- m)
-    ex ./ sum(ex; dims=dims)
 end

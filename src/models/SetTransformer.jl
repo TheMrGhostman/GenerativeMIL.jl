@@ -20,7 +20,7 @@ function (m::SetClassifier)(x::AbstractArray{<:Real}, x_mask::Mask=nothing)
     x = (m.dropout !== nothing) ? m.dropout(x) : x
     x = m.class(x)
     x = dropdims(x, dims=2) # drom empty dimension 
-    return _softmax(x)
+    returnFlux.softmax(x)
 end
 
 function loss(m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, x_mask::MaskT{T}=nothing) where T<:Real

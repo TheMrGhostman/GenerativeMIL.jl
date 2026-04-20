@@ -7,14 +7,14 @@ end
 
 Flux.@layer VariationalAutoencoder
 
-function (vae::VariationalAutoencoder)(x::AbstractArray{T}) where T <: Real
+function (vae::VariationalAutoencoder)(x::AbstractArray{T}) where T <: AbstractFloat
     μ, Σ = vae.encoder(x)
     z = μ + Σ .* MLUtils.randn_like(μ)
     x̂ = vae.decoder(z)
     return x̂
 end
 
-function elbo_with_logging(vae::VariationalAutoencoder, x::AbstractArray{T}; β::Float32=1f0, logpdf::Function=Flux.Losses.mse) where T <: Real
+function elbo_with_logging(vae::VariationalAutoencoder, x::AbstractArray{T}; β::Float32=1f0, logpdf::Function=Flux.Losses.mse) where T <: AbstractFloat
     μ, Σ = vae.encoder(x)
     z = μ + Σ .* MLUtils.randn_like(μ)
     x̂ = vae.decoder(z)

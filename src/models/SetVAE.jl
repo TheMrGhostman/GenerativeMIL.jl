@@ -5,7 +5,7 @@ end
 
 Flux.@layer HierarchicalEncoder
 
-function (m::HierarchicalEncoder)(x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool})
+function (m::HierarchicalEncoder)(x::AbstractArray{T}, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
     x = m.expansion(x) .* x_mask
     h_encs = Zygote.Buffer(Array{Any}(undef, length(m.layers)))
     for (i, layer) in enumerate(m.layers)
@@ -26,7 +26,7 @@ end
 
 Flux.@layer HierarchicalDecoder
 
-function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::AbstractArray{Bool})
+function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
     x = multiplicative_masking(m.expansion(z), x_mask)
     zs = []
     klds = []
@@ -55,7 +55,7 @@ end
 
 Flux.@layer SetVAE
 
-function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0)
+function loss(vae::SetVAE, x::AbstractArray{T}, x_mask::AbstractArray{Bool}, β::Float32=1f0) where T <: AbstractFloat
     _, h_encs = vae.encoder(x, x_mask) # no need for x
     #h_encs = reverse(h_encs)
     _, sample_size, bs = size(x_mask)
@@ -65,7 +65,7 @@ function loss(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}
     return loss, klds
 end
 
-function loss_gpu(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool}, β::Float32=1f0) 
+function loss_gpu(vae::SetVAE, x::AbstractArray{T}, x_mask::AbstractArray{Bool}, β::Float32=1f0) where T <: AbstractFloat
     """
     - special case only for modelnet due to the same dimensions of samples
     - it can be used for all datasets but masked datasets will return inaccurate loss values
@@ -146,7 +146,7 @@ end
 ### Score functions and evaluation ###
 ######################################
 
-function reconstruct(vae::SetVAE, x::AbstractArray{<:Real}, x_mask::AbstractArray{Bool})
+function reconstruct(vae::SetVAE, x::AbstractArray{T}, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
     _, h_encs = vae.encoder(x, x_mask)
     _, sample_size, bs = size(x_mask)
     z = vae.prior(sample_size, bs)

@@ -100,7 +100,7 @@ struct SplitLayer{M, S}
     σ::S
 end
 
-Flux.@functor SplitLayer
+Flux.@layer SplitLayer
 
 """
     (m::SplitLayer)(x)

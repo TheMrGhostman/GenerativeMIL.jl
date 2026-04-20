@@ -11,7 +11,7 @@
 """
 
 
-struct ActNorm{T <: Real}
+struct ActNorm{T <: AbstractFloat}
     loc::AbstractArray{T}
     scale::AbstractArray{T}
     initialized::Union{Array{Bool, 1}, Bool} # [false]
@@ -19,7 +19,7 @@ end
 
 Flux.trainable(m::ActNorm) = (m.loc, m.scale)
 
-function (m::ActNorm)(x::AbstractArray{T, 3}, reverse::Bool=false) where T<:Real #TODO simplify
+function (m::ActNorm)(x::AbstractArray{T, 3}, reverse::Bool=false) where T<:AbstractFloat #TODO simplify
     dims = (size(m.loc, 2) == 1 ) ? size(x[1,:,:]) : size(x[:,1,:])
     device = get_device(m.loc)
     logdet = device.zeros(Float32, dims... )

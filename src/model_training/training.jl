@@ -163,7 +163,7 @@ function validation_check(
     epoch_info::Tuple{Int, Int}=(0, 0),
     iter_info::Tuple{Int, Int}=(0, 0),
     kwargs...
-) where T <: Real
+) where T <: AbstractFloat
     # 7a) validation loop or step
     vlogs, es_loss = valid_step(model, dataloader, loss_function; β=β, device=device, kwargs...)
     # 7b) logging of validation step
