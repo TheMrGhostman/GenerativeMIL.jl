@@ -99,7 +99,7 @@ function (mh::MultiheadAttention)(X::AbstractArray{T}, Y::AbstractArray{T}, X_ma
     Qp = mh.WQ(X)
     Kp = mh.WK(Y)
     Vp = mh.WV(Y)
-    att_mask = _build_attention_mask(T, X_mask, Y_mask, size(Qp, 2), size(Kp, 2), size(Qp, 3))
+    att_mask = _build_attention_mask(T, X_mask, Y_mask, size(Qp, 2), size(Kp, 2), size(Qp, 3); multihead=true)
     return _forward_mha(mh, Qp, Kp, Vp, att_mask, X_mask)
 end
 
@@ -163,24 +163,26 @@ to_additive_mask(::Type{T}, mask::AbstractArray{T}) where T<:AbstractFloat = mas
 to_additive_mask(::Type{T}, ::Nothing) where T<:AbstractFloat = nothing
 
 """
-    _build_attention_mask(T, X_mask, Y_mask, m, n, bs)
+    _build_attention_mask(T, X_mask, Y_mask, m, n, bs; multihead=true)
 
 Combine query and key masks into attention weight mask.
-Reshapes and broadcasts to (n, m, 1, bs) for attention matrix (n, m, heads, bs).
+Reshapes and broadcasts to either `(n, m, 1, bs)` (multihead) or `(n, m, bs)` (single-head/3D).
 Converts bool masks to additive form (0 for valid, -inf for invalid).
 """
-function _build_attention_mask(::Type{T}, X_mask::Mask, Y_mask::Mask, m::Int, n::Int, bs::Int) where {T<:AbstractFloat}
+function _build_attention_mask(::Type{T}, X_mask::Mask, Y_mask::Mask, m::Int, n::Int, bs::Int; multihead::Bool=true) where T<:AbstractFloat
     if X_mask === nothing && Y_mask === nothing
         return nothing
     end
+    xshape = multihead ? (1, m, 1, bs) : (1, m, bs)
+    yshape = multihead ? (n, 1, 1, bs) : (n, 1, bs)
 
     if X_mask === nothing
-        return to_additive_mask(T, reshape(Y_mask, (n, 1, 1, bs)))
+        return to_additive_mask(T, reshape(Y_mask, yshape))
     elseif Y_mask === nothing
-        return to_additive_mask(T, reshape(X_mask, (1, m, 1, bs)))
+        return to_additive_mask(T, reshape(X_mask, xshape))
     else
-        x_bool = reshape(X_mask, (1, m, 1, bs))
-        y_bool = reshape(Y_mask, (n, 1, 1, bs))
+        x_bool = reshape(X_mask, xshape)
+        y_bool = reshape(Y_mask, yshape)
         return to_additive_mask(T, x_bool .& y_bool)
     end
 end
