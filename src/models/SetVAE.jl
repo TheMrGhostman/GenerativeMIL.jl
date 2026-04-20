@@ -27,7 +27,7 @@ end
 Flux.@layer HierarchicalDecoder
 
 function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::AbstractArray{Bool})
-    x = m.expansion(z) .* x_mask
+    x = multiplicative_masking(m.expansion(z), x_mask)
     zs = []
     klds = []
     kld_loss = 0
@@ -39,7 +39,7 @@ function (m::HierarchicalDecoder)(z::AbstractArray{<:Real}, h_encs, x_mask::Abst
         end
         kld_loss += kld
     end
-    x = m.reduction(x) .* x_mask
+    x = multiplicative_masking(m.reduction(x), x_mask)
     return x, klds, zs, kld_loss
 end
 
