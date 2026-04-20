@@ -225,6 +225,10 @@ Outputs are broadcast to match h's batch dimension.
 # Returns
 - `Tuple{AbstractArray, AbstractArray}`: (μ, Σ_softplus) with same batch size as h.
 """
-function (cgp::ConstGaussPrior)(::AbstractArray{T}) where T
-    return cgp.μ, Flux.softplus.(cgp.Σ)
+function (cgp::ConstGaussPrior)(h::AbstractArray{T}) where T
+    bs = size(h, ndims(h))
+    if bs == 1
+        return cgp.μ, Flux.softplus.(cgp.Σ)
+    end
+    return repeat(cgp.μ, 1, 1, bs), repeat(Flux.softplus.(cgp.Σ), 1, 1, bs)
 end
