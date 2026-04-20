@@ -191,3 +191,71 @@ end
 AbstractTrees.children(m::MultiheadAttention) = (("W_Query ", m.WQ), ("W_Key ", m.WK), ("W_Value ", m.WV), ("W_Output", m.WO), m.attention)
 AbstractTrees.printnode(io::IO, m::MultiheadAttention) = print(io, "MultiheadAttention - ($(m.heads) heads)")
 
+
+# MixtureOfGaussians ------------------------------------------------------------
+
+function _show_param_counts(io::IO, names::NTuple{N, String}, arrays::NTuple{N, Any}) where N
+    counts = map(length, arrays)
+    total = sum(counts)
+    for i in eachindex(names)
+        print(io, "\n\t   - ", names[i], " = ", counts[i])
+    end
+    print(io, "\n\t   - total = ", total)
+end
+
+_mean_or_nan(x) = isempty(x) ? NaN : Flux.mean(x)
+
+
+function Base.show(io::IO, ::MIME"text/plain", m::MixtureOfGaussians)
+    styled_io = IOContext(io, :color => true)
+    Ds, K, _ = size(m.μ)
+    ptotal = length(m.α) + length(m.μ) + length(m.Σ)
+    ptrainable = m.trainable ? ptotal : 0
+    trainables = collect(Flux.trainables(m))
+    total_arrays = length(trainables)
+    total_params = sum(length, trainables)
+    total_bytes = sum(length(p) * sizeof(eltype(p)) for p in trainables)
+
+    print(io, "MixtureOfGaussians(")
+    print(io, "\n\t - shape: Ds=$(Ds), K=$(K)")
+    print(io, "\n\t - trainable: $(m.trainable)")
+    print(io, "\n\t - α: size=$(size(m.α)) | type=$(typeof(m.α)) | mean=$(_mean_or_nan(m.α))")
+    print(io, "\n\t - μ: size=$(size(m.μ)) | type=$(typeof(m.μ)) | mean=$(_mean_or_nan(m.μ))")
+    print(io, "\n\t - Σ: size=$(size(m.Σ)) | type=$(typeof(m.Σ)) | mean=$(_mean_or_nan(m.Σ))")
+    print(io, "\n\t - parameters:")
+        _show_param_counts(io, ("α", "μ", "Σ"), (m.α, m.μ, m.Σ))
+    print(io, "\n\t   - trainable = $(ptrainable)")
+
+    Base.printstyled(styled_io, "\n)  # Total: $total_arrays arrays, $total_params parameters, $total_bytes bytes."; color=:light_black)
+end
+
+#Base.show(io::IO, m::MixtureOfGaussians) = show(io, MIME"text/plain"(), m)
+
+AbstractTrees.children(m::MixtureOfGaussians) = (("α", m.α), ("μ", m.μ), ("Σ", m.Σ))
+AbstractTrees.printnode(io::IO, m::MixtureOfGaussians) = print(io, "MixtureOfGaussians - (mixtures ~ $(size(m.μ, 2)) | dim ~ $(size(m.μ, 1)) | trainable: $(m.trainable))")
+
+# ConstGaussPrior ---------------------------------------------------------------
+
+function Base.show(io::IO, ::MIME"text/plain", m::ConstGaussPrior)
+    styled_io = IOContext(io, :color => true)
+    dim, n_slots, _ = size(m.μ)
+    trainables = collect(Flux.trainables(m))
+    total_arrays = length(trainables)
+    total_params = sum(length, trainables)
+    total_bytes = sum(length(p) * sizeof(eltype(p)) for p in trainables)
+
+    print(io, "ConstGaussPrior(")
+    print(io, "\n\t - shape: dim=$(dim), n_slots=$(n_slots)")
+    print(io, "\n\t - μ: size=$(size(m.μ)) | type=$(typeof(m.μ)) | mean=$(_mean_or_nan(m.μ))")
+    print(io, "\n\t - Σ: size=$(size(m.Σ)) | type=$(typeof(m.Σ)) | mean=$(_mean_or_nan(m.Σ))")
+    print(io, "\n\t - parameters:")
+        _show_param_counts(io, ("μ", "Σ"), (m.μ, m.Σ))
+
+    Base.printstyled(styled_io, "\n)  # Total: $total_arrays arrays, $total_params parameters, $total_bytes bytes."; color=:light_black)
+end
+
+#Base.show(io::IO, m::ConstGaussPrior) = show(io, MIME"text/plain"(), m)
+
+
+AbstractTrees.children(m::ConstGaussPrior) = (("μ", m.μ), ("Σ", m.Σ))
+AbstractTrees.printnode(io::IO, m::ConstGaussPrior) = print(io, "ConstGaussPrior - (n_slots=$(size(m.μ,2)) | dim=$(size(m.μ,1)))")

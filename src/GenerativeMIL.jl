@@ -29,7 +29,7 @@ using Serialization
 using Mill
 # Visualization
 using AbstractTrees
-# Auxilary
+# Auxilary & priors
 using Distances
 # for chamfer distance
 using NearestNeighbors 
