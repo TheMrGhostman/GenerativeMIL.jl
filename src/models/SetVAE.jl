@@ -1,13 +1,13 @@
-struct HierarchicalEncoder
-    expansion::Flux.Dense
-    layers
+struct HierarchicalEncoder{E,L}
+    expansion::E
+    layers::L
 end
 
 Flux.@layer HierarchicalEncoder
 
 function (m::HierarchicalEncoder)(x::AbstractArray{T}, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
     x = m.expansion(x) .* x_mask
-    h_encs = Zygote.Buffer(Array{Any}(undef, length(m.layers)))
+    h_encs = Zygote.Buffer(Vector{typeof(x)}(undef, length(m.layers)))
     for (i, layer) in enumerate(m.layers)
         x, h_enc = layer(x, x_mask)
         h_encs[length(m.layers) - i + 1] = h_enc
@@ -18,19 +18,19 @@ end
 AbstractTrees.children(m::HierarchicalEncoder) = (("Expansion", m.expansion), m.layers)
 AbstractTrees.printnode(io::IO, m::HierarchicalEncoder) = print(io, "HierarchicalEncoder - ($(length(m.layers)) depth)")
 
-struct HierarchicalDecoder
-    expansion::Flux.Dense # expansion of prior samples
-    layers
-    reduction::Flux.Dense
+struct HierarchicalDecoder{E,L,R}
+    expansion::E # expansion of prior samples
+    layers::L
+    reduction::R
 end
 
 Flux.@layer HierarchicalDecoder
 
 function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
     x = multiplicative_masking(m.expansion(z), x_mask)
-    zs = []
-    klds = []
-    kld_loss = 0
+    zs = Any[]
+    klds = Any[]
+    kld_loss = zero(T)
     for (layer, h_enc) in zip(m.layers, h_encs)
         x, kld, _, z = layer(x, h_enc, x_mask) 
         Zygote.ignore() do
@@ -47,10 +47,10 @@ AbstractTrees.children(m::HierarchicalDecoder) = (("Expansion", m.expansion), m.
 AbstractTrees.printnode(io::IO, m::HierarchicalDecoder) = print(io, "HierarchicalDecoder - ($(length(m.layers)) depth)")
 
 
-struct SetVAE <: AbstractGenModel
-    encoder::HierarchicalEncoder
-    decoder::HierarchicalDecoder
-    prior::AbstractPriorDistribution
+struct SetVAE{E<:HierarchicalEncoder, D<:HierarchicalDecoder, P<:AbstractPriorDistribution} <: AbstractGenModel
+    encoder::E
+    decoder::D
+    prior::P
 end
 
 Flux.@layer SetVAE
@@ -84,15 +84,15 @@ end
 ###          Constructors          ###
 ######################################
 
-function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::Array{Int,1}, 
-    latent_dims::Array{Int,1}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, 
+function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::AbstractVector{<:Integer}, 
+    latent_dims::AbstractVector{<:Integer}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, 
     n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity) 
     #prior_type::AbstractPriorDistribution=MixtureOfGaussians)
 
     (length(induced_set_sizes) !=length(latent_dims)) ? error("induced sets and latent dims have different lengths") : nothing
 
     # ENCODER
-    enc_blocks = []
+    enc_blocks = Union{InducedSetAttentionBlock, InducedSetAttentionHalfBlock}[]
     for iss in induced_set_sizes[1:end-1]
         isab = InducedSetAttentionBlock(iss, hidden_dim, heads)
         push!(enc_blocks, isab)
@@ -109,7 +109,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     prior = MixtureOfGaussians(prior_dim, n_mixtures, true)
 
     #DECODER
-    dec_blocks = []
+    dec_blocks = Union{AttentiveHalfBlock, AttentiveBottleneckLayer}[]
     half_block = AttentiveHalfBlock(induced_set_sizes[end], hidden_dim, heads, latent_dims[end], zed_hidden_dim, zed_depth, activation)
     push!(dec_blocks, half_block)
 
