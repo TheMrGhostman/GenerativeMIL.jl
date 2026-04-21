@@ -26,7 +26,7 @@ end
 
 Flux.@layer HierarchicalDecoder
 
-function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
+function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
     x = multiplicative_masking(m.expansion(z), x_mask)
     zs = Any[]
     klds = Any[]
