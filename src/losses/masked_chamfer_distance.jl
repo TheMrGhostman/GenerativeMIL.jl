@@ -103,21 +103,21 @@ end
 
 
 """
-    chamfer_distance(x, y; x_mask)
+    chamfer_distance(x, y, x_mask)
 
 Masked Chamfer distance wrapper for the single-mask case.
 """
-function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}; x_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
+function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
     return masked_chamfer_distance(x, y, x_mask)
 end
 
 
 """
-    chamfer_distance(x, y; x_mask, y_mask)
+    chamfer_distance(x, y, x_mask, y_mask)
 
 Masked Chamfer distance wrapper for the two-mask case.
 """
-function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}; x_mask::AbstractArray{Bool,3}, y_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
+function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, y_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
     return masked_chamfer_distance(x, y, x_mask, y_mask)
 end
 

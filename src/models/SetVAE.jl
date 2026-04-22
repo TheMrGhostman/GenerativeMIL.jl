@@ -1,3 +1,5 @@
+const BetaArg = Union{AbstractFloat,AbstractVector{<:AbstractFloat}}
+
 struct HierarchicalEncoder{E,L}
     expansion::E
     layers::L
@@ -37,8 +39,6 @@ function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_
              klds[i] = kld
              zs[i] = z
         end
-        #klds[i] = kld
-        #zs[i] = z
         kld_loss += kld
     end
     x = multiplicative_masking(m.reduction(x), x_mask)
@@ -60,16 +60,11 @@ function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_
             klds[i] = kld
             zs[i] = z
         end
-        #klds[i] = kld
-        #zs[i] = z
         kld_loss += β_local[i] * kld
     end
     x = multiplicative_masking(m.reduction(x), x_mask)
     return x, klds, zs, kld_loss
 end
-
-AbstractTrees.children(m::HierarchicalDecoder) = (("Expansion", m.expansion), m.layers, ("Reduction", m.reduction))
-AbstractTrees.printnode(io::IO, m::HierarchicalDecoder) = print(io, "HierarchicalDecoder - ($(length(m.layers)) depth)")
 
 
 struct SetVAE{E<:HierarchicalEncoder, D<:HierarchicalDecoder, P<:AbstractPriorDistribution} <: AbstractGenModel
@@ -78,75 +73,99 @@ struct SetVAE{E<:HierarchicalEncoder, D<:HierarchicalDecoder, P<:AbstractPriorDi
     prior::P
 end
 
+AbstractTrees.children(m::HierarchicalDecoder) = (("Expansion", m.expansion), m.layers, ("Reduction", m.reduction))
+AbstractTrees.printnode(io::IO, m::HierarchicalDecoder) = print(io, "HierarchicalDecoder - ($(length(m.layers)) depth)")
+
 Flux.@layer SetVAE
 
-function (svae::SetVAE)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
+function _forward_encoder_and_prior(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
     _, h_encs = svae.encoder(x, x_mask) 
     _, sample_size, bs = size(x)
     z = svae.prior(sample_size, bs)
-    x̂, _, _, ℒₖₗ = svae.decoder(z, h_encs, x_mask)
-    return x̂, ℒₖₗ
+    return z, h_encs
 end
 
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3};  β::AbstractFloat=1f0, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
-    x̂, ℒₖₗ = model(x)
+function _normalize_β(β::AbstractFloat, n_layers::Int, ::Type{T}) where {T<:AbstractFloat}
+    return fill(T(β), n_layers)
+end
+
+function _normalize_β(β::AbstractVector{<:AbstractFloat}, n_layers::Int, ::Type{T}) where {T<:AbstractFloat}
+    length(β) == n_layers || throw(ArgumentError("Length of β ($(length(β))) must equal number of decoder layers ($n_layers)."))
+    return T.(collect(β))
+end
+
+function (svae::SetVAE)(x::AbstractArray{T}, x_mask::Mask=nothing; β::BetaArg=1f0) where T <: AbstractFloat
+    β_vec = _normalize_β(β, length(svae.decoder.layers), T)
+    z, h_encs = _forward_encoder_and_prior(svae, x, x_mask)
+    x̂, ℒₖₗₛ, zs, ℒₖₗ = svae.decoder(z, h_encs, x_mask, β_vec)
+    return x̂, ℒₖₗ, ℒₖₗₛ, zs
+end
+
+
+
+
+
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::BetaArg=1f0, logpdf::Function=chamfer_distance, kwargs... ) where T <: AbstractFloat
+    x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x; β=β)
     ℒ_rec = logpdf(x̂, x)
-    return ℒ_rec + β * ℒₖₗ , (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
-end 
-
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::AbstractVector{<:AbstractFloat}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
-    _, h_encs = model.encoder(x)
-    _, sample_size, bs = size(x)
-    z = model.prior(sample_size, bs)
-    x̂, _, _, ℒₖₗ = model.decoder(z, h_encs, nothing, β)
-    ℒ_rec = logpdf(x̂, x)
-    return ℒ_rec + ℒₖₗ, (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
-end
-
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; 
-    β::AbstractFloat=1f0, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
-
-    x̂, ℒₖₗ = model(x, x_mask)
-    ℒ_rec = logpdf(x̂, x; mask=x_mask)
-    return ℒ_rec + β * ℒₖₗ , (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
-end 
-
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; 
-    β::AbstractVector{<:AbstractFloat}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
-
-    _, h_encs = model.encoder(x, x_mask)
-    _, sample_size, bs = size(x)
-    z = model.prior(sample_size, bs)
-    x̂, _, _, ℒₖₗ = model.decoder(z, h_encs, x_mask, β)
-    ℒ_rec = logpdf(x̂, x; mask=x_mask)
-    return ℒ_rec + ℒₖₗ , (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
+    ℒ = ℒ_rec + ℒₖₗ
+    return ℒ, (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, ℒₖₗₛ = ℒₖₗₛ, β = β)
 end
 
 
-
-function loss(vae::SetVAE, x::AbstractArray{T}, x_mask::AbstractArray{Bool}, β::Float32=1f0) where T <: AbstractFloat
-    _, h_encs = vae.encoder(x, x_mask) # no need for x
-    #h_encs = reverse(h_encs)
-    _, sample_size, bs = size(x_mask)
-    z = vae.prior(sample_size, bs)
-    x̂, _, _, klds = vae.decoder(z, h_encs, x_mask)
-    loss = masked_chamfer_distance_cpu(x, x̂, x_mask, x_mask) +  β * klds
-    return loss, klds
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; β::BetaArg=1f0, logpdf::Function=masked_chamfer_distance, kwargs...) where T <: AbstractFloat
+    x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x, x_mask; β=β)
+    ℒ_rec = logpdf(x̂, x, x_mask, x_mask)
+    ℒ = ℒ_rec + ℒₖₗ
+    return ℒ, (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, ℒₖₗₛ = ℒₖₗₛ, β = β)
 end
 
-function loss_gpu(vae::SetVAE, x::AbstractArray{T}, x_mask::AbstractArray{Bool}, β::Float32=1f0) where T <: AbstractFloat
-    """
-    - special case only for modelnet due to the same dimensions of samples
-    - it can be used for all datasets but masked datasets will return inaccurate loss values
-    """
-    _, h_encs = vae.encoder(x, x_mask) # no need for x
-    #h_encs = reverse(h_encs)
-    _, sample_size, bs = size(x_mask)
-    z = vae.prior(sample_size, bs)
-    x̂, _, _, klds = vae.decoder(z, h_encs, x_mask)
-    loss = chamfer_distance(x, x̂) +  β * klds
-    return loss, klds
+
+function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
+    batch = device(batch)
+    (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
+        elbo_with_logging(m, x; logpdf=logpdf, β=β)
+    end
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, logs
 end
+
+function optim_step(model::SetVAE, batch::Tuple{AbstractArray{T,3}, AbstractArray{Bool,3}}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
+    X, X_mask = batch
+    X, X_mask = device(X), device(X_mask)
+    (loss, logs), (∇model, ∇x, ∇x_mask) = Zygote.withgradient(model, X, X_mask) do m, x, x_mask
+        elbo_with_logging(m, x, x_mask; logpdf=logpdf, β=β) #TODO check if x_mask will not cause issues with Zygote gradient tracking
+    end
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, logs
+end
+
+function valid_step(model::SetVAE, dataloader::DataLoader, logpdf::Function; β=1f0, device::Function=cpu, kwargs...)
+    ℒ, ℒ_rec, ℒₖₗ = 0f0, 0f0, 0f0
+    ℒₖₗₛ = zeros(Float32, length(model.decoder.layers))
+    for batch in dataloader
+        loss, logs = if batch isa Tuple && length(batch) == 2
+            x, x_mask = batch
+            x = device(x)
+            x_mask = device(x_mask)
+            elbo_with_logging(model, x, x_mask; logpdf=logpdf, β=β)
+        else
+            x = device(batch)
+            elbo_with_logging(model, x; logpdf=logpdf, β=β)
+        end
+
+        ℒ += loss
+        ℒ_rec += logs.ℒ_rec
+        ℒₖₗ += logs.ℒₖₗ
+        ℒₖₗₛ .+= Float32.(logs.ℒₖₗₛ)
+    end
+
+    n = length(dataloader)
+    logs = (; ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥₖₗ = ℒₖₗ/n, ℒᵥₖₗₛ = ℒₖₗₛ ./ n)
+    return logs, ℒ/n
+end
+
+
 
 
 ######################################
