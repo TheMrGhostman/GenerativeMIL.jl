@@ -1,11 +1,10 @@
 """
     _unmask(x, mask)
 
-Remove masked elements from a single batched point-cloud slice.
+Extract valid points from one set slice.
 
-The function reshapes the input to `(d, n)` and keeps only columns where
-`mask` is `true`. It returns a dense matrix so downstream Chamfer distance
-calls stay simple and type-stable.
+The input is reshaped to `(d, n)` and only the columns selected by `mask`
+are kept. This helper is primarily useful for debugging and CPU fallbacks.
 """
 function _unmask(x::AbstractArray{T}, mask::AbstractArray{Bool}) where {T<:AbstractFloat}
     x2 = reshape(x, size(x, 1), :)
@@ -14,53 +13,111 @@ end
 
 
 """
+    _masked_chamfer_distance_slice(x, y, x_mask, y_mask)
+
+Compute masked Chamfer distance for a single set slice.
+
+The function works on 2D slices `(d, n)` and boolean masks of length `n`.
+It computes the full pairwise squared distance matrix, masks invalid rows or
+columns with `Inf`, and returns the sum of the two directional averages.
+"""
+function _masked_chamfer_distance_slice(
+    x::AbstractArray{T,2},
+    y::AbstractArray{T,2},
+    x_mask::AbstractArray{Bool,1},
+    y_mask::AbstractArray{Bool,1},
+) where {T<:AbstractFloat}
+    size(x, 1) == size(y, 1) || throw(ArgumentError("masked_chamfer_distance: x and y must have the same feature dimension."))
+    size(x, 2) == length(x_mask) || throw(ArgumentError("masked_chamfer_distance: x and x_mask must have the same number of points."))
+    size(y, 2) == length(y_mask) || throw(ArgumentError("masked_chamfer_distance: y and y_mask must have the same number of points."))
+
+    x_valid = x[:, x_mask]
+    y_valid = y[:, y_mask]
+
+    if isempty(x_valid) || isempty(y_valid)
+        return zero(T)
+    end
+
+    dist = (reshape(sum(x_valid .^ 2, dims=1), :, 1) .+ reshape(sum(y_valid .^ 2, dims=1), 1, :)) .- (2f0 .* (transpose(x_valid) * y_valid))
+    return mean(minimum(dist, dims=2)) + mean(minimum(dist, dims=1))
+end
+
+
+"""
+    _masked_chamfer_distance_batched(x, y, x_mask, y_mask)
+
+Vectorized masked Chamfer distance for batched tensors.
+
+The implementation loops only over the batch dimension and keeps the heavy
+work inside each batch slice as matrix operations. This avoids the fragile
+3D broadcasting path while remaining fast on GPU.
+"""
+function _masked_chamfer_distance_batched(
+    x::AbstractArray{T,3},
+    y::AbstractArray{T,3},
+    x_mask::AbstractArray{Bool,3},
+    y_mask::AbstractArray{Bool,3},
+) where {T<:AbstractFloat}
+    size(x, 3) == size(y, 3) || throw(ArgumentError("masked_chamfer_distance: x and y must have the same batch size."))
+    size(x, 2) == size(x_mask, 2) || throw(ArgumentError("masked_chamfer_distance: x and x_mask must have the same number of points."))
+    size(y, 2) == size(y_mask, 2) || throw(ArgumentError("masked_chamfer_distance: y and y_mask must have the same number of points."))
+    size(x_mask, 3) == size(x, 3) || throw(ArgumentError("masked_chamfer_distance: x and x_mask must have the same batch size."))
+    size(y_mask, 3) == size(y, 3) || throw(ArgumentError("masked_chamfer_distance: y and y_mask must have the same batch size."))
+
+    total = zero(T)
+    @inbounds for b in 1:size(x, 3)
+        total += _masked_chamfer_distance_slice(
+            view(x, :, :, b),
+            view(y, :, :, b),
+            vec(view(x_mask, 1, :, b)),
+            vec(view(y_mask, 1, :, b)),
+        )
+    end
+    return total / T(size(x, 3))
+end
+
+
+"""
     masked_chamfer_distance(x, y, x_mask)
 
-Compute Chamfer distance for a batched set tensor `x` against an unmasked
-reference tensor `y`, using `x_mask` to remove padded elements from `x`.
+Chamfer distance for batched tensors where only `x` contains padding.
 
-This method averages the per-batch Chamfer distance over the batch dimension.
+The result is averaged over the batch dimension.
 """
 function masked_chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
-    nb = size(x, 3)
-    nb == size(y, 3) || throw(ArgumentError("masked_chamfer_distance: x and y must have the same batch size."))
-
-    loss = zero(T)
-    @inbounds for i in 1:nb
-        loss += chamfer_distance(_unmask(view(x, :, :, i), view(x_mask, :, :, i)), view(y, :, :, i))
-    end
-    return loss / T(nb)
+    y_mask = fill!(similar(x_mask), true)
+    return _masked_chamfer_distance_batched(x, y, x_mask, y_mask)
 end
 
 
 """
     masked_chamfer_distance(x, y, x_mask, y_mask)
 
-Compute Chamfer distance for two batched set tensors, removing padded elements
-from both inputs before evaluating the per-batch distance.
+Chamfer distance for batched tensors where both inputs may contain padding.
 
-This method averages the per-batch Chamfer distance over the batch dimension.
+The result is averaged over the batch dimension.
 """
 function masked_chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, y_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
-    nb = size(x, 3)
-    nb == size(y, 3) || throw(ArgumentError("masked_chamfer_distance: x and y must have the same batch size."))
-
-    loss = zero(T)
-    @inbounds for i in 1:nb
-        loss += chamfer_distance(
-            _unmask(view(x, :, :, i), view(x_mask, :, :, i)),
-            _unmask(view(y, :, :, i), view(y_mask, :, :, i))
-        )
-    end
-    return loss / T(nb)
+    return _masked_chamfer_distance_batched(x, y, x_mask, y_mask)
 end
 
 
-function chamfer_distance(x::AbstractArray{T, 3}, y::AbstractArray{T, 3}; x_mask::AbstractArray{Bool, 3}) where T <: AbstractFloat
+"""
+    chamfer_distance(x, y; x_mask)
+
+Masked Chamfer distance wrapper for the single-mask case.
+"""
+function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}; x_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
     return masked_chamfer_distance(x, y, x_mask)
 end
 
-function chamfer_distance(x::AbstractArray{T, 3}, y::AbstractArray{T, 3}; x_mask::AbstractArray{Bool, 3}, y_mask::AbstractArray{Bool, 3}) where T <: AbstractFloat
+
+"""
+    chamfer_distance(x, y; x_mask, y_mask)
+
+Masked Chamfer distance wrapper for the two-mask case.
+"""
+function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}; x_mask::AbstractArray{Bool,3}, y_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
     return masked_chamfer_distance(x, y, x_mask, y_mask)
 end
 
@@ -74,6 +131,7 @@ function masked_chamfer_distance_cpu(x::AbstractArray{T,3}, y::AbstractArray{T,3
     return masked_chamfer_distance(cpu(x), cpu(y), cpu(x_mask))
 end
 
+
 """
     masked_chamfer_distance_cpu(x, y, x_mask, y_mask)
 
@@ -85,4 +143,3 @@ inputs to CPU once, then evaluates `masked_chamfer_distance` there.
 function masked_chamfer_distance_cpu(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, y_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
     return masked_chamfer_distance(cpu(x), cpu(y), cpu(x_mask), cpu(y_mask))
 end
-
