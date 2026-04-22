@@ -45,9 +45,10 @@ function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_
     return x, klds, zs, kld_loss
 end
 
-function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask, β::AbstractVector{T}) where T <: AbstractFloat
+function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask, β::AbstractVector{<:AbstractFloat}) where T <: AbstractFloat
     n_layers = length(m.layers)
     length(β) == n_layers || throw(ArgumentError("Length of β ($(length(β))) must equal number of decoder layers ($n_layers)."))
+    β_local = T.(collect(β)) # trick to ensure correct type and allow indexing
 
     x = multiplicative_masking(m.expansion(z), x_mask)
     zs = Vector{typeof(z)}(undef, n_layers)
@@ -61,7 +62,7 @@ function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_
         end
         #klds[i] = kld
         #zs[i] = z
-        kld_loss += β[i] * kld
+        kld_loss += β_local[i] * kld
     end
     x = multiplicative_masking(m.reduction(x), x_mask)
     return x, klds, zs, kld_loss
@@ -93,7 +94,7 @@ function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3};  β::AbstractFl
     return ℒ_rec + β * ℒₖₗ , (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
 end 
 
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::AbstractVector{T}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::AbstractVector{<:AbstractFloat}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
     _, h_encs = model.encoder(x)
     _, sample_size, bs = size(x)
     z = model.prior(sample_size, bs)
@@ -111,7 +112,7 @@ function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::Abstrac
 end 
 
 function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; 
-    β::AbstractVector{T}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
+    β::AbstractVector{<:AbstractFloat}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
 
     _, h_encs = model.encoder(x, x_mask)
     _, sample_size, bs = size(x)
