@@ -1,14 +1,6 @@
 # mask function
 lpad_number(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
 
-function unmask(x, mask)
-    output_dim = size(x, 1)
-    x = reshape(x, (output_dim,:))
-    mask = reshape(mask, (1,:))
-    x_masked = ones(size(x)...) .* mask
-    x = reshape(x[x_masked .== 1], (output_dim,:))
-    return x
-end
 
 """
 function unmask(x, mask, output_dim=3)# FIXME to accept other output_dims
