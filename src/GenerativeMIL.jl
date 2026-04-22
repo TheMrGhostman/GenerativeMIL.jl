@@ -13,7 +13,7 @@ using ProgressBars
 using Flux
 using Zygote
 using CUDA
-using cuDNN # necessary to work for |> gpu
+#using cuDNN # necessary to work for |> gpu
 using MLUtils
 using Optimisers
 # Training related Packages

@@ -559,7 +559,7 @@ version = "1.1.1"
 deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "Optimisers", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "ValueHistories", "Zygote", "cuDNN"]
 path = "."
 uuid = "f587a668-c5e7-5861-9bd6-a75883e5a803"
-version = "1.1.1"
+version = "1.1.2"
 
 [[deps.HDF5]]
 deps = ["Compat", "HDF5_jll", "Libdl", "MPIPreferences", "Mmap", "Preferences", "Printf", "Random", "Requires", "UUIDs"]

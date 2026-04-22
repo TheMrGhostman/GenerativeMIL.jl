@@ -5,8 +5,8 @@ end
 
 Flux.@layer HierarchicalEncoder
 
-function (m::HierarchicalEncoder)(x::AbstractArray{T}, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
-    x = m.expansion(x) .* x_mask
+function (m::HierarchicalEncoder)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
+    x = isnothing(x_mask) ? m.expansion(x) : multiplicative_masking(m.expansion(x), x_mask)
     h_encs = Zygote.Buffer(Vector{typeof(x)}(undef, length(m.layers)))
     for (i, layer) in enumerate(m.layers)
         x, h_enc = layer(x, x_mask)
@@ -26,18 +26,42 @@ end
 
 Flux.@layer HierarchicalDecoder
 
-function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
+function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask=nothing) where T <: AbstractFloat
     x = multiplicative_masking(m.expansion(z), x_mask)
-    zs = Any[]
-    klds = Any[]
+    zs = Vector{typeof(z)}(undef, length(m.layers))
+    klds = Vector{T}(undef, length(m.layers))
     kld_loss = zero(T)
-    for (layer, h_enc) in zip(m.layers, h_encs)
+    for (i, (layer, h_enc)) in enumerate(zip(m.layers, h_encs))
         x, kld, _, z = layer(x, h_enc, x_mask) 
-        Zygote.ignore() do
-            push!(klds, kld)
-            push!(zs, z)
+        Zygote.@ignore begin
+             klds[i] = kld
+             zs[i] = z
         end
+        #klds[i] = kld
+        #zs[i] = z
         kld_loss += kld
+    end
+    x = multiplicative_masking(m.reduction(x), x_mask)
+    return x, klds, zs, kld_loss
+end
+
+function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask, β::AbstractVector{T}) where T <: AbstractFloat
+    n_layers = length(m.layers)
+    length(β) == n_layers || throw(ArgumentError("Length of β ($(length(β))) must equal number of decoder layers ($n_layers)."))
+
+    x = multiplicative_masking(m.expansion(z), x_mask)
+    zs = Vector{typeof(z)}(undef, n_layers)
+    klds = Vector{T}(undef, n_layers)
+    kld_loss = zero(T)
+    for (i, (layer, h_enc)) in enumerate(zip(m.layers, h_encs))
+        x, kld, _, z = layer(x, h_enc, x_mask)
+        Zygote.@ignore begin
+            klds[i] = kld
+            zs[i] = z
+        end
+        #klds[i] = kld
+        #zs[i] = z
+        kld_loss += β[i] * kld
     end
     x = multiplicative_masking(m.reduction(x), x_mask)
     return x, klds, zs, kld_loss
@@ -54,6 +78,50 @@ struct SetVAE{E<:HierarchicalEncoder, D<:HierarchicalDecoder, P<:AbstractPriorDi
 end
 
 Flux.@layer SetVAE
+
+function (svae::SetVAE)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
+    _, h_encs = svae.encoder(x, x_mask) 
+    _, sample_size, bs = size(x)
+    z = svae.prior(sample_size, bs)
+    x̂, _, _, ℒₖₗ = svae.decoder(z, h_encs, x_mask)
+    return x̂, ℒₖₗ
+end
+
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3};  β::AbstractFloat=1f0, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
+    x̂, ℒₖₗ = model(x)
+    ℒ_rec = logpdf(x̂, x)
+    return ℒ_rec + β * ℒₖₗ , (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
+end 
+
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::AbstractVector{T}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
+    _, h_encs = model.encoder(x)
+    _, sample_size, bs = size(x)
+    z = model.prior(sample_size, bs)
+    x̂, _, _, ℒₖₗ = model.decoder(z, h_encs, nothing, β)
+    ℒ_rec = logpdf(x̂, x)
+    return ℒ_rec + ℒₖₗ, (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
+end
+
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; 
+    β::AbstractFloat=1f0, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
+
+    x̂, ℒₖₗ = model(x, x_mask)
+    ℒ_rec = logpdf(x̂, x; mask=x_mask)
+    return ℒ_rec + β * ℒₖₗ , (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
+end 
+
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; 
+    β::AbstractVector{T}, logpdf::Function=chamfer_distance, kwargs...) where T <: AbstractFloat
+
+    _, h_encs = model.encoder(x, x_mask)
+    _, sample_size, bs = size(x)
+    z = model.prior(sample_size, bs)
+    x̂, _, _, ℒₖₗ = model.decoder(z, h_encs, x_mask, β)
+    ℒ_rec = logpdf(x̂, x; mask=x_mask)
+    return ℒ_rec + ℒₖₗ , (ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, β = β)
+end
+
+
 
 function loss(vae::SetVAE, x::AbstractArray{T}, x_mask::AbstractArray{Bool}, β::Float32=1f0) where T <: AbstractFloat
     _, h_encs = vae.encoder(x, x_mask) # no need for x
@@ -146,9 +214,9 @@ end
 ### Score functions and evaluation ###
 ######################################
 
-function reconstruct(vae::SetVAE, x::AbstractArray{T}, x_mask::AbstractArray{Bool}) where T <: AbstractFloat
+function reconstruct(vae::SetVAE, x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
     _, h_encs = vae.encoder(x, x_mask)
-    _, sample_size, bs = size(x_mask)
+    _, sample_size, bs = size(x)
     z = vae.prior(sample_size, bs)
     x̂, _, _, _ = vae.decoder(z, h_encs, x_mask)
     return x̂
