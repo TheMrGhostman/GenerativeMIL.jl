@@ -18,7 +18,7 @@ function train_model!(
     kwargs...
 )
 
-    train_model!(model, dataloaders, opt; loss_function=loss_function, β_scheduler=β_scheduler, lr_scheduler=lr_scheduler, valid_step=valid_step, use_gpu=use_gpu, model_dir=model_dir, verbose=verbose, valid_check_interval=valid_check_interval, checkpoint_interval_epochs=checkpoint_interval_epochs, epochs=epochs, early_stopping=early_stopping, patience=patience, max_train_time=max_train_time, grad_skip=grad_skip, kwargs...)
+    train_model!(model, dataloaders, optimiser; loss_function=loss_function, β_scheduler=β_scheduler, lr_scheduler=lr_scheduler, use_gpu=use_gpu, model_dir=model_dir, verbose=verbose, valid_check_interval=valid_check_interval, checkpoint_interval_epochs=checkpoint_interval_epochs, epochs=epochs, early_stopping=early_stopping, patience=patience, max_train_time=max_train_time, grad_skip=grad_skip, kwargs...)
 
 end
 
@@ -31,7 +31,7 @@ function train_model!(
     β_scheduler::Union{Function, Scheduler, Sequence, Nothing} = x->0f0,
     lr_scheduler::Union{Function, Scheduler, Sequence, Nothing} = nothing,
     use_gpu::Bool=true,
-    model_dir::String="", 
+    model_dir::String=pwd(), 
     verbose::Bool=false, 
     valid_check_interval::Int = 1000,
     checkpoint_interval_epochs::Int=10,
@@ -180,7 +180,7 @@ function validation_check(
     end
 
     # 7d) early stopping step & terminate training criterion
-    stop_training =  early_stopper(es_loss, model) ? begin @info "Stopped training after $(i) iterations."; true; end : false
+    stop_training =  early_stopper(es_loss, model) ? begin @info "Stopped training after $(idx) iterations."; true; end : false
 
     stop_training
 end

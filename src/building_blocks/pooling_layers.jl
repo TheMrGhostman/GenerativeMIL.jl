@@ -65,7 +65,7 @@ function (m::PoolEncoder)(x::AbstractArray{T}) where T <: AbstractFloat
 end
 
 function (m::PoolEncoder)(x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
-    h = mask(m.prepool(x), x_mask)
-    h = m.pooling(h, mask) # TODO fix
+    h = multiplicative_masking(m.prepool(x), x_mask)
+    h = m.pooling(h, x_mask)
     h = m.postpool(h)
 end

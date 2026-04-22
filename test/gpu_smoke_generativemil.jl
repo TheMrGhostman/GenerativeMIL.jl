@@ -256,4 +256,4 @@ function run_smoke()
     end
 end
 
-exit(run_smoke())
+run_smoke()
