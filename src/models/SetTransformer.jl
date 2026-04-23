@@ -6,30 +6,26 @@ struct SetClassifier
     dropout :: Union{Flux.Dropout, Nothing} # Dropout around pooling
 end
 
-Flux.@functor SetClassifier
+Flux.@layer SetClassifier
 
-function (m::SetClassifier)(x::AbstractArray{<:Real}, 
-    x_mask::Union{AbstractArray{Bool}, Nothing}=nothing; const_module::Module=Base)
+function (m::SetClassifier)(x::AbstractArray{<:Real}, x_mask::Mask=nothing)
 
     x = mask(m.reduction(x), x_mask)
     for layer in m.isabs
-        x, _ = layer(x, x_mask, const_module=const_module)
+        x, _ = layer(x, x_mask)
         # we don't need Induced Set
     end
     x = (m.dropout !== nothing) ? m.dropout(x) : x
-    _, x = m.pooling(x, x_mask, const_module=const_module)
+    _, x = m.pooling(x, x_mask)
     x = (m.dropout !== nothing) ? m.dropout(x) : x
     x = m.class(x)
     x = dropdims(x, dims=2) # drom empty dimension 
     return Flux.softmax(x)
 end
 
-function loss(
-    m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, 
-    x_mask::Union{AbstractArray{Bool}, AbstractArray{T}, Nothing}=nothing; 
-    const_module::Module=Base) T<:Real
+function loss(m::SetClassifier, x::AbstractArray{T}, y::AbstractArray{<:Real}, x_mask::MaskT{T}=nothing) where T<:Real
     
-    ŷ = m(x, x_mask, const_module=const_module);
+    ŷ = m(x, x_mask);
     loss_ = Flux.crossentropy(ŷ, y)
     return loss_
 end
@@ -62,8 +58,8 @@ function SetClassifier(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_
         Flux.Dense(hidden_dim, hidden_dim, activation),
         Flux.Dense(hidden_dim, hidden_dim, activation)
     )
-    ln1 = Flux.LayerNorm((hidden_dim,1))
-    ln2 = Flux.LayerNorm((hidden_dim,1))
+    ln1 = Flux.LayerNorm(hidden_dim)
+    ln2 = Flux.LayerNorm(hidden_dim)
 
     mab =  MultiheadAttentionBlock(ff, mh, ln1, ln2)
     I = randn(Float32, hidden_dim, 1) # keep batch size as free parameter

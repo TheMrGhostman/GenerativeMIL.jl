@@ -1,0 +1,24 @@
+# MODEL HYPERPARAMETERS
+hdim: 64
+depth: 4
+zdim: 3
+n_embed: 256
+ema: true
+activation: "swish"
+
+# LOSS FUNCTION
+beta: 0.25
+
+# OPTIMIZATOIN PARAMETERS
+batchsize: 64
+epochs: 10000
+lr: 0.001
+
+
+# EARLY STOPPING PARAMETERS
+check_every: 20
+patience: 1000
+
+# IDENTIFIER
+# uuid ??
+init_seed: 8

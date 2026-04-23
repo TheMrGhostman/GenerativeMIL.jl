@@ -41,7 +41,7 @@ function knn(x::AbstractArray{<:Real, 2}, k::Int)
     idx = mapslices(z->sortperm(z, rev=true)[1:k], pairwise_distance, dims=1)
 end
 
-function knn(x::AbstractArray{Real, 3}, k::Int)
+function knn(x::AbstractArray{<:Real, 3}, k::Int)
     # Input x ~ (Dim, N, BS)
     # x_t = permutedims(x, (2,1,3))
     # Input transposed to x_t ~ (N, Dim, BS)
@@ -55,19 +55,7 @@ function knn(x::AbstractArray{Real, 3}, k::Int)
 end
 
 
-function local_maxpool(x::AbstractArray{<:Real, 3},kx::AbstractArray{<:Real, 3})
-    # FIXME nefunguje backward pro batche vůbec
-    d,n,bs = size(x)
-    new_x = zeros(Float32, d,n,bs)
-    for i in 1:bs
-        #println(size(x[:,:,i]), size(kx[:,:,i]), size(x[:,kx[:,:,i],i]))
-        new_x[:,:,i] = maximum(x[:,kx[:,:,i],i],dims=2)
-    end
-    return new_x
-end
-
-
-function local_maxpool(x::AbstractArray{<:Real, 2},kx::AbstractArray{<:Real, 2})
+function local_maxpool(x::AbstractArray{<:Real, 2}, kx::AbstractArray{<:Real, 2})
     """ ORIGINAL IMPLEMENTATION
     def local_maxpool(x, idx):
         batch_size = x.size(0)
@@ -87,6 +75,11 @@ function local_maxpool(x::AbstractArray{<:Real, 2},kx::AbstractArray{<:Real, 2})
     d,bs = size(x)
     x = dropdims(maximum(x[:,kx],dims=2),dims=2)
     return x
+end
+
+function local_maxpool(x::AbstractArray{<:Real, 3}, kx::AbstractArray{<:Real, 3})
+    # works on CPU and GPU
+    cat(map(y->local_maxpool(y[1], y[2]), zip(eachslice(x, dims=3), eachslice(kx, dims=3)))..., dims=3)
 end
 
 function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Real, 2})
@@ -115,6 +108,10 @@ function local_covariance(pts::AbstractArray{<:Real, 2}, idx::AbstractArray{<:Re
     return cat(pts, x, dims=1)
 end
 
+function local_covariance(pts::AbstractArray{<:Real, 3}, idx::AbstractArray{<:Real, 3})
+    # works on CPU and GPU; slower on GPU but it works
+    cat(map(y->local_covariance(y[1], y[2]), zip(eachslice(pts, dims=3), eachslice(idx, dims=3)))..., dims=3)
+end
 
 struct FoldingNet_encoder
     mlp1
@@ -123,7 +120,7 @@ struct FoldingNet_encoder
     n_neighbors
 end
 
-Flux.@functor FoldingNet_encoder
+Flux.@layer FoldingNet_encoder
 
 function Base.show(io::IO, m::FoldingNet_encoder)
     print(io, "FoldingNet_encoder(")
@@ -133,16 +130,12 @@ function Base.show(io::IO, m::FoldingNet_encoder)
     print(io, "\n\t n_neighbors = $(m.n_neighbors) \n )")
 end
 
-function (enc::FoldingNet_encoder)(x::AbstractArray{<:Real, 2}; local_cov::Bool=false, skip::Bool=true)
+function (enc::FoldingNet_encoder)(x::AbstractArray{<:Real}, kidx::AbstractArray{<:Real}; local_cov::Bool=false, skip::Bool=true)
     # 1) local covariance
     # 2) mlp1
     # 3) graph max-pooling and mlp
     # 4) mlp2
     # 5) to latent space
-    kidx = nothing
-    Zygote.ignore() do
-        kidx = knn(x, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
-    end
     if local_cov
         x = local_covariance(x, kidx);
     end
@@ -158,6 +151,19 @@ function (enc::FoldingNet_encoder)(x::AbstractArray{<:Real, 2}; local_cov::Bool=
     h = maximum(h, dims=2)
     μ, Σ = enc.mlp2(h)
 end
+
+function (enc::FoldingNet_encoder)(x::AbstractArray{<:Real}; local_cov::Bool=false, skip::Bool=true)
+    kidx = nothing
+    Zygote.ignore() do
+        to_cuda = typeof(x) <: CUDA.CuArray
+        x_ = (to_cuda) ? x |> cpu : x
+        kidx = knn(x_, enc.n_neighbors); # i don't think i need to differentiate knn, it is just another input
+        kidx = (to_cuda) ? kidx |> gpu : kidx
+    end
+    enc(x, kidx; local_cov=local_cov, skip=skip)
+end
+
+
 
 
 function FoldingNet_encoder(
@@ -232,11 +238,25 @@ struct FoldingNet_decoder
     n_samples
 end
 
-Flux.@functor FoldingNet_decoder
+Flux.@layer FoldingNet_decoder
 
 function (dec::FoldingNet_decoder)(x::AbstractArray{<:Real, 2})
     x = repeat(x, 1, dec.n_samples)
     h = cat(x, dec.sphere, dims=1)
+    h = dec.folding_1(h)
+    h = cat(x, h, dims=1)
+    h = dec.folding_2(h)
+    return h
+end
+
+function (dec::FoldingNet_decoder)(x::AbstractArray{<:Real, 3})
+    device = get_device(dec)
+    bs = size(x)[end]
+    mainfold_ = device.ones(Float32, 1, dec.n_samples, bs)
+    x = mainfold_ .* x
+    sphere = mainfold_ .* Flux.unsqueeze(dec.sphere, 3)
+    h = cat(x, sphere, dims=1) 
+    #println("h", h|>size)
     h = dec.folding_1(h)
     h = cat(x, h, dims=1)
     h = dec.folding_2(h)
@@ -298,26 +318,56 @@ struct FoldingNet_VAE
     skip::Bool
 end
 
-Flux.@functor FoldingNet_VAE
+Flux.@layer FoldingNet_VAE
 
-function (model::FoldingNet_VAE)(x::AbstractArray{<:Real, 2})
+function (model::FoldingNet_VAE)(x::AbstractArray{<:Real, 3})
     μ, Σ = model.encoder(x; local_cov=model.local_cov, skip=model.skip);
-    z = μ .+ Σ .* randn(Float32, size(μ)...);
+    z = μ .+ Σ .* MLUtils.randn_like(μ); 
     return model.decoder(z)
 end
 
-function loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 2}; β=1f0)
+function loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 3}; β=1f0, γ=1f0)
     μₒ, Σₒ = model.encoder(x; local_cov=model.local_cov, skip=model.skip);
-    z = μₒ .+ Σₒ .* randn(Float32, size(μₒ)...);
+    z = μₒ .+ Σₒ .* MLUtils.randn_like(μₒ);
     x̂ = model.decoder(z)
     μᵣ, Σᵣ = model.encoder(x̂; local_cov=model.local_cov, skip=model.skip);
     # 𝓛ᵣₑ = reconstruction error
     # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
     # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x) 
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
     𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
     𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
-    𝓛 = 𝓛ᵣₑ .+ β .* (𝓛ₖₗₒᵣᵢ + 𝓛ₖₗᵣₑ) # default β = 1 
+    #println( 𝓛ᵣₑ, "|", 𝓛ₖₗₒᵣᵢ, "|" , 𝓛ₖₗᵣₑ)
+    𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗₒᵣᵢ .+ γ .* 𝓛ₖₗᵣₑ # default β = 1  & γ = 1 | β .* (𝓛ₖₗₒᵣᵢ + 𝓛ₖₗᵣₑ)
+end
+
+
+function simple_loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 3}; β=1f0, kwargs...)
+    μₒ, Σₒ = model.encoder(x; local_cov=model.local_cov, skip=model.skip);
+    z = μₒ .+ Σₒ .* MLUtils.randn_like(μₒ);#randn(Float32, size(μₒ)...)
+    x̂ = model.decoder(z)
+    #μᵣ, Σᵣ = model.encoder(x̂; local_cov=model.local_cov, skip=model.skip);
+    # 𝓛ᵣₑ = reconstruction error
+    # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
+    # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
+    𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
+    #𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
+    𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗₒᵣᵢ # default β = 1  & γ = 1
+end
+
+function simple_loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 3}, kidx::AbstractArray{<:Real}; β=1f0, kwargs...)
+    μₒ, Σₒ = model.encoder(x, kidx; local_cov=model.local_cov, skip=model.skip);
+    z = μₒ .+ Σₒ .* MLUtils.randn_like(μₒ);#randn(Float32, size(μₒ)...)
+    x̂ = model.decoder(z)
+    #μᵣ, Σᵣ = model.encoder(x̂; local_cov=model.local_cov, skip=model.skip);
+    # 𝓛ᵣₑ = reconstruction error
+    # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
+    # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
+    𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
+    #𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
+    𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗₒᵣᵢ # default β = 1  & γ = 1
 end
 
 function logging_loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 2}; β=1f0)
@@ -328,7 +378,7 @@ function logging_loss(model::FoldingNet_VAE, x::AbstractArray{<:Real, 2}; β=1f0
     # 𝓛ᵣₑ = reconstruction error
     # 𝓛ₖₗₒᵣᵢ = KL divergence for original input
     # 𝓛ₖₗᵣₑ = KL divergence for reconstructed input
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x) 
+    𝓛ᵣₑ = chamfer_distance(x̂, x) 
     𝓛ₖₗₒᵣᵢ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σₒ.^2) - μₒ.^2  - Σₒ.^2, dims=1)) 
     𝓛ₖₗᵣₑ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σᵣ.^2) - μᵣ.^2  - Σᵣ.^2, dims=1))
     𝓛 = 𝓛ᵣₑ .+ β .* (𝓛ₖₗₒᵣᵢ + 𝓛ₖₗᵣₑ) # default β = 1 
@@ -368,80 +418,3 @@ function foldingnet_constructor_from_named_tuple(
 
 end
 
-
-
-function test_enc_backward(x)
-    e = FoldingNet_encoder()
-    ps = Flux.params(e);
-    opt = ADAM(1f-3)
-
-    loss_, back = Flux.pullback(ps) do 
-        Flux.mean(e(x)[1]) 
-    end;
-    grad = back(1f0);
-    Flux.Optimise.update!(opt, ps, grad)
-end
-
-
-function test_backward_1(x)
-    model = FoldingNet_VAE(
-        FoldingNet_encoder(),
-        FoldingNet_decoder(),
-        false,
-        true
-    )
-    #loss(model, x)
-    #e = FoldingNet_encoder()
-    #d = FoldingNet_decoder()
-
-    #m, s = e(x);
-    #z = m .+ s .* randn(Float32, size(m)...);
-    #d(z);
-    ps = Flux.params(model);
-    opt = ADAM(1f-3)
-    loss_, back = Flux.pullback(ps) do 
-        loss(model, x)
-    end;
-    grad = back(1f0);
-    Flux.Optimise.update!(opt, ps, grad)
-end
-
-function test_backward_batch(x)
-    model = FoldingNet_VAE(
-        FoldingNet_encoder(),
-        FoldingNet_decoder(),
-        false,
-        true
-    )
-    #loss(model, x)
-    #e = FoldingNet_encoder()
-    #d = FoldingNet_decoder()
-
-    #m, s = e(x);
-    #z = m .+ s .* randn(Float32, size(m)...);
-    #d(z);
-    ps = Flux.params(model);
-    opt = ADAM(1f-3)
-    loss_f(x) = loss(model, x)
-
-    loss_, back = Flux.pullback(ps) do 
-        Flux.mean(loss_f.(x))#loss(model, x)
-    end;
-    grad = back(1f0);
-    Flux.Optimise.update!(opt, ps, grad)
-    println(loss_)
-end
-
-function test_backward_batch_train(x)
-    model = FoldingNet_VAE(
-        FoldingNet_encoder(),
-        FoldingNet_decoder(),
-        false,
-        true
-    )
-    ps = Flux.params(model);
-    opt = ADAM(1f-3)
-    loss_f(x) = loss(model, x)
-
-    Flux.train!(loss_f, ps, xx, opt)
-end

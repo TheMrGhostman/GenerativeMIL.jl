@@ -1,0 +1,55 @@
+# LEGEND
+
+# :levels -> depth of encoder/decoder
+# :hdim -> number of neurons in All dense layers except VariationalBottleneck layers
+# :heads -> number of heads in multihead attentions
+# :activation -> type activation functions in model (mainly for outout from MAB)
+# :prior -> prior distribution for decoder, "mog" mixture of gauss., todo: "gaussian" 
+# :prior_dim -> dimension of prior distributino ("noise") 
+# :prior_comp -> number of components of MOG
+# :vb_depth -> nlayers in VariationalBottleneck
+# :vb_hdim -> hidden dimension in VariationalBottleneck, for :vb_depth=1 is not used
+# :is_sizes -> induced sets sides in top-down encoder 
+# :zdims -> latent dimension at each level "skip-connection"
+# :beta -> final β scaling factor for KL divergence 
+# :beta_anealing -> number of anealing epochs!!, if 0 then NO anealing
+# :batchsize -> size of one training batch
+# :epochs -> n of iid iterations (depends on bs and datasize) proportional to n of :epochs 
+# :lr -> learning rate
+# :lr_decay -> "false" = no decay / "true" = linear (from :epochs//2) / "WarmupCosine"
+# :check_every -> how frequently (in iters) to check model on validation data
+# :patience -> number of non-decreasing checks before termination of training
+
+# MODEL HYPERPARAMETERS
+levels: 7
+hdim: 64
+heads: 4
+activation: "swish"
+prior: "mog"
+prior_dim: 32
+n_mixtures: 4
+vb_depth: 2
+vb_hdim: 64
+is_sizes: [32, 16, 8, 4, 2, 1, 1]
+zdims: [16, 16, 16, 16, 16, 16, 16]
+
+# LOSS FUNCTION
+beta: 1.0
+beta_anealing: 300.0
+
+# OPTIMIZATOIN PARAMETERS
+batchsize: 100
+epochs: 8000
+lr: 0.0005
+lr_decay: false
+#lr_decay_params
+
+
+# EARLY STOPPING PARAMETERS
+check_every: 20
+patience: 1000
+
+# IDENTIFIER
+# uuid ??
+init_seed: 2
+
