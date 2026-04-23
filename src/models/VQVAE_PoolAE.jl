@@ -41,7 +41,7 @@ struct VQ_PoolAE
     decoder
 end
 
-Flux.@functor VQ_PoolAE
+Flux.@layer VQ_PoolAE
 
 function (model::VQ_PoolAE)(x::AbstractArray{T,2}) where T<:Real
     d, n = size(x) 
@@ -72,7 +72,7 @@ function loss_gradient(model::VQ_PoolAE, x::AbstractArray{T,2}; β=0.25) where T
     zₛ = μ .+ Σ .* randn_like(μ, (size(μ, 1), n)) # ((dd, 1), (dd, 1)) -> (dd, n)
 
     x̂ = model.decoder(zₛ)  
-    𝓛 = Flux3D.chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ # in paper was mse(x, x̂) / data_variance
+    𝓛 = chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ # in paper was mse(x, x̂) / data_variance
 end
 
 
@@ -98,7 +98,7 @@ function loss_gradient(model::VQ_PoolAE, x::AbstractArray{<:Real,2}, y::Real; β
     zₛ = μ .+ Σ .* randn_like(μ, (size(μ, 1), n)) # ((dd, 1), (dd, 1)) -> (dd, n)
 
     x̂ = model.decoder(zₛ)  
-    𝓛 = Flux3D.chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ # in paper was mse(x, x̂) / data_variance
+    𝓛 = chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ # in paper was mse(x, x̂) / data_variance
 end
 
 
@@ -125,7 +125,7 @@ function loss_ema(model::VQ_PoolAE, x::AbstractArray{T,2}; β=0.25f0, γ::T=T(0.
 
     x̂ = model.decoder(zₛ)  
     
-    𝓛 = Flux3D.chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ 
+    𝓛 = chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ 
 end
 
 function vq_poolae_constructor_from_named_tuple(;idim=3, prpdim=64, prpdepth=3, popdim=128, popdepth=3, zdim=32, 
@@ -219,7 +219,7 @@ struct VectorGaussianQuantizerEMA <: Quantizer
     s::AbstractArray{<:Real, 2}
 end
 
-Flux.@functor VectorGaussianQuantizerEMA
+Flux.@layer VectorGaussianQuantizerEMA
 Flux.trainable(q::VectorGaussianQuantizerEMA) = ()#q.embedding_mean, q.embedding_std, 
 # no tranable of ema
 
@@ -269,7 +269,7 @@ struct VGQ_PoolAE
     decoder
 end
 
-Flux.@functor VGQ_PoolAE
+Flux.@layer VGQ_PoolAE
 
 function (model::VGQ_PoolAE)(x::AbstractArray{<:Real, 2})
     d, n = size(x) # (d, n)
@@ -299,7 +299,7 @@ function loss_ema(model::VGQ_PoolAE, x::AbstractArray{T,2}; β=0.25f0, γ::T=T(0
     quantized = μ_q .+ Σ_q .* randn_like(zₑ, (size(μ_q,1), n)) # ((zdim, 1) .+ (zdim, 1) .* (zdim, n)) -> (zdim, n)
     quantized = zₑ .+ stopgrad(quantized .- zₑ) # ((zdim, 1) .+ (zdim, n) .- (zdim, 1)) -> (zdim, n)
     x̂ = model.decoder(quantized)  # (zdim, n) -> (d, n)
-    𝓛 = Flux3D.chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ 
+    𝓛 = chamfer_distance(x, x̂) + 𝓛ₗₐₜₑₙₜ 
 end
 
 function vgq_poolae_constructor_from_named_tuple(

@@ -1,36 +1,69 @@
-struct PoolModel
+struct PoolModel<:AbstractGenModel
     encoder::PoolEncoder # building_blocks/pooling_layers
     generator #context generator
     decoder
 end
 
-Flux.@functor PoolModel
+Flux.@layer PoolModel
 
 AbstractTrees.children(m::PoolModel) = (("Encoder", m.encoder), ("Generator", m.generator), ("Decoder", m.decoder))
 AbstractTrees.printnode(io::IO, m::PoolModel) = print(io, "PoolModel")
 
-function (m::PoolModel)(x::AbstractArray{T, 3}; kld::Bool=false) where T <: Real
+function (m::PoolModel)(x::AbstractArray{Float32, 3}; kld::Bool=false)
     _, n, bs = size(x)
     h = m.encoder(x)
     μ, Σ = m.generator(h)
-    z = μ .+ Σ .* randn_like(x, (size(μ, 1), n, bs)) # MLUtils.randn_like
+    z = μ .+ Σ .* MLUtils.randn_like(h, (size(μ, 1), n, bs)) # MLUtils.randn_like
     x̂ = m.decoder(z)
     if kld
-        𝓛ₖₗ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σ.^2) - μ.^2  - Σ.^2, dims=1)) 
-        return x̂, 𝓛ₖₗ
+        ℒₖₗ = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σ.^2) .- μ.^2  .- Σ.^2, dims=1)) 
+        return x̂, ℒₖₗ
     else
         return x̂
     end 
 end
 
-loss(model::PoolModel, x::AbstractArray{<:Real, 3}) = Flux3D.chamfer_distance(model(x), x)
+loss(model::PoolModel, x::AbstractArray{Float32, 3}; loss_function::Function=chamfer_distance, kwargs...) = loss_function(model(x), x)
 
-function loss_with_kld(model::PoolModel, x::AbstractArray{<:Real, 3}; β::Float32=1f0, logging::Bool=false)
-    x̂, 𝓛ₖₗ = model(x, kld=true)
-    𝓛ᵣₑ = Flux3D.chamfer_distance(x̂, x)
-    𝓛 = 𝓛ᵣₑ .+ β .* 𝓛ₖₗ
-    return (logging) ? (𝓛, 𝓛ᵣₑ, 𝓛ₖₗ) : 𝓛
+function loss_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}; loss_function::Function=chamfer_distance, kwargs...)
+    x̂ = model(x)
+    ℒ_rec = loss_function(x̂, x)
+    return ℒ_rec, (;ℒ_rec = ℒ_rec)
 end
+
+
+function elbo_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}; β::Float32=1f0, logpdf::Function=chamfer_distance, kwargs...)
+    # not sure if ELBO makes sense for this model but we can still compute it if we want to
+    x̂, ℒ_kld = model(x; kld=true)
+    ℒ_rec = logpdf(x̂, x)
+    return ℒ_rec + β * ℒ_kld , (ℒ_rec = ℒ_rec, ℒ_kld = ℒ_kld, β = β)
+end
+
+function optim_step(model::PoolModel, batch::AbstractArray{Float32, 3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; kwargs...)
+    # 1) move data to device
+    batch = batch |> device
+    # 2) compute gradients
+    (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
+        loss_with_logging(m, x; loss_function=logpdf)
+    end
+    # 3) update weights
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, logs
+end
+
+function valid_step(model::PoolModel, dataloader::DataLoader, logpdf::Function; device::Function=cpu, kwargs...)
+    ℒ, ℒ_rec = 0, 0
+    for batch in dataloader
+        x = batch |> device
+        loss, logs = loss_with_logging(model, x; loss_function=logpdf)
+        ℒ += loss
+        ℒ_rec += logs.ℒ_rec
+    end
+    n = length(dataloader)
+    logs = (;ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n)
+    return logs, ℒ/n # total loss for early stopping
+end
+
 
 function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
     poolf="mean-max",  gen_sigma="scalar", activation::Function=swish)

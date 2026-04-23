@@ -12,8 +12,8 @@ struct VectorQuantizerEMA <: Quantizer
     m::AbstractArray{<:Real, 2}
 end
 
-Flux.@functor VectorQuantizer
-Flux.@functor VectorQuantizerEMA
+Flux.@layer VectorQuantizer
+Flux.@layer VectorQuantizerEMA
 Flux.trainable(q::Quantizer) = (q.embedding,)
 
 function (q::Quantizer)(z::AbstractArray{<:Real})
@@ -56,7 +56,7 @@ struct VQVAE
     decoder
 end
 
-Flux.@functor VQVAE
+Flux.@layer VQVAE
 #Flux.trainable(model::VQVAE) = (model.encoder, model.quantizer, model.decoder)
 
 function (model::VQVAE)(x::AbstractArray{T}) where T<:Real

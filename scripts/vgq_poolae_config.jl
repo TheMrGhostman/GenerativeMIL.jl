@@ -3,7 +3,6 @@ using DrWatson
 using ArgParse
 using StatsBase
 using Flux
-using Flux3D
 #generative MIL
 using GenerativeMIL
 using Zygote

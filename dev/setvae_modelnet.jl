@@ -1,21 +1,20 @@
-using DrWatson
-@quickactivate
+using Revise
+using DrWatson 
+#@quickactivate
 using ArgParse
 using StatsBase
-using BSON
 using Random
-using ValueHistories
-#generative MIL
+using Serialization
 using GenerativeMIL
 using Flux
 using Zygote
 using CUDA
-using GenerativeMIL: transform_batch, train_test_split, load_modelnet10
-using GenerativeMIL.Models: check, loss, loss_gpu, unpack_mill
-using MLDataPattern
-
-#using FileIO #for loading of data
-using HDF5
+#using GenerativeMIL: transform_batch, train_test_split, load_modelnet10
+#using GenerativeMIL.Models: check, loss, loss_gpu, unpack_mill
+#using MLDataPattern
+using MLUtils
+#using FileIO #for loading of data and logging
+using HDF5, JSON3
 
 
 s = ArgParseSettings()
@@ -37,69 +36,54 @@ s = ArgParseSettings()
 		arg_type = Int
 		help = "Time (in hours) reserved for training. After exceeding this time model training will be stopped regardless of epoch"
 end
-parsed_args = parse_args(ARGS, s)
-@unpack npoints, seed, random_seed, time_limit = parsed_args
+parsed_args = parse_args(ARGS, s; as_symbols=true)
+ap = NamedTuple{Tuple(keys(parsed_args))}(values(parsed_args))
+@info ap
 # npoints, seed, random_seed, time_limit = 512, 1, 1, 1
 
-if random_seed != 0
-	Random.seed!(random_seed)
-end
-
-
-function sample_params(seed=nothing)
-	(seed!==nothing) ? Random.seed!(seed) : nothing
-	# MNIST has idim = 3 -> fewer possibilities for sampling
-	# +/- 2304 (4608) possible combinations, some of sample supports are just placehodlers for future options (with gaussian prior)
-	default(x) = 16*ones(Int, size(x)...)
-	model_par_vec = (
-		3:5, 				# :levels -> number of "sampling skip-connections"
-		2 .^(4:6), 			# :hdim -> number of neurons in All dense layers except VariationalBottleneck layers
-		[4],				# :heads -> number of heads in multihead attentions
-		["relu", "swish"], 	# :activation -> type activation functions in model (mainly for outout from MAB)
-		["mog"],			# :prior -> prior distribution for decoder, mog has defaultly 5 mixtures, "gaussian" will be added later
-		2 .^(4:5), 			# :prior_dim -> dimension of prior distributino ("noise") 
-		[1], 				# :vb_depth -> nlayers in VariationalBottleneck
-		[0], 				# :vb_hdim -> hidden dimension in VariationalBottleneck, for :vb_depth=1 is not used
-	)
-	induced_set_pars = ( 
-		[2 .^(5:-1:1)], 	# :is_sizes -> induced sets sides in top-down encoder 				
-		[reverse, default] 	# :zdims	-> latent dimension at each level ("skip-connection")
-	)
-	training_par_vec = (
-		2 .^ (6:7), 		# :batchsize -> size of one training batch
-		10f0 .^(-4:-3),		# :lr -> learning rate
-		[false],			# :lr_decay -> boolean value if to use learning rate decay after half of epochs. 
-		10f0 .^ (-3:2:0),	# :beta -> final β scaling factor for KL divergence
-		[0f0, 2000f0], 		# :beta_anealing -> number of anealing epochs!!, if 0 then NO anealing
-		[8000], 			# :epochs -> n of iid iterations (depends on bs and datasize) proportional to n of :epochs 
-		1:Int(1e8), 		# :init_seed -> init seed for random samling for experiment instace 
-	);
-	model_argnames = ( :levels, :hdim, :heads, :activation, :prior, :prior_dim, :vb_depth, :vb_hdim)
-	training_argnames = ( :batchsize, :lr, :lr_decay, :beta, :beta_anealing, :epochs, :init_seed )
-
-	model_params = (;zip(model_argnames, map(x->sample(x, 1)[1], model_par_vec))...)
-	training_params = (;zip(training_argnames, map(x->sample(x, 1)[1], training_par_vec))...)
-	# IS params
-	levels = model_params[:levels];
-	is_sizes = sample(induced_set_pars[1])[1:levels]
-	zdims = sample(induced_set_pars[2])(is_sizes) 
-
-	#reset seed
-	(seed!==nothing) ? Random.seed!() : nothing
-	# return sampled parameters
-	return merge(model_params,(is_sizes=is_sizes, zdims=zdims), training_params)
-end
-
-sample_params_() = (random_seed != 0) ? sample_params(random_seed) : sample_params()
 
 #load data
-data = load_modelnet10(npoints, "all", validation=true, seed=seed)
+data = load_modelnet10(ap.npoints, "all", validation=true, seed=ap.seed);
 
-@info "Data loaded -- train -> $(X_train|>size) | test -> $(X_test|>size)"
+@info "Data loaded -- train -> $(data[1][1]|>size) | test -> $(data[2][1]|>size)"
+#define model 
+modelname = "setvae"
+
+parameters = (levels = 2, hdim = 32, heads = 4, activation = "relu", prior = "mog", prior_dim = 32, vb_depth = 2, vb_hdim = 32, 
+	is_sizes = [32, 16], zdims = [16, 16], batchsize = 16, lr = 0.0003f0, lr_decay = false, 
+	beta = 1f0, beta_anealing = 100f0, epochs = 8000, init_seed = rand(1:Int(1e8)))
+
+#parameters = (levels = 7, hdim = 64, heads = 4, activation = "swish", prior = "mog", prior_dim = 32, vb_depth = 2, vb_hdim = 64, 
+#	is_sizes = [32, 16, 8, 4, 2, 1, 1], zdims = [16, 16, 16, 16, 16, 16, 16], batchsize = 100, lr = 0.0003f0, lr_decay = false, 
+#	beta = 1f0, beta_anealing = 100f0, epochs = 8000, init_seed = rand(1:Int(1e8)))#vb_depth = 1, vb_hdim = 0, lr_decay=WarmupCosine
+
+@info "Parameters sampled: \n $(parameters)"
+#debugging
+model = GenerativeMIL.setvae_constructor_from_named_tuple( ;idim=size(data[1][1],1), parameters...)
+#info = fit!(model, data, loss; max_train_time=Int((time_limit-0.5)*3600), patience=200, check_interval=20, hmil_data=false, parameters...) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function fit(data, parameters; time_limit=365*24) #time_limit = one year
 	# construct model - constructor should only accept kwargs
-	model = GenerativeMIL.Models.setvae_constructor_from_named_tuple( ;idim=size(data[1][1],1), parameters...)
+	model = GenerativeMIL.setvae_constructor_from_named_tuple( ;idim=size(data[1][1],1), parameters...)
 
 	# fit train data
 	# max. train time: 24 hours, over 10 CPU cores -> 2.4 hours of training for each model
@@ -122,7 +106,7 @@ function fit(data, parameters; time_limit=365*24) #time_limit = one year
 		model = info.model,
 		nan = info.nan
 		)
-
+	
 	# now return the info to be saved and an array of tuples (anomaly score function, hyperparatemers)
 	return training_info, [
 		(x -> GenerativeMIL.Models.transform_and_reconstruct(info.model, x), 
@@ -132,18 +116,7 @@ function fit(data, parameters; time_limit=365*24) #time_limit = one year
 end
 
 
-#define model 
-modelname = "setvae"
-parameters = sample_params_()
 
-parameters = (levels = 7, hdim = 64, heads = 4, activation = "swish", prior = "mog", prior_dim = 32, vb_depth = 2, vb_hdim = 64, 
-	is_sizes = [32, 16, 8, 4, 2, 1, 1], zdims = [16, 16, 16, 16, 16, 16, 16], batchsize = 100, lr = 0.0003f0, lr_decay = false, 
-	beta = 1f0, beta_anealing = 100f0, epochs = 8000, init_seed = rand(1:Int(1e8)))#vb_depth = 1, vb_hdim = 0, lr_decay=WarmupCosine
-
-@info "Parameters sampled: \n $(parameters)"
-#debugging
-#model = GenerativeMIL.Models.setvae_constructor_from_named_tuple( ;idim=size(data[1][1],1), parameters...);
-#info = fit!(model, data, loss; max_train_time=Int((time_limit-0.5)*3600), patience=200, check_interval=20, hmil_data=false, parameters...) 
 
 #training of model
 training_info, results = fit(data, parameters, time_limit=time_limit)

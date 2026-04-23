@@ -6,9 +6,9 @@ struct AttentionPooling <: AbstractPooling
     ff::Union{Flux.Chain, Flux.Dense}
 end
 
-Flux.@functor AttentionPooling
+Flux.@layer AttentionPooling
 
-function (m::AbstractPooling)(x::AbstractArray{<:Real, 3}; squeeze::Bool=false) # TODO add masked version
+function (m::AbstractPooling)(x::AbstractArray{T, 3}; squeeze::Bool=false) where T <: AbstractFloat# TODO add masked version
     # equivalent to single head attention with trainable query
     # x ~ (d, n, BS)
     # for classification purposes -> ff output_dim (d_ff) == 1 for pooling
@@ -28,9 +28,9 @@ struct PMA <: AbstractPooling
     layer::InducedSetAttentionHalfBlock # ISAHB is generalized PMA
 end
 
-Flux.@functor PMA
+Flux.@layer PMA
 
-function (m::PMA)(x::AbstractArray{<:Real, 3}, x_mask::Mask=nothing; squeeze::Bool=false) 
+function (m::PMA)(x::AbstractArray{T, 3}, x_mask::Mask=nothing; squeeze::Bool=false) where T <: AbstractFloat
     d, n, bs = size(x)
     _, h = m.layer(x, x_mask)
     h = (size(h, 2) == 1 && squeeze) ? dropdims(h, dims=2) : h 
@@ -45,12 +45,12 @@ masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=dims) #FIXME set maske
 
 # placeholder structure for pooling encoder 
 struct PoolEncoder
-    prepool
+    prepool::Union{Chain, Dense}
     pooling::Union{AbstractPooling, Function}
-    postpool
+    postpool::Union{Chain, Dense}
 end
 
-Flux.@functor PoolEncoder
+Flux.@layer PoolEncoder
 
 AbstractTrees.children(m::PoolEncoder) = (("Pre-Pool", m.prepool), ("Pooling", m.pooling), ("Post-Pool", m.postpool))
 AbstractTrees.children((name, m)::Tuple{String, PoolEncoder}) = (("Pre-Pool", m.prepool), ("Pooling", m.pooling), ("Post-Pool", m.postpool))
@@ -58,13 +58,13 @@ AbstractTrees.children((name, m)::Tuple{String, PoolEncoder}) = (("Pre-Pool", m.
 AbstractTrees.printnode(io::IO, m::PoolEncoder) = print(io, "PoolEncoder")
 AbstractTrees.printnode(io::IO, (name, m)::Tuple{String, PoolEncoder}) = print(io, "$(name) -- PoolEncoder")
 
-function (m::PoolEncoder)(x::AbstractArray{<:Real})
+function (m::PoolEncoder)(x::AbstractArray{T}) where T <: AbstractFloat
     h = m.prepool(x)
     h = m.pooling(h)
     h = m.postpool(h)
 end
 
-function (m::PoolEncoder)(x::AbstractArray{<:Real}, x_mask::Mask)
+function (m::PoolEncoder)(x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
     h = mask(m.prepool(x), x_mask)
     h = m.pooling(h, mask) # TODO fix
     h = m.postpool(h)

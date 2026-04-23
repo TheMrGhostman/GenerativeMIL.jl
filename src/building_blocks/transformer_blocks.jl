@@ -12,361 +12,604 @@
 
 """
 
-struct MultiheadAttentionBlock
-    FF::Union{Flux.Dense, Flux.Chain}
-    Multihead::MultiheadAttention
-    LN1::Flux.LayerNorm
-    LN2::Flux.LayerNorm
+# MultiheadAttention Block ----------------------------------------------------------------------------------------------------------
+
+"""
+    MultiheadAttentionBlock{FFT, MHT, L1, L2}
+
+Residual multi-head attention block with feed-forward network and two layer norms.
+
+# Fields
+- `FF`: feed-forward subnetwork.
+- `Multihead`: multi-head attention module.
+- `LN1`: first layer norm (post-attention residual).
+- `LN2`: second layer norm (post-FF residual).
+"""
+struct MultiheadAttentionBlock{FFT, MHT<:MultiheadAttention, L1<:Flux.LayerNorm, L2<:Flux.LayerNorm}
+    FF::FFT
+    Multihead::MHT
+    LN1::L1
+    LN2::L2
 end
 
-Flux.@functor MultiheadAttentionBlock
+Flux.@layer MultiheadAttentionBlock
 
-function MultiheadAttentionBlock(hidden_dim::Int, heads::Int, activation::Function=relu)
+"""
+    MultiheadAttentionBlock(hidden_dim, heads, activation=relu; attention_fn=slot_attention)
+
+Create a `MultiheadAttentionBlock` with hidden size `hidden_dim` and `heads` attention heads.
+The feed-forward branch uses two dense layers with optional `activation` in the first layer.
+
+# Arguments
+- `hidden_dim::Int`: hidden feature dimension of input/output.
+- `heads::Int`: number of attention heads.
+- `activation`: activation function in the first FF layer.
+- `attention_fn`: attention kernel used by `MultiheadAttention`.
+
+# Returns
+- `MultiheadAttentionBlock`: initialized attention block module.
+"""
+function MultiheadAttentionBlock(hidden_dim::Int, heads::Int, activation=relu; attention_fn=slot_attention)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
-    mh = MultiheadAttention(hidden_dim, hidden_dim, heads, slot_attention)
+    mh = MultiheadAttention(hidden_dim, hidden_dim, heads, attention_fn)
     ff = Flux.Chain(
         Flux.Dense(hidden_dim, hidden_dim, activation),
         Flux.Dense(hidden_dim, hidden_dim)
     )
-    ln1 = Flux.LayerNorm((hidden_dim,1))
-    ln2 = Flux.LayerNorm((hidden_dim,1))
+    ln1 = Flux.LayerNorm(hidden_dim)
+    ln2 = Flux.LayerNorm(hidden_dim)
     return MultiheadAttentionBlock(ff, mh, ln1, ln2)
 end
 
-function Base.show(io::IO, m::MultiheadAttentionBlock)
-    print(io, "MultiheadAttentionBlock(")
-    print(io, "\n\t - Mulithead = $(m.Multihead) \n\t - FF = $(m.FF) \n\t - LN1 = $(m.LN1) \n\t - LN2 = $(m.LN2) \n ) ")
-end
 
-AbstractTrees.children(m::MultiheadAttentionBlock) = (m.Multihead, ("FeedForward", m.FF), ("LayerNorm 1", m.LN1), ("LayerNorm 2", m.LN2))
-AbstractTrees.printnode(io::IO, m::MultiheadAttentionBlock) = print(io, "MultiheadAttentionBlock")
+"""
+    (mab::MultiheadAttentionBlock)(X)
 
-function (mab::MultiheadAttentionBlock)(V::AbstractArray{T}) where T <: Real
+Apply self-attention to input `X` and return transformed features with residual and layer norm.
+
+# Arguments
+- `X::AbstractArray{<:AbstractFloat}`: input tensor of shape `(d, n, bs)`.
+
+# Returns
+- `AbstractArray`: transformed tensor with the same shape as `X`.
+"""
+function (mab::MultiheadAttentionBlock)(X::AbstractArray{T}) where T <: AbstractFloat
     # Self Attention
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
-    a = mab.LN1(V + mab.Multihead(V, V, V)) # (d, n, bs) .+ (d, n, bs)
+    a = mab.LN1(X + mab.Multihead(X, X, X)) # (d, n, bs) .+ (d, n, bs)
     return mab.LN2(a + mab.FF(a)) 
 end
 
-function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}) where T <: Real
+"""
+    (mab::MultiheadAttentionBlock)(Q, V)
+
+Apply cross-attention where `Q` are queries and `V` are keys/values.
+
+# Arguments
+- `Q::AbstractArray{<:AbstractFloat}`: query tensor `(d, m, bs)`.
+- `V::AbstractArray{<:AbstractFloat}`: key/value tensor `(d, n, bs)`.
+
+# Returns
+- `AbstractArray`: transformed query tensor with shape `(d, m, bs)`.
+"""
+function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}) where T <: AbstractFloat
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     a = mab.LN1(Q + mab.Multihead(Q, V, V)) # (d, m, bs) .+ (d, m, bs)
     return mab.LN2(a + mab.FF(a)) 
 end
 
-function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, 
-    Q_mask::Mask=nothing, V_mask::Mask=nothing) where T <: Real
+"""
+    (mab::MultiheadAttentionBlock)(Q, V, Q_mask=nothing, V_mask=nothing)
+
+Masked cross-attention variant. The output is additionally masked by `Q_mask`.
+
+# Arguments
+- `Q::AbstractArray{<:AbstractFloat}`: query tensor `(d, m, bs)`.
+- `V::AbstractArray{<:AbstractFloat}`: key/value tensor `(d, n, bs)`.
+- `Q_mask::Mask`: optional query mask broadcastable to query positions.
+- `V_mask::Mask`: optional key/value mask broadcastable to key positions.
+
+# Returns
+- `AbstractArray`: masked transformed query tensor with shape `(d, m, bs)`.
+"""
+function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, Q_mask::Mask=nothing, V_mask::Mask=nothing) where T <: AbstractFloat
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     # Q_mask ∈ ℝ^{m} ~ (1, m, bs) 
     # V_mask ∈ ℝ^{n} ~ (1, n, bs) 
-    Q = mask(Q, Q_mask)
-    V = mask(V, V_mask)
     a = mab.LN1(Q + mab.Multihead(Q, V, Q_mask, V_mask)) # (d, m, bs) + (d, m, bs) 
     a = mab.LN2(a + mab.FF(a)) 
-    return mask(a, Q_mask)
+    return multiplicative_masking(a, Q_mask)
 end
 
 
-struct InducedSetAttentionBlock
-    MAB1::MultiheadAttentionBlock
-    MAB2::MultiheadAttentionBlock
-    I::AbstractArray{<:Real} 
+# InducedSetAttentionBlock ----------------------------------------------------------------------------------------------------------
+
+"""
+    InducedSetAttentionBlock{M1, M2, IT}
+
+Two-stage induced set attention block (ISAB) with learnable inducing points `I`.
+
+# Fields
+- `MAB1`: attention from inducing points to input set.
+- `MAB2`: attention from input set to induced representation.
+- `I`: matrix of learnable inducing points `(hidden_dim, n_slots)`.
+"""
+struct InducedSetAttentionBlock{M1<:MultiheadAttentionBlock, M2<:MultiheadAttentionBlock, IT<:AbstractMatrix{<:AbstractFloat}}
+    MAB1::M1
+    MAB2::M2
+    I::IT
 end
 
-Flux.@functor InducedSetAttentionBlock
+Flux.@layer InducedSetAttentionBlock
 
-Flux.trainable(isab::InducedSetAttentionBlock) = (isab.MAB1, isab.MAB2, isab.I)
+"""
+    InducedSetAttentionBlock(n_slots, hidden_dim, heads; kwargs...)
 
-function Base.show(io::IO, m::InducedSetAttentionBlock)
-    print(io, "InducedSetAttentionBlock(")
-    print(io, " - MAB1 = $(m.MAB1)\n - MAB2 = $(m.MAB2) \n - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
-end
+Construct an ISAB with `n_slots` inducing vectors of size `hidden_dim`.
+Keyword arguments are forwarded to internal `MultiheadAttentionBlock` constructors.
 
-AbstractTrees.children(m::InducedSetAttentionBlock) = (m.MAB1, m.MAB2, ("Induced Set", m.I))
-AbstractTrees.printnode(io::IO, m::InducedSetAttentionBlock) = print(io, "InducedSetAttentionBlock - ($(size(m.I,2)) Induced Sets)")
+# Arguments
+- `n_slots::Int`: number of inducing points.
+- `hidden_dim::Int`: feature dimension.
+- `heads::Int`: number of attention heads.
+- `kwargs...`: forwarded keyword args for `MultiheadAttentionBlock`.
 
-# simple constructor
-function InducedSetAttentionBlock(m::Int, hidden_dim::Int, heads::Int)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
-    mab2 = MultiheadAttentionBlock(hidden_dim, heads)
-    I = randn(Float32, hidden_dim, m) # keep batch size as free parameter
+# Returns
+- `InducedSetAttentionBlock`: initialized ISAB module.
+"""
+function InducedSetAttentionBlock(n_slots::Int, hidden_dim::Int, heads::Int; kwargs...)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; kwargs...)
+    mab2 = MultiheadAttentionBlock(hidden_dim, heads; kwargs...)
+    I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     return InducedSetAttentionBlock(mab1, mab2, I)
 end
 
-function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Real
-    # I ∈ ℝ^{m,d} ~ (d, m, bs)
-    # x ∈ ℝ^{n,d} ~ (d, n, bs) 
-    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = repeat(isab.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs) 
-    h = isab.MAB1(I, x) # h ~ (d, m, bs)
-    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return isab.MAB2(x, h), h # (d, n, bs), (d, m, bs)
+"""
+    (isab::InducedSetAttentionBlock)(x)
+
+Run unmasked ISAB pass and return `(x_out, h)` where `h` are induced latent features.
+
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+
+# Returns
+- `Tuple{AbstractArray, AbstractArray}`:
+    - `x_out`: transformed set tensor `(d, n, bs)`.
+    - `h`: induced representation `(d, m, bs)`.
+"""
+function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: AbstractFloat
+    h = isab.MAB1(repeat(isab.I, 1, 1, size(x, ndims(x))), x)
+    return isab.MAB2(x, h), h
 end
 
-function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
+"""
+    (isab::InducedSetAttentionBlock)(x, x_mask=nothing)
+
+Run masked ISAB pass and return `(x_out, h)`.
+`x_mask` is applied in the internal attention operations.
+
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+- `x_mask::Mask`: optional mask for valid set elements.
+
+# Returns
+- `Tuple{AbstractArray, AbstractArray}`:
+    - `x_out`: masked transformed set tensor `(d, n, bs)`.
+    - `h`: induced representation `(d, m, bs)`.
+"""
+function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     # MAB1((d, m, bs), (d, n, bs), _, (1, n, bs)) -> (d, m, bs)
-    device = get_device(isab.I)
-    I = device.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
-    # repeat(isab.I, 1, 1, size(x)[end]) ----> repeat on gpu is extremly slow!!
+    I = repeat(isab.I, 1, 1, size(x, ndims(x))) # (d, m, 1) -> (d, m, bs)
     h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
     # MAB2((d, n, bs), (d, m, bs), (1, n, bs), _) -> (d, n, bs)
     return isab.MAB2(x, h, x_mask, nothing), h # (d, n, bs), (d, m, bs)
 end
 
-struct InducedSetAttentionHalfBlock
-    MAB1::MultiheadAttentionBlock
-    I::AbstractArray{<:Real} # Inducing points 
+
+# InducedSetAttentionHalfBlock ------------------------------------------------------------------------------------------------------
+
+"""
+    InducedSetAttentionHalfBlock{M1, IT}
+
+Single-stage induced attention block with learnable inducing points `I`.
+This is a lighter alternative to full ISAB.
+
+# Fields
+- `MAB1`: attention from inducing points to input set.
+- `I`: matrix of learnable inducing points `(hidden_dim, n_slots)`.
+"""
+struct InducedSetAttentionHalfBlock{M1<:MultiheadAttentionBlock, IT<:AbstractMatrix{<:AbstractFloat}}
+    MAB1::M1
+    I::IT
 end
 
-Flux.@functor InducedSetAttentionHalfBlock
+Flux.@layer InducedSetAttentionHalfBlock
 
-Flux.trainable(isab::InducedSetAttentionHalfBlock) = (isab.MAB1, isab.I)
+"""
+    InducedSetAttentionHalfBlock(n_slots, hidden_dim, heads)
 
-function Base.show(io::IO, m::InducedSetAttentionHalfBlock)
-    print(io, "InducedSetAttentionHalfBlock(")
-    print(io, " - MAB1 = $(m.MAB1)\n - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
-end
+Construct a half ISAB block with `n_slots` inducing vectors.
 
-AbstractTrees.children(m::InducedSetAttentionHalfBlock) = (m.MAB1, ("Induced Set", m.I))
-AbstractTrees.printnode(io::IO, m::InducedSetAttentionHalfBlock) = print(io, "InducedSetAttentionHalfBlock - ($(size(m.I,2)) Induced Sets)")
+# Arguments
+- `n_slots::Int`: number of inducing points.
+- `hidden_dim::Int`: feature dimension.
+- `heads::Int`: number of attention heads.
 
-# simple constructor
-function InducedSetAttentionHalfBlock(m::Int, hidden_dim::Int, heads::Int)
+# Returns
+- `InducedSetAttentionHalfBlock`: initialized half-ISAB module.
+"""
+function InducedSetAttentionHalfBlock(n_slots::Int, hidden_dim::Int, heads::Int)
     mab1 = MultiheadAttentionBlock(hidden_dim, heads)
-    I = randn(Float32, hidden_dim, m) # keep batch size as free parameter
+    I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     return InducedSetAttentionHalfBlock(mab1, I)
 end
 
-function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}) where T <: Real
-    # I ∈ ℝ^{m,d} ~ (d, m, bs)
-    # x ∈ ℝ^{n,d} ~ (d, n, bs) 
-    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = repeat(isab.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs) 
-    h = isab.MAB1(I, x) # h ~ (d, m, bs)
-    return x, h
-end
+"""
+    (isab::InducedSetAttentionHalfBlock)(x)
 
-function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
+Run unmasked half ISAB pass and return `(x, h)` where `h` is the induced representation.
+
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+
+# Returns
+- `Tuple{AbstractArray, AbstractArray}`:
+    - original `x`.
+    - induced representation `h` with shape `(d, m, bs)`.
+"""
+(isab::InducedSetAttentionHalfBlock)(x::AbstractArray{<:AbstractFloat})  = (x, isab.MAB1(repeat(isab.I, 1, 1, size(x, ndims(x))), x))
+
+"""
+    (isab::InducedSetAttentionHalfBlock)(x, x_mask=nothing)
+
+Masked half ISAB pass returning `(x, h)`.
+
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+- `x_mask::Mask`: optional mask for valid set elements.
+
+# Returns
+- `Tuple{AbstractArray, AbstractArray}`:
+    - original `x`.
+    - masked induced representation `h` with shape `(d, m, bs)`.
+"""
+function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
     # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    device = get_device(isab.I)
-    I = device.ones(Float32, 1,1, size(x)[end]) .* isab.I # (d, m, 1) -> (d, m, bs) 
-    # repeat(isab.I, 1, 1, size(x)[end]) ----> repeat on gpu is extremly slow!! 
+    I = repeat(isab.I, 1, 1, size(x, ndims(x))) # (d, m, 1) -> (d, m, bs)
     h = isab.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
     return x, h
 end
 
-struct VariationalBottleneck
-    prior::Union{Flux.Chain, ConstGaussPrior}
-    posterior::Flux.Chain
-    decoder::Flux.Chain
+
+# VariationalBottleneck -------------------------------------------------------------------------------------------------------------
+
+"""
+    VariationalBottleneck{FFT, PT, DT}
+
+Variational latent bottleneck with prior, posterior correction, and decoder networks.
+
+# Fields
+- `prior`: network mapping context to prior parameters `(μ, Σ)`.
+- `posterior`: network producing posterior correction `(Δμ, ΔΣ)`.
+- `decoder`: network mapping latent sample `z` back to feature space.
+"""
+struct VariationalBottleneck{FFT, PT, DT}
+    prior::FFT#Union{Flux.Chain, ConstGaussPrior}
+    posterior::PT#Flux.Chain
+    decoder::DT#Flux.Chain
 end
 
-Flux.@functor VariationalBottleneck
+Flux.@layer VariationalBottleneck
 
-function Base.show(io::IO, m::VariationalBottleneck)
-    print(io, "VariationalBottleneck(")
-    print(io, "\n\t - prior = $(m.prior) \n\t - posterior = $(m.posterior)")
-    print(io, "\n\t - decoder = $(m.decoder) \n ) ")
+"""
+    VariationalBottleneck(in_dim, z_dim, out_dim, hidden=32, depth=1, activation=identity)
+
+Construct a variational bottleneck MLP stack.
+Returns a module with prior, posterior, and decoder subnetworks.
+
+# Arguments
+- `in_dim::Int`: input feature dimension.
+- `z_dim::Int`: latent feature dimension.
+- `out_dim::Int`: output feature dimension.
+- `hidden::Int`: hidden layer width for `depth >= 2`.
+- `depth::Int`: number of layers in each branch.
+- `activation::Function`: activation used in hidden layers.
+
+# Returns
+- `VariationalBottleneck`: initialized variational module.
+"""
+function VariationalBottleneck(in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity)
+    if depth < 1
+        @error("Incorrect depth of VariationalBottleneck")
+    end
+
+    encoder_μ = create_gaussian_mlp(in_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true)
+    encoder_Δμ = create_gaussian_mlp(in_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true)
+    decoder = create_mlp(z_dim, hidden, depth, out_dim, activation; out_identity=true)
+
+    return VariationalBottleneck(encoder_μ, encoder_Δμ, decoder)
 end
 
-AbstractTrees.children(m::VariationalBottleneck) = (("Prior", m.prior), ("Posterior", m.posterior), ("Decoder", m.decoder))
-AbstractTrees.printnode(io::IO, m::VariationalBottleneck) = print(io, "VariationalBottleneck - ($(size(m.decoder[1].weight, 2)) zdim)")
+"""
+    (vb::VariationalBottleneck)(h)
 
-function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: Real
+Generation mode. Samples latent `z` from prior computed from `h` and decodes it.
+Returns `(z, h_hat, nothing)`.
+
+# Arguments
+- `h::AbstractArray{<:AbstractFloat}`: prior context tensor.
+
+# Returns
+- `Tuple{AbstractArray, AbstractArray, Nothing}`:
+    - `z`: sampled latent tensor.
+    - `h_hat`: decoded tensor.
+    - `nothing`: KL term is not used in pure generation mode.
+"""
+function (vb::VariationalBottleneck)(h::AbstractArray{T}) where T <: AbstractFloat
     # computing prior μ, Σ from h
     μ, Σ = vb.prior(h)
-    z = μ + Σ * randn(Float32, size(μ)...)
+    z = μ + Σ .* MLUtils.randn_like(μ)
     ĥ = vb.decoder(z)
     return z, ĥ, nothing
 end
 
-function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
-    device = get_device(vb.posterior)
+"""
+    (vb::VariationalBottleneck)(h, h_enc)
+
+Inference mode with posterior correction from encoder features `h_enc`.
+Returns `(z, h_hat, L_kl)` where `L_kl` is elementwise KL term.
+
+# Arguments
+- `h::AbstractArray{<:AbstractFloat}`: prior context tensor.
+- `h_enc::AbstractArray{<:AbstractFloat}`: encoder guidance tensor.
+
+# Returns
+- `Tuple{AbstractArray, AbstractArray, AbstractArray}`:
+    - `z`: sampled latent tensor.
+    - `h_hat`: decoded tensor.
+    - `L_kl`: elementwise KL contribution tensor.
+"""
+function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: AbstractFloat
     # computing prior μ, Σ from h as well as posterior from h_enc
     μ, Σ = vb.prior(h)
     Δμ, ΔΣ = vb.posterior(h + h_enc)
-    z = (μ + Δμ) + (Σ .* ΔΣ) .* device.randn(Float32, size(μ)...)
+    z = (μ + Δμ) + (Σ .* ΔΣ) .* MLUtils.randn_like(μ)
     ĥ = vb.decoder(z)
-    kld = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 )
+    ℒₖₗ = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 )
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
-    return z, ĥ, kld
+    return z, ĥ, ℒₖₗ
 end    
 
-function VariationalBottleneck(
-    in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity
-)
-    encoder_μ = []
-    encoder_Δμ = []
-    decoder = []
-    if depth>=2
-        push!(encoder_μ, Flux.Dense(in_dim, hidden, activation))
-        push!(encoder_Δμ, Flux.Dense(in_dim, hidden, activation))
-        push!(decoder, Flux.Dense(z_dim, hidden, activation))
-        for i=1:depth-2
-            push!(encoder_μ, Flux.Dense(hidden, hidden, activation))
-            push!(encoder_Δμ, Flux.Dense(hidden, hidden, activation))
-            push!(decoder, Flux.Dense(hidden, hidden, activation))
-        end
-        push!(encoder_μ, SplitLayer(hidden, (z_dim, z_dim), (identity, softplus)))
-        push!(encoder_Δμ, SplitLayer(hidden, (z_dim, z_dim), (identity, softplus)))
-        push!(decoder, Flux.Dense(hidden, out_dim))
-    elseif depth==1
-        push!(encoder_μ, SplitLayer(in_dim, (z_dim, z_dim), (identity, softplus)))
-        push!(encoder_Δμ, SplitLayer(in_dim, (z_dim, z_dim), (identity, softplus)))
-        push!(decoder, Flux.Dense(z_dim, out_dim))
-    else
-        @error("Incorrect depth of VariationalBottleneck")
-    end
-    encoder_μ = Flux.Chain(encoder_μ...)
-    encoder_Δμ = Flux.Chain(encoder_Δμ...)
-    decoder = Flux.Chain(decoder...)
-    return VariationalBottleneck(encoder_μ, encoder_Δμ, decoder)
+
+# AttentiveBottleneckLayer ----------------------------------------------------------------------------------------------------------
+
+"""
+    AttentiveBottleneckLayer{M1, M2, VT, IT}
+
+Attention-based bottleneck block combining induced attention with a variational bottleneck.
+
+# Fields
+- `MAB1`: attention from inducing points to input set.
+- `MAB2`: attention from input set to reconstructed induced features.
+- `VB`: variational bottleneck operating in induced space.
+- `I`: learnable inducing points `(hidden_dim, n_slots)`.
+"""
+struct AttentiveBottleneckLayer{M1<:MultiheadAttentionBlock, M2<:MultiheadAttentionBlock, VT<:VariationalBottleneck, IT<:AbstractMatrix{<:AbstractFloat}}
+    MAB1::M1
+    MAB2::M2
+    VB::VT
+    I::IT
 end
 
+Flux.@layer AttentiveBottleneckLayer
 
-struct AttentiveBottleneckLayer
-    MAB1::MultiheadAttentionBlock
-    MAB2::MultiheadAttentionBlock
-    VB::VariationalBottleneck
-    I::AbstractArray{<:Real}
-end
+"""
+    AttentiveBottleneckLayer(n_slots, hidden_dim, heads, z_dim, hidden, depth, activation=identity)
 
-Flux.@functor AttentiveBottleneckLayer
+Construct an attentive bottleneck layer with learnable inducing points and variational module.
 
-Flux.trainable(abl::AttentiveBottleneckLayer) = (abl.MAB1, abl.MAB2, abl.VB, abl.I)
+# Arguments
+- `n_slots::Int`: number of inducing points.
+- `hidden_dim::Int`: feature dimension in attention space.
+- `heads::Int`: number of attention heads.
+- `z_dim::Int`: latent dimension in variational bottleneck.
+- `hidden::Int`: hidden width in bottleneck MLPs.
+- `depth::Int`: depth of bottleneck MLPs.
+- `activation::Function`: activation in bottleneck hidden layers.
 
-function Base.show(io::IO, m::AttentiveBottleneckLayer)
-    print(io, "AttentiveBottleneckLayer(")
-    print(io, " - MAB1 = $(m.MAB1)\n - MAB2 = $(m.MAB2)")
-    print(io, " - VB = $(m.VB) \n")
-    print(io, " - I = $(size(m.I)) - $(typeof(m.I)) \n ) ")
-end
-
-AbstractTrees.children(m::AttentiveBottleneckLayer) = (m.MAB1, m.MAB2, m.VB, ("Induced Sets", m.I))
-AbstractTrees.printnode(io::IO, m::AttentiveBottleneckLayer) = print(io, "AttentiveBottleneckLayer - ($(size(m.I,2)) Induced Sets)")
-
-function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: Real
-    # generation
-    # I ∈ ℝ^{m,d} ~ (d, m, bs)
-    # x ∈ ℝ^{n,d} ~ (d, n, bs) 
-    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    I = repeat(abl.I, 1, 1, size(x)[end])# (d, m, 1) -> (d, m, bs)
-    h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, ĥ, kld = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
-    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, ĥ), kld, ĥ, z  # (d, n, bs), (d, m, bs)
-end
-
-function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: Real
-    # inference
-    # I     ∈ ℝ^{m,d} ~ (d, m, bs)
-    # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
-    # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
-    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    device = get_device(abl.I)
-    I = device.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
-    #I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
-    h = abl.MAB1(I, x) # h ~ (d, m, bs)
-    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
-    kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
-    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, ĥ), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
-end
-
-function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
-    # inference
-    # I     ∈ ℝ^{m,d} ~ (d, m, bs)
-    # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
-    # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
-    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
-    device = get_device(abl.I)
-    I = device.ones(Float32, 1,1, size(x)[end]) .* abl.I # (d, m, 1) -> (d, m, bs)
-    #I = repeat(abl.I, 1, 1, size(x)[end]) # (d, m, 1) -> (d, m, bs)
-    h = abl.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
-    z, ĥ, kld = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
-    kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
-    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB2(x, ĥ, x_mask, nothing), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
-end
-
-# simple constructor
-function AttentiveBottleneckLayer(
-    m::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity
-)
+# Returns
+- `AttentiveBottleneckLayer`: initialized attentive bottleneck module.
+"""
+function AttentiveBottleneckLayer(n_slots::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity)
     mab1 = MultiheadAttentionBlock(hidden_dim, heads)
     mab2 = MultiheadAttentionBlock(hidden_dim, heads)
-    I = randn(Float32, hidden_dim, m) # keep batch size as free parameter
+    I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     vb = VariationalBottleneck(hidden_dim, z_dim, hidden_dim, hidden, depth, activation)
     return AttentiveBottleneckLayer(mab1, mab2, vb, I)
 end
 
-struct AttentiveHalfBlock
-    MAB1::MultiheadAttentionBlock
-    VB::VariationalBottleneck
+"""
+    (abl::AttentiveBottleneckLayer)(x)
+
+Generation pass. Encodes `x` into induced space, samples latent variables, decodes them,
+and projects back to input set space.
+
+Returns `(x_out, L_kl, h_hat, z)` where `L_kl` is `nothing` in generation mode.
+
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+
+# Returns
+- `Tuple{AbstractArray, Nothing, AbstractArray, AbstractArray}`:
+    - `x_out`: reconstructed/transformed set tensor.
+    - `L_kl`: `nothing` in generation mode.
+    - `h_hat`: reconstructed induced representation.
+    - `z`: sampled latent representation.
+"""
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}) where T <: AbstractFloat
+    # generation
+    # I ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
+    I = repeat(abl.I, 1, 1, size(x, ndims(x)))# (d, m, 1) -> (d, m, bs)
+    h = abl.MAB1(I, x) # h ~ (d, m, bs)
+    z, ĥ, ℒₖₗ = abl.VB(h) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
+    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
+    return abl.MAB2(x, ĥ), ℒₖₗ, ĥ, z  # (d, n, bs), (d, m, bs)
 end
 
-Flux.@functor AttentiveHalfBlock
+"""
+    (abl::AttentiveBottleneckLayer)(x, h_enc)
 
-Flux.trainable(abl::AttentiveHalfBlock) = (abl.MAB1, abl.VB)
+Inference pass with posterior correction from `h_enc`.
+Returns `(x_out, L_kl_scalar, h_hat, z)`.
 
-function Base.show(io::IO, m::AttentiveHalfBlock)
-    print(io, "AttentiveHalfBlock(")
-    print(io, " - MAB1 = $(m.MAB1)\n")
-    print(io, " - VB = $(m.VB) \n ) ")
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+- `h_enc::AbstractArray{<:AbstractFloat}`: encoder guidance tensor in induced space.
+
+# Returns
+- `Tuple{AbstractArray, AbstractFloat, AbstractArray, AbstractArray}`:
+    - `x_out`: transformed set tensor.
+    - `L_kl_scalar`: batch-averaged KL scalar.
+    - `h_hat`: reconstructed induced representation.
+    - `z`: sampled latent representation.
+"""
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}) where T <: AbstractFloat
+    # inference
+    # I     ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
+    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
+    I = repeat(abl.I, 1, 1, size(x, ndims(x))) # (d, m, 1) -> (d, m, bs)
+    h = abl.MAB1(I, x) # h ~ (d, m, bs)
+    z, ĥ, ℒₖₗ = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    ℒₖₗ = Flux.mean(Flux.sum(ℒₖₗ, dims=(1,2)))
+    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
+    return abl.MAB2(x, ĥ), ℒₖₗ, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
 
-AbstractTrees.children(m::AttentiveHalfBlock) = (m.MAB1, m.VB)
-AbstractTrees.printnode(io::IO, m::AttentiveHalfBlock) = print(io, "AttentiveHalfBlock")
+"""
+    (abl::AttentiveBottleneckLayer)(x, h_enc, x_mask=nothing)
 
-function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask=nothing) where T <: Real
+Masked inference variant of attentive bottleneck layer.
+Returns `(x_out, L_kl_scalar, h_hat, z)`.
+
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+- `h_enc::AbstractArray{<:AbstractFloat}`: encoder guidance tensor in induced space.
+- `x_mask::Mask`: optional mask for valid set elements.
+
+# Returns
+- `Tuple{AbstractArray, AbstractFloat, AbstractArray, AbstractArray}`:
+    - `x_out`: masked transformed set tensor.
+    - `L_kl_scalar`: batch-averaged KL scalar.
+    - `h_hat`: reconstructed induced representation.
+    - `z`: sampled latent representation.
+"""
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
+    # inference
+    # I     ∈ ℝ^{m,d} ~ (d, m, bs)
+    # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
+    # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
+    # MAB1((d, m, bs), (d, n, bs)) -> (d, m, bs)
+    I = repeat(abl.I, 1, 1, size(x, ndims(x))) # (d, m, 1) -> (d, m, bs)
+    h = abl.MAB1(I, x, nothing, x_mask) # h ~ (d, m, bs)
+    z, ĥ, ℒₖₗ = abl.VB(h, h_enc) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
+    ℒₖₗ = Flux.mean(Flux.sum(ℒₖₗ, dims=(1,2)))
+    # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
+    return abl.MAB2(x, ĥ, x_mask, nothing), ℒₖₗ, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
+end
+
+
+
+"""
+    AttentiveHalfBlock{MAB, VBT}
+
+Lightweight attentive block with one attention projection and variational bottleneck.
+
+# Fields
+- `MAB1`: attention block used to project back to set space.
+- `VB`: variational bottleneck with constant Gaussian prior.
+"""
+struct AttentiveHalfBlock{MAB<:MultiheadAttentionBlock, VBT<:VariationalBottleneck}
+    MAB1::MAB
+    VB::VBT
+end
+
+Flux.@layer AttentiveHalfBlock
+
+
+"""
+    AttentiveHalfBlock(m, hidden_dim, heads, z_dim, hidden, depth, activation=identity)
+
+Construct an attentive half block with constant Gaussian prior over `m` latent slots.
+
+# Arguments
+- `m::Int`: number of latent slots in constant prior.
+- `hidden_dim::Int`: feature dimension in attention space.
+- `heads::Int`: number of attention heads.
+- `z_dim::Int`: latent dimension in variational bottleneck.
+- `hidden::Int`: hidden width in bottleneck MLPs.
+- `depth::Int`: depth of bottleneck MLPs.
+- `activation::Function`: activation in bottleneck hidden layers.
+
+# Returns
+- `AttentiveHalfBlock`: initialized attentive half-block module.
+"""
+function AttentiveHalfBlock(m::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
+
+    if depth < 1
+        @error("Incorrect depth of VariationalBottleneck")
+    end
+
+    posterior = create_gaussian_mlp(hidden_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true)
+    decoder = create_mlp(z_dim, hidden, depth, hidden_dim, activation; out_identity=true)
+
+    vb = VariationalBottleneck(ConstGaussPrior(m, z_dim), posterior, decoder)
+
+    return AttentiveHalfBlock(mab1, vb)
+end
+
+"""
+    (abl::AttentiveHalfBlock)(x, h_enc, x_mask=nothing)
+
+Inference pass of the half block.
+Samples from variational bottleneck using a zero prior context and applies attention back to `x`.
+
+Returns `(x_out, L_kl_scalar, h_hat, z)`.
+
+# Arguments
+- `x::AbstractArray{<:AbstractFloat}`: input set tensor `(d, n, bs)`.
+- `h_enc::AbstractArray{<:AbstractFloat}`: encoder guidance tensor.
+- `x_mask::Mask`: optional mask for valid set elements.
+
+# Returns
+- `Tuple{AbstractArray, AbstractFloat, AbstractArray, AbstractArray}`:
+    - `x_out`: transformed set tensor.
+    - `L_kl_scalar`: batch-averaged KL scalar.
+    - `h_hat`: reconstructed latent-conditioned representation.
+    - `z`: sampled latent representation.
+"""
+function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 
     # h_enc ∈ ℝ^{n,d} ~ (d, m, bs) 
     # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss (d, m, bs)
-    device = get_device(abl.MAB1)
-    h_const = device.zeros(Float32, size(h_enc)...)
-    z, ĥ, kld = abl.VB(h_const, h_enc)
+    h_const = MLUtils.zeros_like(h_enc) 
+    z, ĥ, ℒₖₗ = abl.VB(h_const, h_enc)
     #vb_const(abl.VB, h_const, h_enc, const_module=const_module) 
-    kld = Flux.mean(Flux.sum(kld, dims=(1,2)))
+    ℒₖₗ = Flux.mean(Flux.sum(ℒₖₗ, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB1(x, ĥ, x_mask, nothing), kld, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
-end
-
-function AttentiveHalfBlock(
-    m::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity
-)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
-
-    encoder_Δμ = []
-    decoder = []
-    if depth>=2
-        push!(encoder_Δμ, Flux.Dense(hidden_dim, hidden, activation))
-        push!(decoder, Flux.Dense(z_dim, hidden, activation))
-        for i=1:depth-2
-            push!(encoder_Δμ, Flux.Dense(hidden, hidden, activation))
-            push!(decoder, Flux.Dense(hidden, hidden, activation))
-        end
-        push!(encoder_Δμ, SplitLayer(hidden, (z_dim, z_dim), (identity, softplus)))
-        push!(decoder, Flux.Dense(hidden, hidden_dim))
-    elseif depth==1
-        push!(encoder_Δμ, SplitLayer(hidden_dim, (z_dim, z_dim), (identity, softplus)))
-        push!(decoder, Flux.Dense(z_dim, hidden_dim))
-    else
-        @error("Incorrect depth of VariationalBottleneck")
-    end
-    encoder_Δμ = Flux.Chain(encoder_Δμ...)
-    decoder = Flux.Chain(decoder...)
-
-    vb = VariationalBottleneck(ConstGaussPrior(m, z_dim), encoder_Δμ, decoder)
-
-    return AttentiveHalfBlock(mab1, vb)
+    return abl.MAB1(x, ĥ, x_mask, nothing), ℒₖₗ, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end

@@ -11,7 +11,7 @@
 """
 
 
-struct ActNorm{T <: Real}
+struct ActNorm{T <: AbstractFloat}
     loc::AbstractArray{T}
     scale::AbstractArray{T}
     initialized::Union{Array{Bool, 1}, Bool} # [false]
@@ -19,7 +19,7 @@ end
 
 Flux.trainable(m::ActNorm) = (m.loc, m.scale)
 
-function (m::ActNorm)(x::AbstractArray{T, 3}, reverse::Bool=false) where T<:Real #TODO simplify
+function (m::ActNorm)(x::AbstractArray{T, 3}, reverse::Bool=false) where T<:AbstractFloat #TODO simplify
     dims = (size(m.loc, 2) == 1 ) ? size(x[1,:,:]) : size(x[:,1,:])
     device = get_device(m.loc)
     logdet = device.zeros(Float32, dims... )
@@ -117,7 +117,7 @@ struct ConcatSquashDense
     context_bias
 end
 
-Flux.@functor ConcatSquashDense
+Flux.@layer ConcatSquashDense
 
 (m::ConcatSquashDense)(x::Tuple{AbstractArray{T}, Matrix{T}}) where T<:Real = m(x...) 
 
@@ -150,7 +150,7 @@ struct AffineCoupling
     layers₂::Flux.Chain
 end
 
-Flux.@functor AffineCoupling
+Flux.@layer AffineCoupling
 
 function (m::AffineCoupling)(x::T, std_in::T, context::T, reverse::Bool=false) where T<:AbstractArray{<:Real}
     #TODO

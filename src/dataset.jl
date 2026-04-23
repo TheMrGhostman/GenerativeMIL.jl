@@ -1,10 +1,3 @@
-using Flux
-using PaddedViews
-using DelimitedFiles
-using DrWatson
-using MLUtils
-using HDF5
-
 function procedure()
     #a = randn(3,1)
     #b = rpad(a, 10, 0) # expand array to length 10 with zeros
@@ -72,46 +65,6 @@ function scale_list_to_interval(X, lowerb=0, upperb=1)
         push!(new_X,  scaled_lowerb_upperb)
     end
     return new_X, max_val_, min_val_
-end
-
-function  process_raw_mnist()
-    dp = datadir("mnist_point_cloud")
-
-    # check if the path exists
-    if !ispath(dp) || length(readdir(dp)) == 0 || !all(map(x->x in readdir(dp), ["test.csv", "train.csv"]))
-        mkpath(dp)
-        error("MNIST point cloud data are not present. Unfortunately no automated download is available. Please download the `train.csv.zip` and `test.csv.zip` files manually from https://www.kaggle.com/cristiangarcia/pointcloudmnist2d and unzip them in `$(dp)`.")
-    end
-
-    @info "Processing raw MNIST point cloud data..."
-    for fs in ["test", "train"]
-        indata = readdlm(joinpath(dp, "$fs.csv"),',',Int32,header=true)[1]
-        labels = []
-        data = []
-        for (i,row) in enumerate(eachrow(indata))
-            # get x data and specify valid values
-            x = row[2:3:end]
-            valid_inds = x .!= -1
-            x = reshape(x[valid_inds],1,:)
-            
-            # get y and intensity
-            y = reshape(row[3:3:end][valid_inds],1,:)
-            v = reshape(row[4:3:end][valid_inds],1,:)
-
-            # now append to the lists
-            push!(labels, row[1])
-            push!(data, vcat(x,y,v))
-            #println(size(vcat(x,y,v)))
-        end
-        outdata = Dict(
-            :labels => vcat(labels...),
-            :data => data
-            )
-        bf = joinpath(dp, "$(fs).bson")
-        save(bf, outdata)
-        @info "Succesfuly processed and saved $bf"
-    end
-    @info "Done."
 end
 
 function load_mnist()
@@ -184,7 +137,7 @@ function load_and_scale_mnist(lowerb=0, upperb=1)
     return (x_train, train[:labels]), (x_test, test[:labels])
 end
 
-function transform_batch(x::AbstractArray{T,3}, kwargs...) where T<:Real
+function transform_batch(x::AbstractArray{T,3}, kwargs...) where T <: AbstractFloat
     return MLUtils.getobs(x), ones(Bool,size(x[1:1,:,:]))
 end
 
@@ -205,8 +158,8 @@ function transform_batch(x::AbstractArray{T,1}, max=false) where T<:AbstractArra
 end
 
 lastdim_indexing(x::AbstractArray{<:Any, 1}, index_array::AbstractArray{Bool}) = x[index_array]
-lastdim_indexing(x::AbstractArray{<:Real, 2}, index_array::AbstractArray{Bool}) = x[:,index_array]
-lastdim_indexing(x::AbstractArray{<:Real, 3}, index_array::AbstractArray{Bool}) = x[:,:,index_array]
+lastdim_indexing(x::AbstractArray{<:AbstractFloat, 2}, index_array::AbstractArray{Bool}) = x[:,index_array]
+lastdim_indexing(x::AbstractArray{<:AbstractFloat, 3}, index_array::AbstractArray{Bool}) = x[:,:,index_array]
 
 
 function train_test_split(X, y, ratio=0.2; seed=nothing)
@@ -244,19 +197,19 @@ function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=
     if validation
         (X_train,Y_train), (X_val,Y_val) = train_test_split(X_train, Y_train, ratio, seed=seed)
         if type in titles
-            idx = findmax(titles .== type)[2]
-            X_train = X_train[:, :, Y_train .== idx]
-            Y_train = Y_train[Y_train .== idx]
-            Y_val = Y_val .!= idx
-            Y_test = Y_test .!= idx
+            class_idx = only(findall(titles .== type))
+            X_train = X_train[:, :, Y_train .== class_idx]
+            Y_train = Y_train[Y_train .== class_idx]
+            Y_val = Y_val .!= class_idx
+            Y_test = Y_test .!= class_idx
         end
         data = ((X_train, Y_train), (X_val, Y_val), (X_test, Y_test)) 
     else
         if type in titles
-            idx = findmax(titles .== type)[2]
-            X_train = X_train[:, :, Y_train .== idx]
-            Y_train = Y_train[Y_train .== idx]
-            Y_test = Y_test .!= idx
+            class_idx = only(findall(titles .== type))
+            X_train = X_train[:, :, Y_train .== class_idx]
+            Y_train = Y_train[Y_train .== class_idx]
+            Y_test = Y_test .!= class_idx
         end
         data = ((X_train, Y_train), (X_test, Y_test)) 
     end

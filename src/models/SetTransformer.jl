@@ -6,7 +6,7 @@ struct SetClassifier
     dropout :: Union{Flux.Dropout, Nothing} # Dropout around pooling
 end
 
-Flux.@functor SetClassifier
+Flux.@layer SetClassifier
 
 function (m::SetClassifier)(x::AbstractArray{<:Real}, x_mask::Mask=nothing)
 
@@ -58,8 +58,8 @@ function SetClassifier(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_
         Flux.Dense(hidden_dim, hidden_dim, activation),
         Flux.Dense(hidden_dim, hidden_dim, activation)
     )
-    ln1 = Flux.LayerNorm((hidden_dim,1))
-    ln2 = Flux.LayerNorm((hidden_dim,1))
+    ln1 = Flux.LayerNorm(hidden_dim)
+    ln2 = Flux.LayerNorm(hidden_dim)
 
     mab =  MultiheadAttentionBlock(ff, mh, ln1, ln2)
     I = randn(Float32, hidden_dim, 1) # keep batch size as free parameter
