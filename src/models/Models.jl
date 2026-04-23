@@ -8,7 +8,7 @@ valid_step(model::AbstractGenModel, args...; kwargs...) = error("valid_step not 
 optim_step(model::AbstractGenModel, args...; kwargs...) = error("optim_step not implemented for $(typeof(model))")
 
 include("SetVAE.jl")
-export SetVae, loss, loss_gpu
+export SetVAE, HierarchicalEncoder, HierarchicalDecoder, elbo_with_logging, optim_step, valid_step
 export setvae_constructor_from_named_tuple
 
 include("FoldingVAE.jl")

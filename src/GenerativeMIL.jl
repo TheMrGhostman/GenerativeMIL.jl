@@ -42,8 +42,10 @@ Zygote.@adjoint CUDA.randn(x...) = CUDA.randn(x...), _ -> map(_ -> nothing, x)
 
 export check, dict2nt, Models
 
-Mask = Union{AbstractArray{Bool}, Nothing}
-MaskT{T} = Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}
+const Mask = Union{AbstractArray{Bool}, Nothing}
+const MaskT{T} = Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}
+const BetaArg = Union{AbstractFloat,AbstractVector{<:AbstractFloat}}
+
 
 # Loading & Helper functions for datasets
 include("dataset.jl")
@@ -68,7 +70,7 @@ include("models/Models.jl")
 
 # Everything related to model training
 include("model_training/schedulers.jl")
-export WarmupCosine, WarmupLinear, CreateLRScheduler, CreateAnealer
+export WarmupCosine, WarmupLinear, CreateLrScheduler, CreateAnealer
 include("model_training/early_stopping.jl")
 export EarlyStopping
 include("model_training/fits.jl")

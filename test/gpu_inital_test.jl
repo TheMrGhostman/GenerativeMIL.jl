@@ -2,7 +2,7 @@ using Test
 using Random
 using Flux
 using CUDA
-using cuDNN
+#using cuDNN
 using Zygote
 using LinearAlgebra
 using AbstractTrees

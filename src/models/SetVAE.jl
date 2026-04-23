@@ -1,17 +1,4 @@
 """
-Accepted beta argument for KL weighting in SetVAE.
-
-Arguments:
-- `AbstractFloat`: one KL weight shared across all decoder layers.
-- `AbstractVector{<:AbstractFloat}`: one KL weight per decoder layer.
-
-Notes:
-- Keyword dispatch in Julia does not dispatch on keyword type, so this alias is
-    mainly for readability and explicit API intent.
-"""
-const BetaArg = Union{AbstractFloat,AbstractVector{<:AbstractFloat}}
-
-"""
 Hierarchical encoder used by SetVAE.
 
 Fields:

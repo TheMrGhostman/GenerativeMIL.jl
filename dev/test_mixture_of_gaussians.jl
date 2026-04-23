@@ -34,7 +34,7 @@ end
 function gumbel_softmax_old(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, ϵ::Float32=1.0f-10) where T <: Real
     gumbel_samples = -log.(-log.(Random.rand!(logits) .+ ϵ) .+ ϵ)  # BUG: modifies logits!
     y = logits .+ gumbel_samples
-    y = _softmax(y./τ)
+    y =Flux.softmax(y./τ)
 
     if !hard
         return y
@@ -55,7 +55,7 @@ end
 function gumbel_softmax_new(logits::AbstractArray{T}; τ::T=1f0, hard::Bool=false, ϵ=T(1.0e-10)) where T <: AbstractFloat
     # println(typeof(logits))
     g = -log.(-log.(MLUtils.rand_like(logits) .+ ϵ) .+ ϵ)
-    y = _softmax((logits .+ g) ./ τ)
+    y =Flux.softmax((logits .+ g) ./ τ)
 
     if !hard
         return y
