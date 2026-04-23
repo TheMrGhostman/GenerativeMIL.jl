@@ -476,11 +476,10 @@ Arguments:
 Returns:
 - Reconstructed set batch `x̂` with the same shape as `x`.
 """
-function reconstruct(vae::SetVAE, x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
-    _, h_encs = vae.encoder(x, x_mask)
-    _, sample_size, bs = size(x)
-    z = vae.prior(sample_size, bs)
-    x̂, _, _, _ = vae.decoder(z, h_encs, x_mask)
+function reconstruct(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask=nothing; kwargs...) where T <: AbstractFloat
+    Flux.testmode!(svae, true)
+    x̂, _, _, _ = svae(x, x_mask; kwargs...)
+    Flux.testmode!(svae, false)
     return x̂
 end
 
