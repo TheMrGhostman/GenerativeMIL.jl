@@ -427,3 +427,14 @@ SetVAE/mwe.jl
 scripts/setvae_mnist_test.jl
 scripts/vae_test.jl
 scripts/vae_test.jl
+.vscode/
+wandb/
+Project-backup.toml
+dev/run_gpu_slurm_interactive.sh
+dev/debugging_new_training_functions.jl
+dev/setting_old.json
+dev/debugging_poolmodel.jl
+dev/inital_set_pytorch_source_material.py
+dev/slurm_juliaup_probe.sh
+dev/slurm_gpu_smoke.sh
+dev/gpu_smoke_generativemil.jl
