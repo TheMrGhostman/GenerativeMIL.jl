@@ -34,15 +34,13 @@ using Distances
 # for chamfer distance
 using NearestNeighbors 
 
-
-
 dict2nt(x) = (; (Symbol(k) => v for (k,v) in x)...)
 
 Zygote.@adjoint CUDA.ones(x...) = CUDA.ones(x...), _ -> map(_ -> nothing, x)
 Zygote.@adjoint CUDA.zeros(x...) = CUDA.zeros(x...), _ -> map(_ -> nothing, x)
 Zygote.@adjoint CUDA.randn(x...) = CUDA.randn(x...), _ -> map(_ -> nothing, x)
 
-export check, dict2nt, Models #TODO
+export check, dict2nt, Models
 
 const Mask = Union{AbstractArray{Bool}, Nothing}
 const MaskT{T} = Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}
