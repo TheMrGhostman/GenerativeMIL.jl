@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "5cf257ed7474d0d7b0715bdf8f5d2b0c7e52134a"
+project_hash = "9bea0cd657d25180c17740f2b4a1cad33651ccaa"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -556,7 +556,7 @@ uuid = "096a3bc2-3ced-46d0-87f4-dd12716f4bfc"
 version = "1.1.1"
 
 [[deps.GenerativeMIL]]
-deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "Optimisers", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "ValueHistories", "Zygote", "cuDNN"]
+deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "Optimisers", "OrderedCollections", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "ValueHistories", "YAML", "Zygote", "cuDNN"]
 path = "."
 uuid = "f587a668-c5e7-5861-9bd6-a75883e5a803"
 version = "1.1.2"
@@ -1449,6 +1449,12 @@ weakdeps = ["ChainRulesCore", "InverseFunctions"]
     StatsFunsChainRulesCoreExt = "ChainRulesCore"
     StatsFunsInverseFunctionsExt = "InverseFunctions"
 
+[[deps.StringEncodings]]
+deps = ["Libiconv_jll"]
+git-tree-sha1 = "b765e46ba27ecf6b44faf70df40c57aa3a547dcb"
+uuid = "69024149-9ee7-55f6-a4c4-859efe599b68"
+version = "0.3.7"
+
 [[deps.StringManipulation]]
 deps = ["PrecompileTools"]
 git-tree-sha1 = "d05693d339e37d6ab134c5ab53c29fce5ee5d7d5"
@@ -1610,6 +1616,12 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
 git-tree-sha1 = "4909eb8f1cbf6bd4b1c30dd18b2ead9019ef2fad"
 uuid = "a65dc6b1-eb27-53a1-bb3e-dea574b5389e"
 version = "0.18.1+0"
+
+[[deps.YAML]]
+deps = ["Base64", "Dates", "Printf", "StringEncodings"]
+git-tree-sha1 = "a1c0c7585346251353cddede21f180b96388c403"
+uuid = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+version = "0.4.16"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]

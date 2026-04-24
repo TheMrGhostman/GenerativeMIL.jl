@@ -103,8 +103,8 @@ function (m::Invertible1x1Conv)(x::AbstractArray{T, 3}, logdet::AbstractArray{T,
     return x, logdet
 end
 
-function Invertible1x1Conv(channels)
-    weight,_ = LinearAlgebre.qr(randn(Float32, channels, channels))
+function Invertible1x1Conv(channels::Int)
+    weight,_ = LinearAlgebra.qr(randn(Float32, channels, channels))
     weight = Array(reshape(weight, 1, channels, channels))
     weight[:,1] = (det(weight) < 0) ? -1 .* weight[:,1] : weight[:,1]
     return Invertible1x1Conv(weight)
@@ -164,6 +164,6 @@ function (m::AffineCoupling)(x::Union{T, Tuple{T, T}}, std_in::T, reverse::Bool=
     # 4) cat xₐ = cat(xₐ, std_in)
 end
 
-function reverse(m::AffineCoupling, x, std_in)
+function reverse_pass(m::AffineCoupling, x, std_in)
 
 end

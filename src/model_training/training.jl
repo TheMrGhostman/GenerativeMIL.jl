@@ -68,14 +68,14 @@ function _save_validation_prediction_snapshot(
     try
         if preview isa Tuple && length(preview) == 2
             x, x_mask = preview
-            x_dev = device(x)
-            x_mask_dev = device(x_mask)
+            x_dev = device(Array(x))
+            x_mask_dev = device(Array(x_mask))
             xhat = reconstruct(model, x_dev, x_mask_dev)
             x_cpu = cpu(x_dev)
             mask_cpu = cpu(x_mask_dev)
             xhat_cpu = cpu(xhat)
         else
-            x = preview
+            x = Array(preview)
             x_dev = device(x)
             xhat = reconstruct(model, x_dev)
             x_cpu = cpu(x_dev)
@@ -219,6 +219,7 @@ function train_model!(
     history = ValueHistories.MVHistory()
     # 2b) initialize jsonl logger
     mkpath(joinpath(model_dir, "models"))
+    verbose && @info "Model directory: $model_dir"
     json_logger = JSONLLogger(joinpath(model_dir, "trainlog.jsonl"))
 
     # 3) check for GPU / if found model is set to GPU 

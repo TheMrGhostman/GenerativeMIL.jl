@@ -113,7 +113,7 @@ Masked cross-attention variant. The output is additionally masked by `Q_mask`.
 # Returns
 - `AbstractArray`: masked transformed query tensor with shape `(d, m, bs)`.
 """
-function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, Q_mask::Mask=nothing, V_mask::Mask=nothing) where T <: AbstractFloat
+function (mab::MultiheadAttentionBlock)(Q::AbstractArray{T}, V::AbstractArray{T}, Q_mask::Mask, V_mask::Mask) where T <: AbstractFloat
     # Q ∈ ℝ^{m,d} ~ (d, m, bs)
     # V ∈ ℝ^{n,d} ~ (d, n, bs) 
     # Q_mask ∈ ℝ^{m} ~ (1, m, bs) 
@@ -199,7 +199,7 @@ Run masked ISAB pass and return `(x_out, h)`.
     - `x_out`: masked transformed set tensor `(d, n, bs)`.
     - `h`: induced representation `(d, m, bs)`.
 """
-function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
+function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
@@ -278,7 +278,7 @@ Masked half ISAB pass returning `(x, h)`.
     - original `x`.
     - masked induced representation `h` with shape `(d, m, bs)`.
 """
-function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
+function (isab::InducedSetAttentionHalfBlock)(x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
     # I ∈ ℝ^{m,d} ~ (d, m, bs)
     # x ∈ ℝ^{n,d} ~ (d, n, bs) 
     # x_mask ∈ ℝ^{n} ~ (1, n, bs) 
@@ -515,7 +515,7 @@ Returns `(x_out, L_kl_scalar, h_hat, z)`.
     - `h_hat`: reconstructed induced representation.
     - `z`: sampled latent representation.
 """
-function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
+function (abl::AttentiveBottleneckLayer)(x::AbstractArray{T}, h_enc::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
     # inference
     # I     ∈ ℝ^{m,d} ~ (d, m, bs)
     # x     ∈ ℝ^{n,d} ~ (d, n, bs) 

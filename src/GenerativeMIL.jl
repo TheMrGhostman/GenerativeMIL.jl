@@ -70,7 +70,7 @@ include("models/Models.jl")
 
 # Everything related to model training
 include("model_training/schedulers.jl")
-export WarmupCosine, WarmupLinear, CreateLrScheduler, CreateAnealer
+export WarmupCosine, WarmupLinear, CreateLrScheduler, create_beta_scheduler, create_lr_scheduler
 include("model_training/early_stopping.jl")
 export EarlyStopping
 include("model_training/fits.jl")
