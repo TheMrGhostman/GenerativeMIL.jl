@@ -198,6 +198,7 @@ function train_model!(
     model_dir::String=pwd(), 
     verbose::Bool=false, 
     valid_check_interval::Int = 1000,
+    validation_check_after_epoch::Bool=false,
     checkpoint_interval_epochs::Int=10,
     epochs::Int=1000, 
     early_stopping::Bool=true,
@@ -242,6 +243,7 @@ function train_model!(
 
     # 5) get max iteration and idx
     max_iters = length(dataloaders.train)
+    @assert valid_check_interval > 0 "valid_check_interval must be > 0"
     idx = 0
     pred_interval = isnothing(val_prediction_interval_epochs) ? checkpoint_interval_epochs : val_prediction_interval_epochs
     val_pred_dir = joinpath(model_dir, val_prediction_dirname)
@@ -308,15 +310,21 @@ function train_model!(
             end
 
             # 10) after epoch validation stop
-            validation_check(
-                model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, epoch*max_iters; 
-                verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters)
-            );
-
+            # Avoid duplicate validation at the same idx when the last in-epoch
+            # validation already happened on iter == max_iters.
+            did_validate_at_epoch_end_idx = mod(max_iters, valid_check_interval) == 0
+            if validation_check_after_epoch && !did_validate_at_epoch_end_idx
+                stop_training = validation_check(
+                    model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, epoch * max_iters;
+                    verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters)
+                )
+                if stop_training; break; end
+            end
         end
     catch e   
         # if error happens stop training and log error, return what we have
         @info "Stopped training after $((time() - start_time) / 3600) hours due to error \n $(e)"
+        # rethrow(e)
     finally
         # close logger
         close(json_logger)
@@ -384,8 +392,19 @@ function validation_check(
     # 7c) verbose losses 
     if verbose
         tr_logs = !isnothing(tr_log) ? tr_log : (;)
-        tr_l = join(map(key->" $(key): $(round(tr_logs[key], digits=9, RoundUp)) |", keys(tr_logs)))
-        va_l = join(map(key->" $(key): $(round(vlogs[key], digits=9, RoundUp)) |", keys(vlogs)))
+
+        _format_scalar_logs(logs) = join([
+            begin
+                value = logs[key]
+                rounded = value isa AbstractFloat ? round(value, digits=9, RoundUp) : value
+                " $(key): $(rounded) |"
+            end
+            for key in keys(logs)
+            if logs[key] isa Number && !(logs[key] isa AbstractArray)
+        ])
+
+        tr_l = _format_scalar_logs(tr_logs)
+        va_l = _format_scalar_logs(vlogs)
         @info join(("ep: $(lpad_number(epoch_info...)) | it: $(lpad_number(iter_info...)) - training -> ", tr_l, "| validation -> ", va_l)) #FIXME epochs & iters
     end
 

@@ -4,6 +4,7 @@ using DrWatson
 
 using ArgParse
 using Random
+using Serialization
 using YAML
 using OrderedCollections
 using GenerativeMIL
@@ -70,7 +71,7 @@ function main()
     model_cfg[:activation] = resolve_activation(model_cfg[:activation])
     model_cfg[:output_activation] = resolve_activation(get(model_cfg, :output_activation, "identity"))
 
-    data = load_modelnet10(get(data_cfg, :npoints, 512), get(data_cfg, :type, "all"); validation=true, seed=args[:seed])
+    data = load_modelnet10(get(data_cfg, :npoints, 512), get(data_cfg, :type, "all"); validation=true, seed=args[:seed]);
     @info "Loaded ModelNet10" train=size(data[1][1]) valid=size(data[2][1]) test=size(data[3][1])
     
     dataloaders = (
@@ -78,9 +79,9 @@ function main()
         valid = DataLoader(data[2][1], batchsize=get(train_cfg, :batch_size, 16))
     )
 
-    model = setvae_constructor_from_named_tuple(; idim=size(data[1][1], 1), dict2nt(model_cfg)...)
+    model = setvae_constructor_from_named_tuple(; idim=size(data[1][1], 1), dict2nt(model_cfg)...);
     lr = get(train_cfg, :lr, 1f-3)
-    optimiser = Optimisers.AdaMax(lr)
+    optimiser = Optimisers.AdaMax(lr);
 
     # Vytvoř β_scheduler z konfigurace
     beta_scheduler_cfg = get(train_cfg, :beta_anealer, get(train_cfg, :beta, 1f0))
@@ -93,6 +94,7 @@ function main()
         model_dir = get(train_cfg, :model_dir, datadir("experiments", "setvae_modelnet", "seed=$(args[:seed])")),
         verbose = get(train_cfg, :verbose, false),
         valid_check_interval = get(train_cfg, :valid_check_interval, 1000),
+        validation_check_after_epoch = get(train_cfg, :validation_check_after_epoch, false),
         checkpoint_interval_epochs = get(train_cfg, :checkpoint_interval_epochs, 10),
         epochs = get(train_cfg, :epochs, 1000),
         early_stopping = get(train_cfg, :early_stopping, true),
@@ -115,9 +117,24 @@ function main()
         β_scheduler = beta_scheduler,
         lr_scheduler = lr_scheduler,
         train_kwargs...
-    )
+    );
 
-    @info "Training finished" result=result
+    run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
+    serialize(run_config_file, (
+        args = args,
+        data_cfg = data_cfg,
+        model_cfg = model_cfg,
+        train_cfg = train_cfg,
+        train_kwargs = train_kwargs,
+        beta_scheduler_cfg = beta_scheduler_cfg,
+        lr_scheduler_cfg = lr_scheduler_cfg,
+    ))
+    @info "Saved run configuration" file=run_config_file
+
+    serialize(joinpath(train_kwargs.model_dir, "history.jls"), result.history)
+    @info "Saved training history" file=joinpath(train_kwargs.model_dir, "history.jls")
+
+    @info "Training finished"
     return result
 end
 

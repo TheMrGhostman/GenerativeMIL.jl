@@ -111,10 +111,10 @@ function Invertible1x1Conv(channels::Int)
 end
 
 
-struct ConcatSquashDense
-    layer
-    context_gate
-    context_bias
+struct ConcatSquashDense{L, G, B}
+    layer :: L
+    context_gate :: G
+    context_bias :: B
 end
 
 Flux.@layer ConcatSquashDense
@@ -130,7 +130,7 @@ function (m::ConcatSquashDense)(x::AbstractArray{T, 3}, context::AbstractArray{T
     return out, context
 end
 
-function ConcatSquashDense(in_features, in_context, out_features, zeros_init::Bool=false)
+function ConcatSquashDense(in_features::Int, in_context::Int, out_features::Int, zeros_init::Bool=false)
     init_ = (zeros_init) ? Flux.zeros32 : Flux.glorot_uniform # how to initialize weights
     layer_ = Flux.Dense(in_features, out_features, init=init_)
     gate_ = Flux.Dense(in_context, out_features, Flux.σ, init=init_) # sigmoid activation
