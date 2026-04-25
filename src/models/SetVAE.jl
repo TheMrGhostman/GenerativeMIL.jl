@@ -397,7 +397,7 @@ Returns:
 """
 function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::AbstractVector{<:Integer}, 
     latent_dims::AbstractVector{<:Integer}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, 
-    n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity) 
+    expansion_depth::Int=1, expansion_hidden_dim::Int=0, n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity) 
     #prior_type::AbstractPriorDistribution=MixtureOfGaussians)
 
     (length(induced_set_sizes) !=length(latent_dims)) ? error("induced sets and latent dims have different lengths") : nothing
@@ -412,7 +412,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     push!(enc_blocks, half_block)
 
     encoder = HierarchicalEncoder(
-        Flux.Dense(input_dim, hidden_dim),
+        create_mlp(input_dim, expansion_hidden_dim, expansion_depth, hidden_dim, activation),#Flux.Dense(input_dim, hidden_dim),
         enc_blocks
     )
 
@@ -431,7 +431,7 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
     decoder = HierarchicalDecoder(
         Flux.Dense(prior_dim, hidden_dim),
         dec_blocks,
-        Flux.Dense(hidden_dim, input_dim, x->output_activation(x))
+        create_mlp(hidden_dim, expansion_hidden_dim, expansion_depth, input_dim, output_activation) #Flux.Dense(hidden_dim, input_dim, x->output_activation(x))
     )
     return SetVAE(encoder, decoder, prior)
 end
@@ -447,15 +447,16 @@ Returns:
 """
 function setvae_constructor_from_named_tuple(
     ;idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, activation, 
-    n_mixtures=5, prior_dim, output_activation=identity, prior="mog", 
-    init_seed=nothing, kwargs...)
+    expansion_depth=1, expansion_hidden_dim=0, n_mixtures=5, prior_dim=32, 
+    output_activation=identity, prior="mog", init_seed=nothing, kwargs...)
     #n_mixtures = (n_mixtures === nothing) ? 5 : n_mixtures
     #output_activation = (output_activation === nothing) ? identity : output_activation
     activation = eval(:($(Symbol(activation))))
     (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
     model = SetVAE(
         idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, 
-        activation, n_mixtures, prior_dim, output_activation#, prior_type
+        activation, expansion_depth, expansion_hidden_dim, n_mixtures, 
+        prior_dim, output_activation#, prior_type
         )
     (init_seed !== nothing) ? Random.seed!() : nothing
     return model
