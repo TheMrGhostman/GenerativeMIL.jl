@@ -29,7 +29,7 @@ function main()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "setvae_c1.yml")
+            default = joinpath(@__DIR__, "configs", "mmd_setvae_c1.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int
@@ -83,6 +83,9 @@ function main()
     lr = get(train_cfg, :lr, 1f-3)
     optimiser = Optimisers.AdaMax(lr);
 
+    loss_cfg = get(train_cfg, :loss_function, "chamfer_distance")
+    loss_function = create_loss_function(loss_cfg)
+
     # Vytvoř β_scheduler z konfigurace
     beta_scheduler_cfg = get(train_cfg, :beta_anealer, get(train_cfg, :beta, 1f0))
     beta_scheduler = create_beta_scheduler(beta_scheduler_cfg)
@@ -113,7 +116,7 @@ function main()
         model,
         dataloaders,
         optimiser;
-        loss_function = chamfer_distance,
+        loss_function = loss_function,
         β_scheduler = beta_scheduler,
         lr_scheduler = lr_scheduler,
         train_kwargs...
@@ -125,6 +128,7 @@ function main()
         data_cfg = data_cfg,
         model_cfg = model_cfg,
         train_cfg = train_cfg,
+        loss_cfg = loss_cfg,
         train_kwargs = train_kwargs,
         beta_scheduler_cfg = beta_scheduler_cfg,
         lr_scheduler_cfg = lr_scheduler_cfg,
