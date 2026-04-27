@@ -35,7 +35,7 @@ function make_batch(T::Type, d::Int, n::Int, bs::Int)
     return x, y
 end
 
-@testset "maximum_mean_discrepancy" begin
+@testset "maximum_mean_discrepancy" verbose=true begin
     T = Float32
     d = 3
     n = 32
@@ -188,7 +188,7 @@ end
         end
     end
 
-    @testset "smoke benchmark vs chamfer" begin
+    @testset "smoke benchmark mmd vs chamfer" begin
         xb, yb = make_batch(T, 3, 256, 24)
 
         t_cpu_mmd = @belapsed maximum_mean_discrepancy($xb, $yb; sigma=1f0)
@@ -220,4 +220,40 @@ end
             @test_skip "CUDA not functional in this environment"
         end
     end
+
+    @testset "smoke benchmark mmd (multi-sigma) vs chamfer" begin
+        xb, yb = make_batch(T, 3, 1024, 2)
+        σ_vec = [0.25f0, 0.5f0, 1.0f0, 2.0f0, 4.0f0]
+
+        t_cpu_mmd = @belapsed maximum_mean_discrepancy($xb, $yb; sigma=[0.25f0, 0.5f0, 1.0f0, 2.0f0, 4.0f0])
+        t_cpu_chamfer = @belapsed chamfer_distance($xb, $yb)
+        ratio_cpu = t_cpu_mmd / t_cpu_chamfer
+
+        @info "MMD (5 σs) vs chamfer benchmark (CPU)" mmd=t_cpu_mmd chamfer=t_cpu_chamfer ratio_mmd_over_chamfer=ratio_cpu
+
+        @test t_cpu_mmd > 0
+        @test t_cpu_chamfer > 0
+        @test isfinite(ratio_cpu)
+
+        if CUDA.functional()
+            xbg = cu(xb);
+            ybg = cu(yb);
+
+            t_gpu_mmd = @belapsed CUDA.@sync maximum_mean_discrepancy($xbg, $ybg; sigma=[0.25f0, 0.5f0, 1.0f0, 2.0f0, 4.0f0])
+            t_gpu_chamfer = @belapsed CUDA.@sync chamfer_distance($xbg, $ybg)
+            ratio_gpu = t_gpu_mmd / t_gpu_chamfer
+
+            @info "MMD (5 σs) vs chamfer benchmark (GPU)" mmd=t_gpu_mmd chamfer=t_gpu_chamfer ratio_mmd_over_chamfer=ratio_gpu
+
+            # Expected in many setups: MMD is somewhat slower than chamfer.
+            # Keep this as a smoke check only, not a strict perf gate.
+            @test t_gpu_mmd > 0
+            @test t_gpu_chamfer > 0
+            @test isfinite(ratio_gpu)
+        else
+            @test_skip "CUDA not functional in this environment"
+        end
+    end
+
 end
+
