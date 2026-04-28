@@ -28,7 +28,7 @@ loss(model::PoolModel, x::AbstractArray{Float32, 3}; loss_function::Function=cha
 function loss_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}; loss_function::Function=chamfer_distance, kwargs...)
     x̂ = model(x)
     ℒ_rec = loss_function(x̂, x)
-    return ℒ_rec, (;ℒ_rec = ℒ_rec)
+    return ℒ_rec, (;ℒ = ℒ_rec, ℒ_rec = ℒ_rec)
 end
 
 
@@ -64,6 +64,12 @@ function valid_step(model::PoolModel, dataloader::DataLoader, logpdf::Function; 
     return logs, ℒ/n # total loss for early stopping
 end
 
+function reconstruct(model::PoolModel, x::AbstractArray{T}; kwargs...) where T <: AbstractFloat
+    Flux.testmode!(model, true)
+    x̂ = model(x; kwargs...)
+    Flux.testmode!(model, false)
+    return x̂
+end
 
 function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
     poolf="mean-max",  gen_sigma="scalar", activation::Function=swish)
