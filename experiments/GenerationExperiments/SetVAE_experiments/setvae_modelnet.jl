@@ -65,7 +65,7 @@ function main()
     args[:epochs] > 0 && (train_cfg[:epochs] = args[:epochs])
     !isempty(args[:model_dir]) && (train_cfg[:model_dir] = args[:model_dir])
     if !isdir(train_cfg[:model_dir])
-        train_cfg[:model_dir] = datadir("GenExperiments", "$(data_cfg[:dataset])", "seed=$(args[:seed])", "$(train_cfg[:model_dir])_ID-$(lpad_number(args[:ui], Int(1e5)))" )
+        train_cfg[:model_dir] = datadir("GenExperiments", "$(data_cfg[:dataset])", "setvae", "seed=$(args[:seed])", "$(train_cfg[:model_dir])_ID-$(lpad_number(args[:ui], Int(1e5)))" )
     end
 
     model_cfg[:activation] = resolve_activation(model_cfg[:activation])
