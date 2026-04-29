@@ -73,14 +73,14 @@ include("model_training/schedulers.jl")
 export WarmupCosine, WarmupLinear, CreateLrScheduler, create_beta_scheduler, create_lr_scheduler
 include("model_training/early_stopping.jl")
 export EarlyStopping
-include("model_training/fits.jl")
-include("model_training/train_steps.jl")
+include("model_training/fits.jl") # deprecated but kept for GroupAD legacy code
 include("model_training/training.jl")
 export train_model!, validation_check
 
 
 # Temporary evaluation function
-include("evaluation.jl")
+# now in legacy_functions folder
+#include("evaluation.jl")
 
 include("printing.jl")
 
