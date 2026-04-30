@@ -48,8 +48,9 @@ const BetaArg = Union{AbstractFloat,AbstractVector{<:AbstractFloat}}
 
 
 # Loading & Helper functions for datasets
-include("dataset.jl")
-export load_modelnet10, load_mnist
+#include("dataset.jl")
+#export load_modelnet10, load_mnist
+include("data_processing/DataProcessing.jl")
 
 # logger for 
 include("json_logger.jl")

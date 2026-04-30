@@ -1,42 +1,47 @@
 
+"""
+    load_dataset(name::String, args...; kwargs...)
+
+Dispatch dataset loading based on dataset name.
+
+# Arguments
+- `name`: dataset identifier.
+    - `"modelnet10"` -> [`load_modelnet10`](@ref)
+    - `"mnist"` -> [`load_mnist`](@ref)
+- `args...`, `kwargs...`: forwarded to the selected loader.
+
+# Returns
+- The value returned by the selected dataset loader.
+
+# Throws
+- `ErrorException` when `name` is unknown.
+"""
 function load_dataset(name::String, args...; kwargs...)
     if name == "modelnet10"
         return load_modelnet10(args...; kwargs...)
     elseif name == "mnist"
         return load_mnist(args...; kwargs...)
-    #elseif name == "mnist_standardized"
-    #    return load_and_standardize_mnist()
-    #elseif name == "mnist_scaled"
-    #    return load_and_scale_mnist()
     else
         error("Unknown dataset: $name")
     end
 end
 
+"""
+    _cfgget(cfg, key::Symbol, default)
 
-_mnist_balanced_path() = datadir("datasets/mnist_pc/mnist_4x_point_clouds_3x900_matrix.jls")
-_mnist_natural_path() = datadir("datasets/mnist_pc/mnist_4x_point_clouds_all_vec.jls")
+Fetch a configuration value from a dictionary-like object or struct.
 
-sample_fixed_n(pc, npoints) = pc[:, sample(axes(pc, 2), min(npoints, size(pc, 2)), replace=false)]
-sample_fixed_n_unsqueeze(pc, npoints) = unsqueeze(pc[:, sample(axes(pc, 2), min(npoints, size(pc, 2)), replace=false)], dims=3)
+# Arguments
+- `cfg`: configuration object (`AbstractDict` or a struct-like object).
+- `key`: requested key as `Symbol`.
+- `default`: fallback value when `key` is missing.
 
-function sample_fixed_n_from_matrix(xs::AbstractArray, npoints::Int)
-    idx = sample(axes(xs, 2), min(npoints, size(xs, 2)), replace=false)
-    return xs[:, idx, :]
-end
-
-function _stack_point_clouds(pcs)
-    n = length(pcs)
-    n == 0 && error("Cannot stack an empty point-cloud collection")
-    d = size(pcs[1], 1)
-    p = size(pcs[1], 2)
-    x = Array{eltype(pcs[1])}(undef, d, p, n)
-    @inbounds for (i, pc) in pairs(pcs)
-        x[:, :, i] = pc
-    end
-    return x
-end
-
+# Returns
+- `cfg[key]` if present,
+- otherwise `cfg[String(key)]` for dictionary inputs,
+- otherwise `getproperty(cfg, key)` for struct-like inputs,
+- otherwise `default`.
+"""
 function _cfgget(cfg, key::Symbol, default)
     if cfg isa AbstractDict
         if haskey(cfg, key)
@@ -49,7 +54,33 @@ function _cfgget(cfg, key::Symbol, default)
 end
 
 
-function load_mnist(npoints=512, trans_fn=identity; validation::Bool=true, cardinality_count::Symbol=:balanced, sample_on_fly::Bool=false, normalize::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666)
+"""
+    load_mnist(npoints=512; validation=true, cardinality_count=:balanced,
+               sample_on_fly=false, normalize=false, ratio=0.2, seed=666, kwargs...)
+
+Load MNIST point-cloud data and create train/validation/test splits.
+
+# Arguments
+- `npoints`: number of points requested after sampling.
+- `validation`: if `true`, returns train/val/test; otherwise train/test.
+- `cardinality_count`: `:balanced` or `:natural` source format.
+- `sample_on_fly`: enable lazy sampling on the training split.
+- `normalize`: apply point-cloud normalization before splitting.
+- `ratio`: validation ratio from the train/validation pool.
+- `seed`: random seed for deterministic split/sampling behavior.
+- `kwargs...`: reserved for API compatibility.
+
+# Returns
+- If `validation=true`:
+    - `((x_train, y_train), (x_val, y_val), (x_test, y_test))`
+- If `validation=false`:
+    - `((x_train, y_train), (x_test, y_test))`
+
+# Notes
+- Validation and test splits are always pre-sampled.
+- On-the-fly sampling is applied only to training data.
+"""
+function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbol=:balanced, sample_on_fly::Bool=false, normalize::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
     if cardinality_count == :balanced
         dict_loaded = Serialization.deserialize(_mnist_balanced_path())
         xs = dict_loaded["features"]
@@ -67,11 +98,7 @@ function load_mnist(npoints=512, trans_fn=identity; validation::Bool=true, cardi
 
     # Optional preprocessing hook.
     if normalize
-        if xs isa AbstractArray{<:Real,3}
-            xs = trans_fn(xs)
-        else
-            xs = map(trans_fn, xs)
-        end
+        xs = normalize_point_cloud(xs)
     end
 
     # Train/valid/test split from deterministic shuffled indices.
@@ -127,89 +154,34 @@ function load_mnist(npoints=512, trans_fn=identity; validation::Bool=true, cardi
 
 end
 
-function on_fly_collate_fn(batch::Vector{Tuple{X, Y}}) where {X <: AbstractArray{<:AbstractFloat, 3}, Y <: Int}
-    pc1, y1 = batch[1]
-    BS = length(batch)
-    n_points = size(pc1, 2)
-    x = Array{eltype(pc1)}(undef, size(pc1, 1), n_points, BS)
-    y = Vector{typeof(y1)}(undef, BS)
-    @inbounds for (i, (pc, label)) in pairs(batch)
-        copyto!(@view(x[:, :, i]), pc)
-        y[i] = label
-    end
-    return (x, y)
-end
 
-function create_dataloaders(data_cfg; batch_size::Int=32, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing)
-    dataset_name = String(_cfgget(data_cfg, :dataset, "mnist"))
-    npoints = _cfgget(data_cfg, :npoints, 512)
-    trans_fn = _cfgget(data_cfg, :trans_fn, identity)
-    validation = _cfgget(data_cfg, :validation, true)
-    cardinality_count = Symbol(_cfgget(data_cfg, :cardinality_count, :balanced))
-    sample_on_fly = _cfgget(data_cfg, :sample_on_fly, false)
-    normalize = _cfgget(data_cfg, :normalize, false)
-    ratio = _cfgget(data_cfg, :ratio, 0.2)
-    seed = _cfgget(data_cfg, :seed, 666)
+"""
+    load_modelnet10(npoints=2048; type="all", validation=true, ratio=0.2, seed=666, kwargs...)
 
-    # Support special positional args for some datasets (e.g. ModelNet10 expects a `type` positional arg)
-    type_name = _cfgget(data_cfg, :type, "all")
-    model_path = _cfgget(data_cfg, :model_path, nothing)
+Load ModelNet10 point-cloud data and create train/validation/test splits.
 
-    if dataset_name == "modelnet10"
-        data = load_dataset(
-            dataset_name,
-            npoints,
-            type_name;
-            validation=validation,
-            ratio=ratio,
-            seed=seed,
-            path=model_path,
-        )
-    else
-        data = load_dataset(
-            dataset_name,
-            npoints,
-            trans_fn;
-            validation=validation,
-            cardinality_count=cardinality_count,
-            sample_on_fly=sample_on_fly,
-            normalize=normalize,
-            ratio=ratio,
-            seed=seed,
-        )
-    end
+# Arguments
+- `npoints`: points per object (also determines source file variant).
+- `type`: `"all"` or a specific class name (e.g. `"chair"`).
+- `validation`: if `true`, returns train/val/test; otherwise train/test.
+- `ratio`: validation ratio for the training split.
+- `seed`: random seed for deterministic split.
+- `kwargs...`: reserved for API compatibility.
 
-    train_data = data[1]
-    valid_data = validation ? data[2] : nothing
-    test_data = validation ? data[3] : data[2]
+# Returns
+- If `validation=true`:
+    - `((X_train, Y_train), (X_val, Y_val), (X_test, Y_test))`
+- If `validation=false`:
+    - `((X_train, Y_train), (X_test, Y_test))`
 
-    if sample_on_fly && cardinality_count == :natural
-        train_collate_fn = isnothing(train_collate_fn) ? on_fly_collate_fn : train_collate_fn
-    end
-
-    train_loader = isnothing(train_collate_fn) ? DataLoader(train_data, batchsize=batch_size, shuffle=true) : DataLoader(train_data, batchsize=batch_size, shuffle=true, collate=train_collate_fn)
-    valid_loader = if validation
-        isnothing(valid_collate_fn) ? DataLoader(valid_data, batchsize=batch_size, shuffle=false) : DataLoader(valid_data, batchsize=batch_size, shuffle=false, collate=valid_collate_fn)
-    else
-        nothing
-    end
-    test_loader = isnothing(test_collate_fn) ? DataLoader(test_data, batchsize=batch_size, shuffle=false) : DataLoader(test_data, batchsize=batch_size, shuffle=false, collate=test_collate_fn)
-
-    return (train=train_loader, valid=valid_loader, test=test_loader)
-end
-
-
-
-function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=0.2, seed::Int=666, path::Union{Nothing,String}=nothing)
-    """
-    npoints     ... Number of points per object ( 512 / 1024 / 2048 )
-    type        ... Type data -> \"all\" or one-class name e.g. \"chair\", \"monitor\"
-    validatoin  ... Return validation set (\"true\") or not (\"false\")
-    seed        ... Random seed for validation split.
-    """
+# Notes
+- Data are loaded from `_modelnet10_path(npoints)`.
+- If `type` is a known class name, training data are filtered to that class,
+    and `Y_val`/`Y_test` are converted to one-vs-rest binary targets.
+"""
+function load_modelnet10(npoints=2048; type="all", validation::Bool=true, ratio=0.2, seed::Int=666, kwargs...)
     #load data
-    path_to_open = isnothing(path) ? datadir("datasets/modelnet10/modelnet10_$(npoints).h5") : path
-    data = HDF5.h5open(path_to_open)
+    data = HDF5.h5open(_modelnet10_path(npoints))
     X_train, X_test, Y_train, Y_test = data["X_train"]|>read, data["X_test"]|>read, data["Y_train"]|>read, data["Y_test"]|>read
 
     titles = ["bathtub", "bed", "chair", "desk", "dresser", "monitor", "night_stand", "sofa", "table", "toilet"]
@@ -240,4 +212,79 @@ function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=
         data = ((X_train, Y_train), (X_test, Y_test)) 
     end
     return data
+end
+
+
+"""
+    create_dataloaders(data_cfg; batch_size=32,
+                       train_collate_fn=nothing,
+                       valid_collate_fn=nothing,
+                       test_collate_fn=nothing)
+
+Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
+
+# Arguments
+- `data_cfg`: dictionary or struct-like config. Typical keys include:
+    - `dataset`, `npoints`, `validation`, `ratio`, `seed`,
+    - and dataset-specific options such as
+        `cardinality_count`, `sample_on_fly`, `normalize`, `type`.
+- `batch_size`: dataloader batch size.
+- `train_collate_fn`: optional train collate function.
+- `valid_collate_fn`: optional validation collate function.
+- `test_collate_fn`: optional test collate function.
+
+# Returns
+- Named tuple `(train, valid, test)` where:
+    - `train` is a `DataLoader`,
+    - `valid` is a `DataLoader` or `nothing` when `validation=false`,
+    - `test` is a `DataLoader`.
+
+# Notes
+- If `sample_on_fly && cardinality_count == :natural`, default
+    `on_fly_collate_fn` is used for training unless a custom collate function is
+    provided.
+"""
+function create_dataloaders(data_cfg; batch_size::Int=32, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing)
+    dataset_name = String(_cfgget(data_cfg, :dataset, "mnist"))
+    npoints = _cfgget(data_cfg, :npoints, 512)
+    trans_fn = _cfgget(data_cfg, :trans_fn, identity)
+    validation = _cfgget(data_cfg, :validation, true)
+    cardinality_count = Symbol(_cfgget(data_cfg, :cardinality_count, :balanced))
+    sample_on_fly = _cfgget(data_cfg, :sample_on_fly, false)
+    normalize = _cfgget(data_cfg, :normalize, false)
+    ratio = _cfgget(data_cfg, :ratio, 0.2)
+    seed = _cfgget(data_cfg, :seed, 666)
+
+    # Support special positional args for some datasets (e.g. ModelNet10 expects a `type` positional arg)
+    type_name = _cfgget(data_cfg, :type, "all")
+
+    data = load_dataset(
+        dataset_name,
+        npoints;
+        validation=validation,
+        cardinality_count=cardinality_count,
+        sample_on_fly=sample_on_fly,
+        normalize=normalize,
+        ratio=ratio,
+        seed=seed,
+        type=type_name
+    )
+
+    train_data = data[1]
+    valid_data = validation ? data[2] : nothing
+    test_data = validation ? data[3] : data[2]
+
+    if sample_on_fly && cardinality_count == :natural
+        train_collate_fn = isnothing(train_collate_fn) ? on_fly_collate_fn : train_collate_fn
+    end
+
+    train_loader = isnothing(train_collate_fn) ? DataLoader(train_data, batchsize=batch_size, shuffle=true) : DataLoader(train_data, batchsize=batch_size, shuffle=true, collate=train_collate_fn)
+    valid_loader = if validation
+        isnothing(valid_collate_fn) ? DataLoader(valid_data, batchsize=batch_size, shuffle=false) : DataLoader(valid_data, batchsize=batch_size, shuffle=false, collate=valid_collate_fn)
+    else
+        nothing
+    end
+    test_loader = isnothing(test_collate_fn) ? DataLoader(test_data, batchsize=batch_size, shuffle=false) : DataLoader(test_data, batchsize=batch_size, shuffle=false, collate=test_collate_fn)
+
+    return (train=train_loader, valid=valid_loader, test=test_loader)
 end
