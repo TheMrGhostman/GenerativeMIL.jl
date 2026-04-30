@@ -189,7 +189,7 @@ function load_modelnet10(npoints=2048, type="all"; validation::Bool=true, ratio=
     seed        ... Random seed for validation split.
     """
     #load data
-    data = HDF5.h5open("/home/zorekmat/MIL/GenerativeMIL/data/modelnet10/modelnet10_$(npoints).h5")
+    data = HDF5.h5open("/home/zorekmat/MIL/GenerativeMIL/data/datasets/modelnet10/modelnet10_$(npoints).h5")
     X_train, X_test, Y_train, Y_test = data["X_train"]|>read, data["X_test"]|>read, data["Y_train"]|>read, data["Y_test"]|>read
 
     titles = ["bathtub", "bed", "chair", "desk", "dresser", "monitor", "night_stand", "sofa", "table", "toilet"]
