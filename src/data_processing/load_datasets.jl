@@ -244,7 +244,7 @@ Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
     `on_fly_collate_fn` is used for training unless a custom collate function is
     provided.
 """
-function create_dataloaders(data_cfg; batch_size::Int=32, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing)
+function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing)
     dataset_name = String(_cfgget(data_cfg, :dataset, "mnist"))
     npoints = _cfgget(data_cfg, :npoints, 512)
     validation = _cfgget(data_cfg, :validation, true)
@@ -269,9 +269,16 @@ function create_dataloaders(data_cfg; batch_size::Int=32, train_collate_fn=nothi
         type=type_name
     )
 
-    train_data = data[1]
-    valid_data = validation ? data[2] : nothing
-    test_data = validation ? data[3] : data[2]
+    if x_only
+        train_data = data[1][1]
+        valid_data = validation ? data[2][1] : nothing
+        test_data = validation ? data[3][1] : data[2][1]
+    else
+        train_data = data[1]
+        valid_data = validation ? data[2] : nothing
+        test_data = validation ? data[3] : data[2]
+
+    end
 
     if sample_on_fly && cardinality_count == :natural
         train_collate_fn = isnothing(train_collate_fn) ? on_fly_collate_fn : train_collate_fn
@@ -283,6 +290,7 @@ function create_dataloaders(data_cfg; batch_size::Int=32, train_collate_fn=nothi
     else
         nothing
     end
+
     test_loader = isnothing(test_collate_fn) ? DataLoader(test_data, batchsize=batch_size, shuffle=false) : DataLoader(test_data, batchsize=batch_size, shuffle=false, collate=test_collate_fn)
 
     return (train=train_loader, valid=valid_loader, test=test_loader)
