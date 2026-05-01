@@ -247,7 +247,6 @@ Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
 function create_dataloaders(data_cfg; batch_size::Int=32, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing)
     dataset_name = String(_cfgget(data_cfg, :dataset, "mnist"))
     npoints = _cfgget(data_cfg, :npoints, 512)
-    trans_fn = _cfgget(data_cfg, :trans_fn, identity)
     validation = _cfgget(data_cfg, :validation, true)
     cardinality_count = Symbol(_cfgget(data_cfg, :cardinality_count, :balanced))
     sample_on_fly = _cfgget(data_cfg, :sample_on_fly, false)

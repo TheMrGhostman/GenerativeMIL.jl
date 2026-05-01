@@ -16,5 +16,5 @@ EPOCHS=$5
 mkdir -p slurms
 
 julia --project -e 'using Pkg; Pkg.instantiate(); @info("Instantiated") '
-julia --project ./setvae_modelnet.jl ${CONFIG} ${SEED} ${TIME_LIMIT} ${MODEL_DIR} ${EPOCHS}
+julia --project ./train_setvae.jl ${CONFIG} ${SEED} ${TIME_LIMIT} ${MODEL_DIR} ${EPOCHS}
 

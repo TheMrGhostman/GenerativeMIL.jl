@@ -6,10 +6,10 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Uprav jen tyto 4 veci:
 CONFIGS=(
-    "configs/mmd_setvae_c7.yml"
-    "configs/mmd_setvae_c8.yml"
-    "configs/mmd_setvae_c9.yml"
-    "configs/mmd_setvae_c10.yml"    
+    "configs/cd_setvae_c15.yml"
+    "configs/cd_setvae_c16.yml"
+    "configs/mmd_setvae_c15.yml"
+    "configs/mmd_setvae_c16.yml"
 )
 SEEDS=(1)
 TIME_LIMIT=24
@@ -24,7 +24,7 @@ for cfg in "${CONFIGS[@]}"; do
         job_name="${cfg_name}_s${seed}"
         echo "Submitting ${cfg_name}, seed=${seed}"
         sbatch --job-name="${job_name}" --chdir "${EXP_DIR}" \
-            "${SCRIPT_DIR}/run_setvae_modelnet.sh" \
+            "${SCRIPT_DIR}/run_setvae_training.sh" \
             "${cfg}" "${seed}" "${TIME_LIMIT}" "${model_dir}" "${EPOCHS}"
     done
 done

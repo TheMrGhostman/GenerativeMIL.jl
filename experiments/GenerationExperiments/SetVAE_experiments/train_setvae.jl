@@ -29,7 +29,7 @@ function main()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "mmd_setvae_c1.yml")
+            default = joinpath(@__DIR__, "configs", "mnist_configs", "cd_setvae_c1.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int
@@ -71,15 +71,10 @@ function main()
     model_cfg[:activation] = resolve_activation(model_cfg[:activation])
     model_cfg[:output_activation] = resolve_activation(get(model_cfg, :output_activation, "identity"))
 
-    data = load_modelnet10(get(data_cfg, :npoints, 512), get(data_cfg, :type, "all"); validation=true, seed=args[:seed]);
-    @info "Loaded ModelNet10" train=size(data[1][1]) valid=size(data[2][1]) test=size(data[3][1])
-    
-    dataloaders = (
-        train = DataLoader(data[1][1], batchsize=get(train_cfg, :batch_size, 16), shuffle=true), 
-        valid = DataLoader(data[2][1], batchsize=get(train_cfg, :batch_size, 16))
-    )
+    dataloaders = create_dataloaders(batch_size=get(train_cfg, :batch_size, 16), data_cfg)
+    idim = size(first(dataloaders[:train])[1], 1)
 
-    model = setvae_constructor_from_named_tuple(; idim=size(data[1][1], 1), dict2nt(model_cfg)...);
+    model = setvae_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...);
     lr = get(train_cfg, :lr, 1f-3)
     optimiser = Optimisers.AdaMax(lr);
 
