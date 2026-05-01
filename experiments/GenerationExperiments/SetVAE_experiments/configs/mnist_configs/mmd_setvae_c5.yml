@@ -20,22 +20,22 @@ model:
 train:
   loss_function:
     type: maximum_mean_discrepancy
-    sigma: [0.7943277, 1.5886554, 3.1773107] #[0.39716384, 0.7943277, 1.5886554, 3.1773107, 6.3546214] # [0.25,0.5,1.0,2.0,4.0] * 1.5886554f0; estimate of \sigma  
+    sigma: [0.8652837, 1.7305675, 3.461135] #[0.5,1.0,2.0] * 1.7305675f0; estimate of \sigma per poin  
     kernel: rbf
   lr: 0.0001
   lr_scheduler:
     type: WarmupCosine
     milestones: [0.02, 0.8]
     scale: 10
-  epochs: 200
-  batch_size: 16
+  epochs: 150
+  batch_size: 128
   beta: 1.0
   beta_anealer:
     type: linear
     max_value: 1.0
-    milestone: 180
+    milestone: 140
   use_gpu: true
-  valid_check_interval: 200
+  valid_check_interval: 300
   validation_check_after_epoch: false
   checkpoint_interval_epochs: 2
   early_stopping: true
