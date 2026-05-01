@@ -21,15 +21,15 @@ train:
   loss_function:
     type: chamfer_distance
   lr: 0.0001
-  epochs: 1000
-  batch_size: 128
+  epochs: 500
+  batch_size: 256
   beta: 1.0
   beta_anealer:
     type: linear
     max_value: 1.0
-    milestone: 900
+    milestone: 450
   use_gpu: true
-  valid_check_interval: 25
+  valid_check_interval: 150
   validation_check_after_epoch: false
   checkpoint_interval_epochs: 10
   early_stopping: true
