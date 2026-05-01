@@ -71,8 +71,9 @@ function main()
     model_cfg[:activation] = resolve_activation(model_cfg[:activation])
     model_cfg[:output_activation] = resolve_activation(get(model_cfg, :output_activation, "identity"))
 
-    dataloaders = create_dataloaders(batch_size=get(train_cfg, :batch_size, 16), data_cfg)
-    idim = size(first(dataloaders[:train])[1], 1)
+    dataloaders = create_dataloaders(batch_size=get(train_cfg, :batch_size, 16), x_only=true, data_cfg)
+    idim = size(first(dataloaders[:train]), 1)
+    #dataloaders = (train=dataloaders[:train], valid=dataloaders[:valid])
 
     model = setvae_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...);
     lr = get(train_cfg, :lr, 1f-3)
@@ -109,7 +110,7 @@ function main()
     # Launcher handles config + dataloaders and passes resolved schedulers to train_model!.
     result = train_model!(
         model,
-        dataloaders,
+        (train=dataloaders[:train], valid=dataloaders[:valid]),
         optimiser;
         loss_function = loss_function,
         β_scheduler = beta_scheduler,
