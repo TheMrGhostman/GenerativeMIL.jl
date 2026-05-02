@@ -27,13 +27,13 @@ train:
     type: WarmupCosine
     milestones: [0.02, 0.8]
     scale: 10
-  epochs: 500
+  epochs: 400
   batch_size: 256
   beta: 1.0
   beta_anealer:
     type: linear
     max_value: 1.0
-    milestone: 450
+    milestone: 350
   use_gpu: true
   valid_check_interval: 150
   validation_check_after_epoch: false
