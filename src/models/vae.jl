@@ -1,27 +1,27 @@
 
 
-struct VariationalAutoencoder
+struct VariationalAutoencoder <: AbstractGenModel
     encoder::Flux.Chain # TODO update to AbstractEncoders
     decoder::Flux.Chain # TODO update to AbstractDecoders
 end
 
-Flux.@functor VariationalAutoencoder
+Flux.@layer VariationalAutoencoder
 
-function (vae::VariationalAutoencoder)(x::AbstractArray{T}) where T <: Real
+function (vae::VariationalAutoencoder)(x::AbstractArray{T}) where T <: AbstractFloat
     μ, Σ = vae.encoder(x)
-    z = μ + Σ * randn(Float32)
+    z = μ + Σ .* MLUtils.randn_like(μ)
     x̂ = vae.decoder(z)
     return x̂
 end
 
-function loss(vae::VariationalAutoencoder, x::AbstractArray{T}, β::Float32=1f0) where T <: Real
+function elbo_with_logging(vae::VariationalAutoencoder, x::AbstractArray{T}; β::Float32=1f0, logpdf::Function=Flux.Losses.mse) where T <: AbstractFloat
     μ, Σ = vae.encoder(x)
-    z = μ + Σ * randn(Float32)
+    z = μ + Σ .* MLUtils.randn_like(μ)
     x̂ = vae.decoder(z)
 
-    𝓛_rec = Flux.Losses.mse(x, x̂)
-    𝓛_kld = kl_divergence(μ, Σ) 
-    return 𝓛_rec + β * 𝓛_kld
+    ℒ_rec = logpdf(x, x̂)
+    ℒ_kld = kl_divergence(μ, Σ)
+    return ℒ_rec + β * ℒ_kld, (ℒ_rec = ℒ_rec, ℒ_kld = ℒ_kld, β = β) 
 end
 
 function VariationalAutoencoder(in_dim::Int, z_dim::Int, out_dim::Int; hidden::Int=32, depth::Int=1, activation::Function=identity)
@@ -45,4 +45,36 @@ function VariationalAutoencoder(in_dim::Int, z_dim::Int, out_dim::Int; hidden::I
     encoder = Flux.Chain(encoder...)
     decoder = Flux.Chain(decoder...)
     return VariationalAutoencoder(encoder, decoder)
+end
+
+
+
+#optim_step(model, batch, opt, loss_function, device; β=β, ∇skip=grad_skip, kwargs...);
+function optim_step(model::VariationalAutoencoder, batch::AbstractArray{Float32}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β::Float32=1f0, kwargs...)
+
+    # 1) move data to device
+    batch = batch |> device
+    # 2) compute gradients
+    (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
+        elbo_with_logging(m, x; β = β, logpdf=logpdf)
+    end
+    # 3) update weights
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, logs
+end
+
+#valid_step(model, dataloader, loss_function, β; device=device, kwargs...)
+function valid_step(model::VariationalAutoencoder, dataloader::DataLoader, logpdf::Function; β::Float32, device::Function=cpu, kwargs...)
+    ℒ, ℒ_rec, ℒ_kld = 0, 0, 0
+    for batch in dataloader
+        x = batch |> device
+        loss, logs = elbo_with_logging(model, x; β = β, logpdf=logpdf)
+        ℒ += loss
+        ℒ_rec += logs.ℒ_rec
+        ℒ_kld += logs.ℒ_kld
+    end
+    #TODO if rec or totol_loss to use for EarlyStopping figure out later.
+    n = length(dataloader)
+    logs = (ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥ_kld = ℒ_kld/n)
+    return logs, ℒ/n # total loss for early stopping
 end

@@ -1,4 +1,5 @@
 {
     "C_Cpp.dimInactiveRegions": false,
-    "jupyter.kernels.filter": []
+    "jupyter.kernels.filter": [],
+    "julia.environmentPath": "${env:HOME}/.julia/environments/v1.12"
 }

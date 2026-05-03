@@ -3,7 +3,7 @@ struct MaskedDense
     mask
 end
 
-Flux.@functor MaskedDense
+Flux.@layer MaskedDense
 Flux.trainable(m::MaskedDense) = (m.dense,)
 
 function (m::MaskedDense)(x::AbstractArray{<:Real, 2})
@@ -27,7 +27,7 @@ struct MaskedGaussian
     Σ # ::Union{MaskedDense, ConcatSquashDense}
 end
 
-Flux.@functor MaskedGaussian
+Flux.@layer MaskedGaussian
 Flux.trainable(m::MaskedGaussian) = (m.μ,m.Σ)
 
 (m::MaskedGaussian)(x::AbstractArray{<:Real}) = (m.μ(x), m.Σ(x))

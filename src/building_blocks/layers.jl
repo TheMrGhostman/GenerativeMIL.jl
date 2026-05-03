@@ -3,7 +3,7 @@ struct SplitLayer # TODO unite with MaskedGaussian
     σ::Flux.Dense
 end
 
-Flux.@functor SplitLayer
+Flux.@layer SplitLayer
 
 function SplitLayer(in::Int, out::NTuple{2, Int}, acts::NTuple{2, Function})
 	SplitLayer(

@@ -11,7 +11,7 @@
 """
 
 
-struct ActNorm{T <: Real}
+struct ActNorm{T <: AbstractFloat}
     loc::AbstractArray{T}
     scale::AbstractArray{T}
     initialized::Union{Array{Bool, 1}, Bool} # [false]
@@ -19,7 +19,7 @@ end
 
 Flux.trainable(m::ActNorm) = (m.loc, m.scale)
 
-function (m::ActNorm)(x::AbstractArray{T, 3}, reverse::Bool=false) where T<:Real #TODO simplify
+function (m::ActNorm)(x::AbstractArray{T, 3}, reverse::Bool=false) where T<:AbstractFloat #TODO simplify
     dims = (size(m.loc, 2) == 1 ) ? size(x[1,:,:]) : size(x[:,1,:])
     device = get_device(m.loc)
     logdet = device.zeros(Float32, dims... )
@@ -103,21 +103,21 @@ function (m::Invertible1x1Conv)(x::AbstractArray{T, 3}, logdet::AbstractArray{T,
     return x, logdet
 end
 
-function Invertible1x1Conv(channels)
-    weight,_ = LinearAlgebre.qr(randn(Float32, channels, channels))
+function Invertible1x1Conv(channels::Int)
+    weight,_ = LinearAlgebra.qr(randn(Float32, channels, channels))
     weight = Array(reshape(weight, 1, channels, channels))
     weight[:,1] = (det(weight) < 0) ? -1 .* weight[:,1] : weight[:,1]
     return Invertible1x1Conv(weight)
 end
 
 
-struct ConcatSquashDense
-    layer
-    context_gate
-    context_bias
+struct ConcatSquashDense{L, G, B}
+    layer :: L
+    context_gate :: G
+    context_bias :: B
 end
 
-Flux.@functor ConcatSquashDense
+Flux.@layer ConcatSquashDense
 
 (m::ConcatSquashDense)(x::Tuple{AbstractArray{T}, Matrix{T}}) where T<:Real = m(x...) 
 
@@ -130,7 +130,7 @@ function (m::ConcatSquashDense)(x::AbstractArray{T, 3}, context::AbstractArray{T
     return out, context
 end
 
-function ConcatSquashDense(in_features, in_context, out_features, zeros_init::Bool=false)
+function ConcatSquashDense(in_features::Int, in_context::Int, out_features::Int, zeros_init::Bool=false)
     init_ = (zeros_init) ? Flux.zeros32 : Flux.glorot_uniform # how to initialize weights
     layer_ = Flux.Dense(in_features, out_features, init=init_)
     gate_ = Flux.Dense(in_context, out_features, Flux.σ, init=init_) # sigmoid activation
@@ -150,7 +150,7 @@ struct AffineCoupling
     layers₂::Flux.Chain
 end
 
-Flux.@functor AffineCoupling
+Flux.@layer AffineCoupling
 
 function (m::AffineCoupling)(x::T, std_in::T, context::T, reverse::Bool=false) where T<:AbstractArray{<:Real}
     #TODO
@@ -164,6 +164,6 @@ function (m::AffineCoupling)(x::Union{T, Tuple{T, T}}, std_in::T, reverse::Bool=
     # 4) cat xₐ = cat(xₐ, std_in)
 end
 
-function reverse(m::AffineCoupling, x, std_in)
+function reverse_pass(m::AffineCoupling, x, std_in)
 
 end

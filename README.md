@@ -1,63 +1,85 @@
 # GenerativeMIL
-Repository in still development!!!
 
-This repository is being developed as complement to GroupAD.jl, where the most procedures are located. 
-GenerativeMIL mostly provide advanced models for generative modeling of Multi Instance (Learning) data and Set structured data. 
-Models are implemented in the most optimal which we could think of. So there might be other better way.
+GenerativeMIL is a Julia project for generative modeling of multi-instance and set-structured data.
+It complements GroupAD.jl with reusable building blocks, model implementations, and training utilities
+for set-based generative and discriminative experiments.
+
+The repository is still under active development, so APIs and model coverage may change.
+
+## Highlights
+
+- Set-based generative models and attention blocks implemented in Julia.
+- CPU and GPU training paths for the main research models.
+- DrWatson-based project layout for reproducible experiments.
+- Support for variable-cardinality set data through masking where available.
+
+## Current Status
+
+The codebase is usable, but not all models are finished yet.
+Some components are research prototypes rather than polished production APIs.
+
+Important note for the current setup:
+
+- Do not import `cuDNN` in this project for now. In the current environment it breaks `softmax`.
+
+## Installation
+
+1. Clone or download the repository.
+2. Start Julia in the project directory.
+3. Activate and instantiate the environment:
+
+```julia
+using Pkg
+Pkg.activate(".")
+Pkg.instantiate()
+```
+
+If you use DrWatson workflows, you can also rely on `quickactivate` from within the project.
+
+## Project Layout
+
+- `src/` contains the package code: building blocks, models, losses, utilities, and evaluation helpers.
+- `scripts/` contains runnable experiment and training entry points.
+- `experiments/` contains experiment-specific runs and outputs.
+- `test/` contains smoke tests for CPU and GPU paths.
 
 ## Model Zoo
-| Implemented models | CPU training | GPU training | variable cardinality[^1] (in/out) [^2] | note |
+
+| Implemented models | CPU training | GPU training | variable cardinality[^1] (in/out)[^2] | note |
 |---|---|---|---|---|
-| [SetVAE][setvae] | yes | yes | yes/yes | Implementation is 1:1 Python to Julia code from original repository. | 
-| [FoldingNet VAE][foldingnet] | yes | yes [^5] | yes/no | batched training on CPU via broadcasting / GPU training in special case [^5]|
-| PoolModel (ours) | yes | yes [^*] | yes/yes | TODO masked forward pass for variable cardinality on GPU |
-| [SetTransformer][settransformer] | yes | yes | yes/no | classifier version only | 
-| [Masked Autoencoder for Distribution Estimation][made] (MADE) | yes | yes | possible[^3]/no |  TODO: add support for multiple masks[^4].|
-| [Masked Autoregressive Flow][maf] (MAF)| ? | ? |  | not finished |
-| [Inverse Autoregresive Flow][iaf] (IAF)| ? | ? |  | not finished |
-| [SoftPointFlow][softflow] | ? | ? | yes/yes | not finished |
-| SetVAEformer (ours) | yes | yes | yes/yes | not finished/ Similar to Vanilla SetVAE but better ;) | 
+| [SetVAE][setvae] | yes | yes | yes/yes | Implementation is close to the original Python code. |
+| [FoldingNet VAE][foldingnet] | yes | yes [^5] | yes/no | Batched training on CPU via broadcasting. |
+| PoolModel (ours) | yes | yes [^*] | yes/yes | Masked forward pass for variable cardinality on GPU is still TODO. |
+| [SetTransformer][settransformer] | yes | yes | yes/no | Classifier version only. |
+| [Masked Autoencoder for Distribution Estimation][made] (MADE) | yes | yes | possible[^3]/no | Multiple-mask support is still TODO. |
+| [Masked Autoregressive Flow][maf] (MAF) | ? | ? |  | Not finished. |
+| [Inverse Autoregresive Flow][iaf] (IAF) | ? | ? |  | Not finished. |
+| [SoftPointFlow][softflow] | ? | ? | yes/yes | Not finished. |
+| SetVAEformer (ours) | yes | yes | yes/yes | Work in progress. |
 
-[^1]: As cardinality, we consider to be the number of elements in a single bag/set. For real world this number in can vary for each set, which makes training in batches impossible. If a model contains a method/way how to bypass this problem, it is considered capable of handling "variable cardinality". Most models require modification to fulfil this such as masking inputs as well as intermediate outputs.
+[^1]: Cardinality means the number of elements in a single bag/set. In real data this can differ per sample, which complicates batching.
 
-[^2]: "in variable cardinality" is thought as different cardinality of sets in input batch and "out variable cardinality" is whether the model can output batch with distinct cardinalities then in input batch. In other words it can sample arbitrary number of elements for each set.
+[^2]: "in" variable cardinality means varying set sizes in the input batch; "out" variable cardinality means the model can generate outputs with a different number of elements than the input.
 
-[^3]: Since there is no cardinality reduction or expansion
+[^3]: This model has no cardinality reduction or expansion.
 
-[^4]: This model is essentially building block for MAF, IAF and SoftPointFlow
+[^4]: This model is effectively a building block for MAF, IAF, and SoftPointFlow.
 
-[^*]: At this point PoolModel works only for constant cardinality.
+[^*]: PoolModel currently works only for constant cardinality.
 
-[^5]: FoldingeNet VAE is trainable on gpu via function "fit_gpu_ready!". It is a special case with fixed cardinality and without KLD of reconstructed encoding.
+[^5]: FoldingNet VAE is trainable on GPU via `fit_gpu_ready!`. It is a special case with fixed cardinality and without KLD of reconstructed encoding.
 
+## Reproducibility
 
+This project uses [DrWatson](https://juliadynamics.github.io/DrWatson.jl/stable/) to keep experiments organized and reproducible.
+Most scripts assume the repository root as the active project directory.
 
-## DrWatson
-This code base is using the Julia Language and [DrWatson](https://juliadynamics.github.io/DrWatson.jl/stable/)
-to make a reproducible scientific project named
-> GenerativeMIL
-
-To (locally) reproduce this project, do the following:
-
-1. Download this code base. Notice that raw data are typically not included in the
-   git-history and may need to be downloaded independently.
-2. Open a Julia console and do:
-   ```
-   julia> using Pkg
-   julia> Pkg.add("DrWatson") # install globally, for using `quickactivate`
-   julia> Pkg.activate("path/to/this/project")
-   julia> Pkg.instantiate()
-   ```
-
-This will install all necessary packages for you to be able to run the scripts and
-everything should work out of the box, including correctly finding local paths.
-
-
+## References
 
 [setvae]: https://openaccess.thecvf.com/content/CVPR2021/papers/Kim_SetVAE_Learning_Hierarchical_Composition_for_Generative_Modeling_of_Set-Structured_Data_CVPR_2021_paper.pdf
 [foldingnet]: https://ieeexplore.ieee.org/document/9506795
 [settransformer]: http://proceedings.mlr.press/v97/lee19d/lee19d.pdf
-[made]: https://arxiv.org/pdf/1502.03509.pdf 
+[made]: https://arxiv.org/pdf/1502.03509.pdf
 [maf]: https://homepages.inf.ed.ac.uk/imurray2/pub/17maf/maf.pdf
 [iaf]: https://arxiv.org/pdf/1606.04934.pdf
 [softflow]: https://arxiv.org/pdf/2006.04604.pdf
