@@ -24,7 +24,7 @@ function main()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "cd_poolmodel_c1.yml")
+            default = joinpath(@__DIR__, "configs", "mnist_configs", "cd_poolmodel_c1.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int
@@ -63,17 +63,12 @@ function main()
         train_cfg[:model_dir] = datadir("GenExperiments", "$(data_cfg[:dataset])", "poolmodel", "seed=$(args[:seed])", "$(train_cfg[:model_dir])_ID-$(lpad_number(args[:ui], Int(1e5)))")
     end
 
-    data = load_modelnet10(get(data_cfg, :npoints, 512), get(data_cfg, :type, "all"); validation=true, seed=args[:seed])
-    @info "Loaded ModelNet10" train=size(data[1][1]) valid=size(data[2][1]) test=size(data[3][1])
+    dataloaders = create_dataloaders(batch_size=get(train_cfg, :batch_size, 16), x_only=true, data_cfg)
+    idim = size(first(dataloaders[:train]), 1)
 
-    dataloaders = (
-        train = DataLoader(data[1][1], batchsize=get(train_cfg, :batch_size, 16), shuffle=true),
-        valid = DataLoader(data[2][1], batchsize=get(train_cfg, :batch_size, 16)),
-    )
-
-    model = poolmodel_constructor_from_named_tuple(; idim=size(data[1][1], 1), dict2nt(model_cfg)...)
+    model = poolmodel_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...)
     lr = get(train_cfg, :lr, 1f-3)
-    optimiser = Optimisers.AdaMax(lr)
+    optimiser = Optimisers.AdaMax(lr);
 
     loss_cfg = get(train_cfg, :loss_function, "chamfer_distance")
     loss_function = create_loss_function(loss_cfg)
@@ -102,12 +97,12 @@ function main()
 
     result = train_model!(
         model,
-        dataloaders,
+        (train=dataloaders[:train], valid=dataloaders[:valid]),
         optimiser;
         loss_function = loss_function,
         lr_scheduler = lr_scheduler,
         train_kwargs...
-    )
+    );
 
     run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
     serialize(run_config_file, (

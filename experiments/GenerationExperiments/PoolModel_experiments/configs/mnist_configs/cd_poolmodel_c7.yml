@@ -1,0 +1,40 @@
+data:
+  npoints: 512
+  dataset: mnist
+  cardinality_count: balanced
+  sample_on_fly: false
+  normalize: true
+
+model:
+  prpdim: 128
+  prpdepth: 3
+  popdim: 128
+  popdepth: 3
+  zdim: 64
+  decdim: 128
+  decdepth: 3
+  poolf: "mean-max"
+  gen_sigma: "scalar"
+  activation: "swish"
+  init_seed: 3
+
+train:
+  loss_function:
+    type: chamfer_distance
+  lr: 0.0001
+  epochs: 500
+  batch_size: 128
+  use_gpu: true
+  valid_check_interval: 150
+  validation_check_after_epoch: false
+  checkpoint_interval_epochs: 10
+  early_stopping: false
+  patience: 100000
+  grad_skip: false
+  save_val_predictions: true
+  val_prediction_count: 16
+  val_prediction_interval_epochs: 10
+  val_prediction_dirname: val_predictionsdata
+  seed: 1
+  model_dir: cd_poolmodel_c7
+  verbose: true

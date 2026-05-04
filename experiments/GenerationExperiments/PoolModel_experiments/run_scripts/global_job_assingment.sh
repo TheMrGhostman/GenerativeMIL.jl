@@ -36,7 +36,7 @@ for cfg in "${CONFIGS[@]}"; do
         job_name="${cfg_name}_s${seed}"
         echo "Submitting ${cfg_name}, seed=${seed}"
         sbatch --job-name="${job_name}" --chdir "${EXP_DIR}" \
-            "${SCRIPT_DIR}/run_poolmodel_modelnet.sh" \
+            "${SCRIPT_DIR}/run_poolmodel_training.sh" \
             "${cfg}" "${seed}" "${TIME_LIMIT}" "${model_dir}" "${EPOCHS}"
     done
 done
