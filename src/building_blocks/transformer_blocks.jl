@@ -160,8 +160,8 @@ Keyword arguments are forwarded to internal `MultiheadAttentionBlock` constructo
 - `InducedSetAttentionBlock`: initialized ISAB module.
 """
 function InducedSetAttentionBlock(n_slots::Int, hidden_dim::Int, heads::Int; kwargs...)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads; kwargs...)
-    mab2 = MultiheadAttentionBlock(hidden_dim, heads; kwargs...)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention)
+    mab2 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     return InducedSetAttentionBlock(mab1, mab2, I)
 end
@@ -244,7 +244,7 @@ Construct a half ISAB block with `n_slots` inducing vectors.
 - `InducedSetAttentionHalfBlock`: initialized half-ISAB module.
 """
 function InducedSetAttentionHalfBlock(n_slots::Int, hidden_dim::Int, heads::Int)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     return InducedSetAttentionHalfBlock(mab1, I)
 end
@@ -429,8 +429,8 @@ Construct an attentive bottleneck layer with learnable inducing points and varia
 - `AttentiveBottleneckLayer`: initialized attentive bottleneck module.
 """
 function AttentiveBottleneckLayer(n_slots::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
-    mab2 = MultiheadAttentionBlock(hidden_dim, heads)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads, attention_fn=slot_attention)
+    mab2 = MultiheadAttentionBlock(hidden_dim, heads, attention_fn=attention)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     vb = VariationalBottleneck(hidden_dim, z_dim, hidden_dim, hidden, depth, activation)
     return AttentiveBottleneckLayer(mab1, mab2, vb, I)
@@ -566,7 +566,7 @@ Construct an attentive half block with constant Gaussian prior over `m` latent s
 - `AttentiveHalfBlock`: initialized attentive half-block module.
 """
 function AttentiveHalfBlock(m::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
 
     if depth < 1
         @error("Incorrect depth of VariationalBottleneck")

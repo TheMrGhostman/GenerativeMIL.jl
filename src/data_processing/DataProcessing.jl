@@ -7,8 +7,8 @@ _mnist_balanced_path() = datadir("datasets/mnist_pc/mnist_4x_point_clouds_3x900_
 _mnist_natural_path() = datadir("datasets/mnist_pc/mnist_4x_point_clouds_all_vec.jls")
 _modelnet10_path(npoints) = datadir("datasets/modelnet10/modelnet10_$(npoints).h5")
 
-include("grayscale2pointcloud.jl")
-export build_point_cloud_from_grayscale_image
+#include("grayscale2pointcloud.jl")
+#export build_point_cloud_from_grayscale_image
 
 include("data_utils.jl")
 export normalize_point_cloud, on_fly_collate_fn
