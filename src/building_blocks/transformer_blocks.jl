@@ -49,7 +49,7 @@ The feed-forward branch uses two dense layers with optional `activation` in the 
 # Returns
 - `MultiheadAttentionBlock`: initialized attention block module.
 """
-function MultiheadAttentionBlock(hidden_dim::Int, heads::Int, activation=relu; attention_fn=slot_attention)
+function MultiheadAttentionBlock(hidden_dim::Int, heads::Int; activation=relu, attention_fn=slot_attention)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
     mh = MultiheadAttention(hidden_dim, hidden_dim, heads, attention_fn)
     ff = Flux.Chain(
@@ -160,8 +160,8 @@ Keyword arguments are forwarded to internal `MultiheadAttentionBlock` constructo
 - `InducedSetAttentionBlock`: initialized ISAB module.
 """
 function InducedSetAttentionBlock(n_slots::Int, hidden_dim::Int, heads::Int; kwargs...)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention)
-    mab2 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention, kwargs...)
+    mab2 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention, kwargs...)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     return InducedSetAttentionBlock(mab1, mab2, I)
 end
@@ -383,7 +383,7 @@ function (vb::VariationalBottleneck)(h::AbstractArray{T}, h_enc::AbstractArray{T
     Δμ, ΔΣ = vb.posterior(h + h_enc)
     z = (μ + Δμ) + (Σ .* ΔΣ) .* MLUtils.randn_like(μ)
     ĥ = vb.decoder(z)
-    ℒₖₗ = 0.5 * ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- 1f0 )
+    ℒₖₗ = T(0.5) .* ( (Δμ.^2 ./ Σ.^2) + ΔΣ.^2 - log.(ΔΣ.^2) .- T(1) )
     # kld_loss = Flux.mean(Flux.sum(kld, dims=(1,2))) # mean over BatchSize , sum over Dz and Induced Set
     return z, ĥ, ℒₖₗ
 end    
@@ -429,8 +429,8 @@ Construct an attentive bottleneck layer with learnable inducing points and varia
 - `AttentiveBottleneckLayer`: initialized attentive bottleneck module.
 """
 function AttentiveBottleneckLayer(n_slots::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads, attention_fn=slot_attention)
-    mab2 = MultiheadAttentionBlock(hidden_dim, heads, attention_fn=attention)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention)
+    mab2 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     vb = VariationalBottleneck(hidden_dim, z_dim, hidden_dim, hidden, depth, activation)
     return AttentiveBottleneckLayer(mab1, mab2, vb, I)
@@ -537,11 +537,11 @@ end
 Lightweight attentive block with one attention projection and variational bottleneck.
 
 # Fields
-- `MAB1`: attention block used to project back to set space.
+- `MAB`: attention block used to project back to set space.
 - `VB`: variational bottleneck with constant Gaussian prior.
 """
 struct AttentiveHalfBlock{MAB<:MultiheadAttentionBlock, VBT<:VariationalBottleneck}
-    MAB1::MAB
+    MAB::MAB
     VB::VBT
 end
 
@@ -611,5 +611,5 @@ function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T},
     #vb_const(abl.VB, h_const, h_enc, const_module=const_module) 
     ℒₖₗ = Flux.mean(Flux.sum(ℒₖₗ, dims=(1,2)))
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
-    return abl.MAB1(x, ĥ, x_mask, nothing), ℒₖₗ, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
+    return abl.MAB(x, ĥ, x_mask, nothing), ℒₖₗ, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
