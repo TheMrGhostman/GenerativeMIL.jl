@@ -1,6 +1,8 @@
 # middle step in organizing this repository
 # TODO do structure properly
 
+include("utils.jl")
+
 include("mlps.jl")
 export SplitLayer, create_mlp, create_gaussian_mlp
 

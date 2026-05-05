@@ -103,24 +103,7 @@ function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decde
         [Flux.Dense(prpdim, prpdim, activation) for i=1:prpdepth-1]...
     )
 
-    multiplier=1
-    if poolf=="mean-max"
-        fpool = x->cat(mean(x, dims=2), maximum(x, dims=2), dims=1)
-        multiplier = 2
-    elseif poolf=="mean"
-        fpool = x->mean(x, dims=2)
-    elseif poolf=="max"
-        fpool = x->maximum(x, dims=2)
-    elseif poolf=="attention"
-        fpool = AttentionPooling(Flux.Chain(
-                Dense(prpdim, prpdim, activation),
-                Dense(prpdim,1)
-                ))
-    elseif poolf=="PMA"
-        fpool = PMA(1, prpdim, 4)
-    else
-        error("Unknown pooling function")
-    end
+    fpool, multiplier = _make_pooling(poolf, prpdim, popdim, activation)
 
     postpool = Flux.Chain(
         Flux.Dense(multiplier*prpdim, popdim, activation), 

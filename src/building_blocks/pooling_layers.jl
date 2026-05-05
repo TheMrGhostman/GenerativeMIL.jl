@@ -43,6 +43,28 @@ end
 masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2) # TODO find if i did not figure this out anywhere
 masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=dims) #FIXME set masked values to -Inf
 
+
+function _make_pooling(poolf::String, feature_dim::Int, hidden_dim::Int, activation::Function)
+    if poolf == "mean-max"
+        return x -> cat(Flux.mean(x, dims=2), maximum(x, dims=2), dims=1), 2
+    elseif poolf == "mean"
+        return x -> Flux.mean(x, dims=2), 1
+    elseif poolf == "max"
+        return x -> maximum(x, dims=2), 1
+    elseif poolf == "attention"
+        score_net = Flux.Chain(
+            Dense(feature_dim, hidden_dim, activation),
+            Dense(hidden_dim, 1)
+        )
+        return AttentionPooling(score_net), 1
+    elseif poolf == "PMA"
+        return PMA(1, feature_dim, 4), 1
+    else
+        error("Unknown pooling function: $poolf. Use mean, max, mean-max, attention, or PMA.")
+    end
+end
+
+
 # placeholder structure for pooling encoder 
 struct PoolEncoder
     prepool::Union{Chain, Dense}
@@ -69,3 +91,5 @@ function (m::PoolEncoder)(x::AbstractArray{T}, x_mask::Mask) where T <: Abstract
     h = m.pooling(h, x_mask)
     h = m.postpool(h)
 end
+
+
