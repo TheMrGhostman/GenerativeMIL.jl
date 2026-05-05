@@ -103,7 +103,7 @@ function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decde
         [Flux.Dense(prpdim, prpdim, activation) for i=1:prpdepth-1]...
     )
 
-    fpool, multiplier = _make_pooling(poolf, prpdim, popdim, activation)
+    fpool, multiplier = _make_pooling(poolf, prpdim, activation; pool_hidden_dim=prpdim)
 
     postpool = Flux.Chain(
         Flux.Dense(multiplier*prpdim, popdim, activation), 

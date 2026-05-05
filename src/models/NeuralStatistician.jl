@@ -77,7 +77,7 @@ function neuralstatistician_constructor_from_namedtuple(; idim::Int, hdim::Int, 
     activation_fn = _resolve_activation(activation)
     init_seed !== nothing && Random.seed!(init_seed)
 
-    pool, pooled_dim = _make_pooling(poolf, vdim, hdim, activation_fn)
+    pool, pooled_dim = _make_pooling(poolf, vdim, activation_fn; pool_hidden_dim=hdim)
 
     # shared encoder produces per-point features hᵢ
     shared_encoder = create_mlp(idim, hdim, enc_nlayers, vdim, activation_fn)

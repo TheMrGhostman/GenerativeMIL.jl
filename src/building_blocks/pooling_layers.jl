@@ -44,7 +44,7 @@ masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2) # TODO fin
 masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=dims) #FIXME set masked values to -Inf
 
 
-function _make_pooling(poolf::String, feature_dim::Int, hidden_dim::Int, activation::Function)
+function _make_pooling(poolf::String, feature_dim::Int, activation::Function; pool_hidden_dim::Int=feature_dim, pma_heads::Int=4)
     if poolf == "mean-max"
         return x -> cat(Flux.mean(x, dims=2), maximum(x, dims=2), dims=1), 2
     elseif poolf == "mean"
@@ -53,12 +53,12 @@ function _make_pooling(poolf::String, feature_dim::Int, hidden_dim::Int, activat
         return x -> maximum(x, dims=2), 1
     elseif poolf == "attention"
         score_net = Flux.Chain(
-            Dense(feature_dim, hidden_dim, activation),
-            Dense(hidden_dim, 1)
+            Dense(feature_dim, pool_hidden_dim, activation),
+            Dense(pool_hidden_dim, 1)
         )
         return AttentionPooling(score_net), 1
     elseif poolf == "PMA"
-        return PMA(1, feature_dim, 4), 1
+        return PMA(1, feature_dim, pma_heads), 1
     else
         error("Unknown pooling function: $poolf. Use mean, max, mean-max, attention, or PMA.")
     end
