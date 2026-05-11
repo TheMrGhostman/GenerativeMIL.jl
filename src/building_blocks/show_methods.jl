@@ -144,8 +144,8 @@ function Base.show(io::IO, ::MIME"text/plain", m::AttentiveHalfBlock)
     total_arrays = length(trainables)
 
     print(io, "AttentiveHalfBlock(\n")
-    print(io, "  MAB1:\n")
-    _print_indented_text_plain(io, m.MAB1, "\t")
+    print(io, "  MAB:\n")
+    _print_indented_text_plain(io, m.MAB, "\t")
     print(io, "  VB:\n")
     _print_indented_text_plain(io, m.VB, "\t")
 
