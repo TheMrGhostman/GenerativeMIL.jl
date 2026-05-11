@@ -1,0 +1,13 @@
+model:
+  hdim: 64
+  heads: 4
+  activation: relu
+  prior_dim: 32
+  vb_depth: 1
+  vb_hdim: 64
+  is_sizes: [32, 16, 8, 4, 2, 1, 8]
+  zdims: [16, 16, 16, 16, 16, 16, 32]
+  expansion_depth: 3
+  expansion_hidden_dim: 64
+  n_mixtures: 4
+  output_activation: identity
