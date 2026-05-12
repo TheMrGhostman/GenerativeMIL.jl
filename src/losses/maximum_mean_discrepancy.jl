@@ -1,22 +1,62 @@
 _SigmaArg = Union{Real, AbstractVector{<:Real}}
 
+"""
+Apply an RBF kernel to a matrix of squared distances.
+
+Arguments
+- `d::AbstractArray{T}`: Pairwise squared distance matrix or batched distance tensor.
+- `sigma::Real`: Kernel bandwidth.
+
+Returns
+- An array with the same shape as `d` containing the RBF kernel values.
+"""
 function _apply_rbf_kernel(d::AbstractArray{T}, sigma::Real) where T<:AbstractFloat
     inv_two_sigma2 = inv(T(2) * T(sigma)^2)
     return exp.(-d .* inv_two_sigma2)
 end
 
+"""
+Apply a multi-scale RBF kernel to a matrix of squared distances.
+
+Arguments
+- `d::AbstractArray{T}`: Pairwise squared distance matrix or batched distance tensor.
+- `sigma::AbstractVector{<:Real}`: Non-empty collection of bandwidths to average over.
+
+Returns
+- An array with the same shape as `d` containing the mean RBF kernel value across all bandwidths.
+"""
 function _apply_rbf_kernel(d::AbstractArray{T}, sigma::AbstractVector{<:Real}) where T<:AbstractFloat
     @assert !isempty(sigma) "sigma vector must not be empty"
     k_terms = map(s -> _apply_rbf_kernel(d, s), sigma)
     return reduce(+, k_terms) ./ T(length(sigma))
 end
 
+"""
+Compute pairwise squared Euclidean distances between the columns of two matrices.
+
+Arguments
+- `x::AbstractMatrix{T}`: Matrix of samples with shape `(d, n)`.
+- `y::AbstractMatrix{T}`: Matrix of samples with shape `(d, m)`.
+
+Returns
+- A matrix of shape `(n, m)` containing squared distances between all column pairs.
+"""
 function _pairwise_sqdist(x::AbstractMatrix{T}, y::AbstractMatrix{T}) where T<:AbstractFloat
     x2 = sum(abs2, x; dims=1)
     y2 = sum(abs2, y; dims=1)
     return max.(x2' .+ y2 .- T(2) .* (x' * y), zero(T))
 end
 
+"""
+Compute pairwise squared Euclidean distances for each batch slice of two tensors.
+
+Arguments
+- `x::AbstractArray{T, 3}`: Batched samples with shape `(d, n, bs)`.
+- `y::AbstractArray{T, 3}`: Batched samples with shape `(d, m, bs)`.
+
+Returns
+- A tensor of shape `(n, m, bs)` containing squared distances per batch.
+"""
 function _pairwise_sqdist_batched(x::AbstractArray{T, 3}, y::AbstractArray{T, 3}) where T<:AbstractFloat
     @assert size(x, 3) == size(y, 3) "x and y must have the same batch size"
     bs = size(x, 3)
@@ -26,6 +66,16 @@ function _pairwise_sqdist_batched(x::AbstractArray{T, 3}, y::AbstractArray{T, 3}
     return cat(d_slices...; dims=3)
 end
 
+"""
+Compute pairwise squared Euclidean distances for batched CuArrays using a fused batched GEMM path.
+
+Arguments
+- `x::CuArray{T, 3}`: Batched samples with shape `(d, n, bs)`.
+- `y::CuArray{T, 3}`: Batched samples with shape `(d, m, bs)`.
+
+Returns
+- A `CuArray` of shape `(n, m, bs)` containing squared distances per batch.
+"""
 function _pairwise_sqdist_batched(x::CuArray{T, 3}, y::CuArray{T, 3}) where T<:AbstractFloat
     @assert size(x, 3) == size(y, 3) "x and y must have the same batch size"
 
@@ -41,6 +91,15 @@ function _pairwise_sqdist_batched(x::CuArray{T, 3}, y::CuArray{T, 3}) where T<:A
     return max.(x2_t .+ y2 .- T(2) .* g_xy, zero(T))
 end
 
+"""
+Sum the diagonal entries of each matrix in a batched 3D tensor.
+
+Arguments
+- `a::AbstractArray{T, 3}`: Batched square matrices with shape `(n, n, bs)`.
+
+Returns
+- The scalar sum of all diagonal entries across all batch slices.
+"""
 function _diag_sum_batched(a::AbstractArray{T, 3}) where T<:AbstractFloat
     @assert size(a, 1) == size(a, 2) "Diagonal sum expects square matrices per batch"
     bs = size(a, 3)
@@ -59,6 +118,16 @@ Default uses RBF kernel from pairwise squared distances. You can pass:
 - `distance_kernel(d)` for kernels defined from squared distances.
 
 `sigma` can be a scalar or a vector (multi-scale RBF average).
+
+Arguments
+- `x::AbstractMatrix{T}`: First sample matrix with shape `(d, m)`.
+- `y::AbstractMatrix{T}`: Second sample matrix with shape `(d, n)`.
+- `sigma::_SigmaArg`: RBF bandwidth, either a scalar or a non-empty vector of scalars.
+- `kernel::Union{Nothing, Function}`: Optional kernel function operating directly on sample matrices.
+- `distance_kernel::Union{Nothing, Function}`: Optional kernel function operating on squared distances.
+
+Returns
+- The unbiased MMD estimate as a scalar value.
 """
 function maximum_mean_discrepancy(
     x::AbstractMatrix{T},
@@ -112,6 +181,16 @@ Default uses RBF kernel from pairwise squared distances. You can pass:
 - `distance_kernel(d)` for kernels defined from squared distances.
 
 `sigma` can be a scalar or a vector (multi-scale RBF average).
+
+Arguments
+- `x::AbstractArray{T, 3}`: First batched sample tensor with shape `(d, m, bs)`.
+- `y::AbstractArray{T, 3}`: Second batched sample tensor with shape `(d, n, bs)`.
+- `sigma::_SigmaArg`: RBF bandwidth, either a scalar or a non-empty vector of scalars.
+- `kernel::Union{Nothing, Function}`: Optional kernel function operating directly on sample matrices.
+- `distance_kernel::Union{Nothing, Function}`: Optional kernel function operating on squared distances.
+
+Returns
+- The mean unbiased MMD estimate across all batch slices as a scalar value.
 """
 function maximum_mean_discrepancy(
     x::AbstractArray{T, 3},
