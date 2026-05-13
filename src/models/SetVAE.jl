@@ -228,8 +228,9 @@ end
 
 
 
-
 """
+`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::BetaArg=1f0, logpdf::Function=chamfer_distance, kwargs... ) where T <: AbstractFloat`
+
 Compute ELBO and logging values for unmasked batches.
 
 Arguments:
@@ -242,15 +243,27 @@ Returns:
 - Total loss `ℒ = ℒ_rec + ℒₖₗ`.
 - Named tuple with keys `ℒ`, `ℒ_rec`, `ℒₖₗ`, `ℒₖₗₛ`, `β`.
 """
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::BetaArg=1f0, logpdf::Function=chamfer_distance, kwargs... ) where T <: AbstractFloat
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::Function=chamfer_distance; β::BetaArg=1f0, kwargs... ) where T <: AbstractFloat
     x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x; β=β)
-    ℒ_rec = logpdf(x̂, x)
+    ℒ_rec = logpdf(x̂, x)#TODO add weights to logpdf so we have sum over points instead of mean
     ℒ = ℒ_rec + ℒₖₗ
     return ℒ, (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, ℒₖₗₛ = ℒₖₗₛ, β = β)
 end
 
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA_Loss; β::BetaArg=1f0, kwargs... ) where T <: AbstractFloat
+    x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x; β=β)
+    Zygote.@ignore begin
+        σₙ = compute_rbf_sigma_estimate(x̂, x)
+        update_ema_sigma!(logpdf, σₙ)
+    end
+    ℒ_rec = logpdf(x̂, x)
+    ℒ = ℒ_rec + ℒₖₗ
+    return ℒ, (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, ℒₖₗₛ = ℒₖₗₛ, β = β, σᵣ = logpdf.σᵣ)
+end
 
 """
+`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; β::BetaArg=1f0, logpdf::Function=masked_chamfer_distance, kwargs...) where T <: AbstractFloat`
+
 Compute ELBO and logging values for masked batches.
 
 Arguments:
@@ -264,7 +277,7 @@ Returns:
 - Total loss `ℒ = ℒ_rec + ℒₖₗ`.
 - Named tuple with keys `ℒ`, `ℒ_rec`, `ℒₖₗ`, `ℒₖₗₛ`, `β`.
 """
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; β::BetaArg=1f0, logpdf::Function=masked_chamfer_distance, kwargs...) where T <: AbstractFloat
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function=masked_chamfer_distance; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat
     x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x, x_mask; β=β)
     ℒ_rec = logpdf(x̂, x, x_mask, x_mask)
     ℒ = ℒ_rec + ℒₖₗ
@@ -293,11 +306,21 @@ Returns:
 function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
     batch = device(batch)
     (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
-        elbo_with_logging(m, x; logpdf=logpdf, β=β)
+        elbo_with_logging(m, x, logpdf; β=β)
     end
     opt, model = Optimisers.update(opt, model, ∇model)
     return model, opt, logs
 end
+
+function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::MMD_EMA_Loss, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
+    batch = device(batch)
+    (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
+        elbo_with_logging(m, x, logpdf; β=β, kwargs...)
+    end
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, logs
+end
+
 
 """
 One optimization step for masked SetVAE batches.
@@ -319,7 +342,7 @@ function optim_step(model::SetVAE, batch::Tuple{AbstractArray{T,3}, AbstractArra
     X, X_mask = batch
     X, X_mask = device(X), device(X_mask)
     (loss, logs), (∇model, ∇x, ∇x_mask) = Zygote.withgradient(model, X, X_mask) do m, x, x_mask
-        elbo_with_logging(m, x, x_mask; logpdf=logpdf, β=β) #TODO check if x_mask will not cause issues with Zygote gradient tracking
+        elbo_with_logging(m, x, x_mask, logpdf; β=β) #TODO check if x_mask will not cause issues with Zygote gradient tracking
     end
     opt, model = Optimisers.update(opt, model, ∇model)
     return model, opt, logs
@@ -349,10 +372,10 @@ function valid_step(model::SetVAE, dataloader::DataLoader, logpdf::Function; β=
             x, x_mask = batch
             x = device(x)
             x_mask = device(x_mask)
-            elbo_with_logging(model, x, x_mask; logpdf=logpdf, β=β)
+            elbo_with_logging(model, x, x_mask, logpdf; β=β)
         else
             x = device(batch)
-            elbo_with_logging(model, x; logpdf=logpdf, β=β)
+            elbo_with_logging(model, x, logpdf; β=β)
         end
 
         ℒ += loss

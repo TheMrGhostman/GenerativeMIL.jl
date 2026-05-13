@@ -25,5 +25,7 @@ include("masked_chamfer_distance.jl")
 export chamfer_distance, masked_chamfer_distance, masked_chamfer_distance_cpu
 include("maximum_mean_discrepancy.jl")
 export maximum_mean_discrepancy
+include("mmd_ema_update.jl")
+export MMD_EMA_Loss, update_ema_sigma!, compute_rbf_sigma_estimate
 include("loss_factory.jl")
 export create_loss_function

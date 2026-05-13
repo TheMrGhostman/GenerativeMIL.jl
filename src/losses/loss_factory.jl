@@ -22,7 +22,14 @@ function create_loss_function(cfg)
         type_norm = _normalize_loss_name(loss_type)
 
         if type_norm == "chamfer_distance"
-            return chamfer_distance
+            # allow overrides for chamfer kwargs (e.g., w1, w2)
+            w1 = get(cfg, :w1, get(cfg, "w1", 1f0))
+            w2 = get(cfg, :w2, get(cfg, "w2", 1f0))
+            if w1 == 1f0 && w2 == 1f0
+                return chamfer_distance
+            else
+                return (x, y; kwargs...) -> chamfer_distance(x, y; w1 = w1, w2 = w2, kwargs...)
+            end
         elseif type_norm in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
             sigma = get(cfg, :sigma, get(cfg, "sigma", 1f0))
             kernel = get(cfg, :kernel, get(cfg, "kernel", "rbf"))
