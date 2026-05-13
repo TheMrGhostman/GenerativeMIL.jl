@@ -16,18 +16,20 @@ end
 Flux.@layer HierarchicalEncoder
 
 """
-Encode a batch of sets with an optional mask.
+`(m::HierarchicalEncoder)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat`
 
-Arguments:
-- `x`: input tensor `(d, n, bs)`
-- `x_mask`: optional boolean mask `(1, n, bs)`
+Encode a batch of sets with optional masking.
+
+Arguments (positional):
+- `x`: input tensor `(d, n, bs)`.
+- `x_mask`: optional boolean mask `(1, n, bs)` (default `nothing`).
 
 Returns:
-- `h`: encoded hidden representation.
-- `h_encs`: decoder-ordered `Zygote.Buffer` of skip states.
+- `h`: encoded hidden representation with same shape as input.
+- `h_encs`: `Zygote.Buffer` of intermediate skip states in reversed (decoder) order.
 
 Notes:
-- `h_encs` is written in reversed order to match decoder traversal order.
+- States in `h_encs` are ordered from deepest to shallowest for decoder skip connections.
 """
 function (m::HierarchicalEncoder)(x::AbstractArray{T}, x_mask::Mask=nothing) where T <: AbstractFloat
     x = isnothing(x_mask) ? m.expansion(x) : multiplicative_masking(m.expansion(x), x_mask)
@@ -62,18 +64,20 @@ end
 Flux.@layer HierarchicalDecoder
 
 """
-Decode latent samples with optional mask and uniform KL weighting.
+`(m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask=nothing) where T <: AbstractFloat`
 
-Arguments:
-- `z`: prior sample tensor.
-- `h_encs`: encoder skip states from `HierarchicalEncoder`.
-- `x_mask`: optional boolean mask.
+Decode latent samples with optional masking and uniform KL weighting.
+
+Arguments (positional):
+- `z`: prior sample tensor `(prior_dim, n_points, batch_size)`.
+- `h_encs`: encoder skip states from `HierarchicalEncoder` (in decoder order).
+- `x_mask`: optional boolean mask `(1, n, bs)` (default `nothing`).
 
 Returns:
 - `x̂`: reconstructed batch.
-- `klds`: per-layer KL terms.
-- `zs`: per-layer latent samples.
-- `ℒₖₗ`: total KL loss (sum of `klds`).
+- `klds`: vector of raw per-layer KL divergence values.
+- `zs`: vector of per-layer latent samples from variational layers.
+- `kld_loss`: total KL loss as scalar (sum of all `klds`).
 """
 function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask=nothing) where T <: AbstractFloat
     x = multiplicative_masking(m.expansion(z), x_mask)
@@ -93,19 +97,24 @@ function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_
 end
 
 """
-Decode latent samples with optional mask and per-layer KL weighting.
+`(m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask, β::AbstractVector{<:AbstractFloat}) where T <: AbstractFloat`
 
-Arguments:
-- `z`: prior sample tensor.
-- `h_encs`: encoder skip states from `HierarchicalEncoder`.
-- `x_mask`: optional boolean mask.
-- `β`: vector of per-layer KL weights, same length as `m.layers`.
+Decode latent samples with optional masking and per-layer KL weighting.
+
+Arguments (positional):
+- `z`: prior sample tensor `(prior_dim, n_points, batch_size)`.
+- `h_encs`: encoder skip states from `HierarchicalEncoder` (in decoder order).
+- `x_mask`: optional boolean mask `(1, n, bs)`.
+- `β`: vector of per-layer KL weights (length must equal number of decoder layers).
 
 Returns:
 - `x̂`: reconstructed batch.
-- `klds`: raw per-layer KL terms.
-- `zs`: per-layer latent samples.
-- `ℒₖₗ`: weighted KL loss, `sum(β[i] * klds[i])`.
+- `klds`: vector of raw per-layer KL divergence values.
+- `zs`: vector of per-layer latent samples from variational layers.
+- `kld_loss`: weighted total KL loss as scalar: `sum(β[i] * klds[i])`.
+
+Throws:
+- `ArgumentError` if `length(β)` does not match number of decoder layers.
 """
 function (m::HierarchicalDecoder)(z::AbstractArray{T}, h_encs::Zygote.Buffer, x_mask::Mask, β::AbstractVector{<:AbstractFloat}) where T <: AbstractFloat
     n_layers = length(m.layers)
@@ -152,16 +161,18 @@ AbstractTrees.printnode(io::IO, m::HierarchicalDecoder) = print(io, "Hierarchica
 Flux.@layer SetVAE
 
 """
-Run encoder and sample from the prior for a given batch.
+`_forward_encoder_and_prior(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat`
 
-Arguments:
+Run encoder and sample from prior for a given batch.
+
+Arguments (positional):
 - `svae`: SetVAE model instance.
 - `x`: input batch `(d, n, bs)`.
 - `x_mask`: optional boolean mask `(1, n, bs)`.
 
 Returns:
-- `z` has shape `(prior_dim, n_points, batch_size)`
-- `h_encs` are encoder skip states in decoder order
+- `z`: prior sample tensor with shape `(prior_dim, n_points, batch_size)`.
+- `h_encs`: encoder skip states in decoder order (from `HierarchicalEncoder`).
 """
 function _forward_encoder_and_prior(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
     _, h_encs = svae.encoder(x, x_mask) 
@@ -171,52 +182,60 @@ function _forward_encoder_and_prior(svae::SetVAE, x::AbstractArray{T}, x_mask::M
 end
 
 """
+`_normalize_β(β::AbstractFloat, n_layers::Int, ::Type{T}) where T<:AbstractFloat`
+
 Normalize scalar KL weight to a per-layer vector with element type `T`.
 
-Arguments:
+Arguments (positional):
 - `β`: scalar KL weight.
 - `n_layers`: number of decoder layers.
-- `T`: target element type.
+- `T`: target element type (e.g., `Float32`, `Float64`).
 
 Returns:
-- Vector of length `n_layers` with element type `T`.
+- Vector of length `n_layers` filled with `T(β)`, one weight per layer.
 """
-function _normalize_β(β::AbstractFloat, n_layers::Int, ::Type{T}) where {T<:AbstractFloat}
+function _normalize_β(β::AbstractFloat, n_layers::Int, ::Type{T}) where T<:AbstractFloat
     return fill(T(β), n_layers)
 end
 
 """
+`_normalize_β(β::AbstractVector{<:AbstractFloat}, n_layers::Int, ::Type{T}) where T<:AbstractFloat`
+
 Validate and normalize per-layer KL weights to element type `T`.
 
-Arguments:
-- `β`: KL weights per decoder layer.
+Arguments (positional):
+- `β`: vector of KL weights per decoder layer.
 - `n_layers`: expected number of decoder layers.
-- `T`: target element type.
+- `T`: target element type (e.g., `Float32`, `Float64`).
 
 Returns:
-- `Vector{T}` of length `n_layers`.
+- `Vector{T}` of length `n_layers` with type-converted weights.
 
 Throws:
-- `ArgumentError` when `length(β) != n_layers`.
+- `ArgumentError` if `length(β) != n_layers`.
 """
-function _normalize_β(β::AbstractVector{<:AbstractFloat}, n_layers::Int, ::Type{T}) where {T<:AbstractFloat}
+function _normalize_β(β::AbstractVector{<:AbstractFloat}, n_layers::Int, ::Type{T}) where T<:AbstractFloat
     length(β) == n_layers || throw(ArgumentError("Length of β ($(length(β))) must equal number of decoder layers ($n_layers)."))
     return T.(collect(β))
 end
 
 """
-Forward pass of SetVAE with optional mask and scalar/vector KL weighting.
+`(svae::SetVAE)(x::AbstractArray{T}, x_mask::Mask=nothing; β::BetaArg=1f0) where T <: AbstractFloat`
 
-Arguments:
-- `x`: input set batch `(d, n, bs)`
-- `x_mask`: optional boolean mask `(1, n, bs)`
-- `β`: scalar or per-layer KL weights
+Forward pass of SetVAE with optional masking and scalar/vector KL weighting.
+
+Arguments (positional):
+- `x`: input set batch `(d, n, bs)`.
+- `x_mask`: optional boolean mask `(1, n, bs)` (default `nothing`).
+
+Keyword arguments:
+- `β`: scalar or per-layer KL weights (default `1f0`). Scalar broadcasts to all layers; vector must match number of layers.
 
 Returns:
-- `x̂`: reconstructed set batch.
-- `ℒₖₗ`: total KL loss after applying `β` weights.
-- `ℒₖₗₛ`: raw per-layer KL values.
-- `zs`: per-layer latent samples.
+- `x̂`: reconstructed set batch with same shape as input.
+- `ℒₖₗ`: total weighted KL loss after applying `β` scaling.
+- `ℒₖₗₛ`: vector of raw per-layer KL values.
+- `zs`: vector of per-layer latent samples from variational layers.
 """
 function (svae::SetVAE)(x::AbstractArray{T}, x_mask::Mask=nothing; β::BetaArg=1f0) where T <: AbstractFloat
     β_vec = _normalize_β(β, length(svae.decoder.layers), T)
@@ -229,15 +248,18 @@ end
 
 
 """
-`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}; β::BetaArg=1f0, logpdf::Function=chamfer_distance, kwargs... ) where T <: AbstractFloat`
+`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::Function=chamfer_distance; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat`
 
-Compute ELBO and logging values for unmasked batches.
+Compute ELBO and logging values for unmasked batches with generic loss function.
 
-Arguments:
+Arguments (positional):
 - `model`: SetVAE instance.
 - `x`: input batch `(d, n, bs)`.
-- `β`: scalar or per-layer KL weights.
 - `logpdf`: reconstruction loss function (default `chamfer_distance`).
+
+Keyword arguments:
+- `β`: scalar or per-layer KL weights.
+- `kwargs...`: additional keyword arguments.
 
 Returns:
 - Total loss `ℒ = ℒ_rec + ℒₖₗ`.
@@ -250,6 +272,25 @@ function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::Functio
     return ℒ, (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒₖₗ = ℒₖₗ, ℒₖₗₛ = ℒₖₗₛ, β = β)
 end
 
+"""
+`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA_Loss; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat`
+
+Compute ELBO and logging values for unmasked batches with MMD_EMA_Loss.
+Updates EMA sigma estimate in Zygote.@ignore block to preserve gradient flow.
+
+Arguments (positional):
+- `model`: SetVAE instance.
+- `x`: input batch `(d, n, bs)`.
+- `logpdf`: MMD_EMA_Loss instance with encapsulated sigma EMA state.
+
+Keyword arguments:
+- `β`: scalar or per-layer KL weights.
+- `kwargs...`: additional keyword arguments.
+
+Returns:
+- Total loss `ℒ = ℒ_rec + ℒₖₗ`.
+- Named tuple with keys `ℒ`, `ℒ_rec`, `ℒₖₗ`, `ℒₖₗₛ`, `β`, `σᵣ` (current EMA sigma).
+"""
 function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA_Loss; β::BetaArg=1f0, kwargs... ) where T <: AbstractFloat
     x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x; β=β)
     Zygote.@ignore begin
@@ -262,16 +303,19 @@ function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA
 end
 
 """
-`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}; β::BetaArg=1f0, logpdf::Function=masked_chamfer_distance, kwargs...) where T <: AbstractFloat`
+`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, logpdf::Function=masked_chamfer_distance; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat`
 
-Compute ELBO and logging values for masked batches.
+Compute ELBO and logging values for masked batches with generic loss function.
 
-Arguments:
+Arguments (positional):
 - `model`: SetVAE instance.
 - `x`: input batch `(d, n, bs)`.
-- `x_mask`: boolean mask `(1, n, bs)`.
-- `β`: scalar or per-layer KL weights.
+- `x_mask`: boolean mask `(1, n, bs)` indicating which points are valid.
 - `logpdf`: masked reconstruction loss function (default `masked_chamfer_distance`).
+
+Keyword arguments:
+- `β`: scalar or per-layer KL weights.
+- `kwargs...`: additional keyword arguments.
 
 Returns:
 - Total loss `ℒ = ℒ_rec + ℒₖₗ`.
@@ -286,17 +330,20 @@ end
 
 
 """
-One optimization step for unmasked SetVAE batches.
+`optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat`
 
-Arguments:
+One optimization step for unmasked SetVAE batches with generic loss function.
+
+Arguments (positional):
 - `model`: SetVAE instance.
 - `batch`: input batch `(d, n, bs)`.
-- `opt`: optimizer state returned by `Optimisers.setup`.
-- `logpdf`: reconstruction loss function.
-- `device`: device transfer function (`cpu`, `gpu`, `identity`, ...).
-- `β`: scalar or per-layer KL weights.
+- `opt`: optimizer state returned by `Optimisers.setup(rule, model)`.
+- `logpdf`: reconstruction loss function (e.g., `chamfer_distance`).
+- `device`: device transfer function (default `cpu`; e.g., `gpu`, `identity`, ...).
 
-`opt` is expected to be created with `Optimisers.setup(rule, model)`.
+Keyword arguments:
+- `β`: scalar or per-layer KL weights.
+- `kwargs...`: additional keyword arguments.
 
 Returns:
 - Updated `model`.
@@ -312,6 +359,28 @@ function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, l
     return model, opt, logs
 end
 
+"""
+`optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::MMD_EMA_Loss, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat`
+
+One optimization step for unmasked SetVAE batches with MMD_EMA_Loss.
+Updates both model parameters and MMD sigma EMA state.
+
+Arguments (positional):
+- `model`: SetVAE instance.
+- `batch`: input batch `(d, n, bs)`.
+- `opt`: optimizer state returned by `Optimisers.setup(rule, model)`.
+- `logpdf`: MMD_EMA_Loss instance with encapsulated sigma EMA state.
+- `device`: device transfer function (default `cpu`; e.g., `gpu`, `identity`, ...).
+
+Keyword arguments:
+- `β`: scalar or per-layer KL weights.
+- `kwargs...`: additional keyword arguments.
+
+Returns:
+- Updated `model`.
+- Updated optimizer state `opt`.
+- Logging tuple from `elbo_with_logging` (includes `σᵣ`).
+"""
 function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::MMD_EMA_Loss, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
     batch = device(batch)
     (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
@@ -323,15 +392,20 @@ end
 
 
 """
-One optimization step for masked SetVAE batches.
+`optim_step(model::SetVAE, batch::Tuple{AbstractArray{T,3}, AbstractArray{Bool,3}}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat`
 
-Arguments:
+One optimization step for masked SetVAE batches with generic loss function.
+
+Arguments (positional):
 - `model`: SetVAE instance.
-- `batch`: tuple `(X, X_mask)`.
-- `opt`: optimizer state returned by `Optimisers.setup`.
-- `logpdf`: reconstruction loss function.
-- `device`: device transfer function (`cpu`, `gpu`, `identity`, ...).
+- `batch`: tuple `(X, X_mask)` where X is `(d, n, bs)` and X_mask is `(1, n, bs)` boolean.
+- `opt`: optimizer state returned by `Optimisers.setup(rule, model)`.
+- `logpdf`: masked reconstruction loss function (e.g., `masked_chamfer_distance`).
+- `device`: device transfer function (default `cpu`; e.g., `gpu`, `identity`, ...).
+
+Keyword arguments:
 - `β`: scalar or per-layer KL weights.
+- `kwargs...`: additional keyword arguments.
 
 Returns:
 - Updated `model`.
@@ -349,20 +423,24 @@ function optim_step(model::SetVAE, batch::Tuple{AbstractArray{T,3}, AbstractArra
 end
 
 """
+`valid_step(model::SetVAE, dataloader::DataLoader, logpdf::Function; β=1f0, device::Function=cpu, kwargs...) where T <: AbstractFloat`
+
 Validation loop for SetVAE.
+Supports both dataloaders yielding `x` and dataloaders yielding `(x, x_mask)` tuples.
 
-Supports both dataloaders yielding `x` and dataloaders yielding `(x, x_mask)`.
-
-Arguments:
+Arguments (positional):
 - `model`: SetVAE instance.
-- `dataloader`: iterable of batches.
-- `logpdf`: reconstruction loss function.
+- `dataloader`: iterable of batches (unmasked or masked tuples).
+- `logpdf`: reconstruction loss function (generic or masked variant).
+
+Keyword arguments:
 - `β`: scalar or per-layer KL weights.
-- `device`: device transfer function (`cpu`, `gpu`, `identity`, ...).
+- `device`: device transfer function (default `cpu`; e.g., `gpu`, `identity`, ...).
+- `kwargs...`: additional keyword arguments.
 
 Returns:
-- `logs`: named tuple with `ℒᵥ`, `ℒᵥ_rec`, `ℒᵥₖₗ`, `ℒᵥₖₗₛ`.
-- `early_stopping_loss`: scalar validation loss (`ℒᵥ`).
+- `logs`: named tuple with `ℒᵥ`, `ℒᵥ_rec`, `ℒᵥₖₗ`, `ℒᵥₖₗₛ` (averaged over dataloader).
+- `early_stopping_loss`: scalar validation loss `ℒᵥ` (averaged).
 """
 function valid_step(model::SetVAE, dataloader::DataLoader, logpdf::Function; β=1f0, device::Function=cpu, kwargs...)
     ℒ, ℒ_rec, ℒₖₗ = 0f0, 0f0, 0f0
@@ -397,26 +475,32 @@ end
 ######################################
 
 """
+`SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::AbstractVector{<:Integer}, latent_dims::AbstractVector{<:Integer}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, expansion_depth::Int=1, expansion_hidden_dim::Int=0, n_mixtures::Int=5, prior_dim::Int=3, output_activation::Function=identity)`
+
 Build SetVAE from explicit architecture hyperparameters.
 
-Arguments define encoder/decoder dimensions, number of heads, induced set
-sizes, latent dimensions, and prior configuration.
-
-Arguments:
+Arguments (positional):
 - `input_dim`: feature dimension of input points.
 - `hidden_dim`: hidden feature width in transformer blocks.
 - `heads`: number of attention heads.
-- `induced_set_sizes`: induced set sizes for hierarchical blocks.
-- `latent_dims`: latent dimensions for bottleneck layers.
+- `induced_set_sizes`: vector of induced set sizes for hierarchical encoder blocks.
+- `latent_dims`: vector of latent dimensions for bottleneck layers (must match length of `induced_set_sizes`).
 - `zed_depth`: depth of latent MLPs in bottleneck layers.
 - `zed_hidden_dim`: hidden width of latent MLPs.
-- `activation`: activation function used in latent MLPs.
-- `n_mixtures`: number of mixture components in prior.
-- `prior_dim`: latent prior dimension.
-- `output_activation`: final output activation.
+
+Keyword arguments:
+- `activation`: activation function for latent MLPs (default `Flux.relu`).
+- `expansion_depth`: depth of input/output expansion MLPs (default `1`).
+- `expansion_hidden_dim`: hidden width of expansion MLPs (default `0`).
+- `n_mixtures`: number of mixture components in prior (default `5`).
+- `prior_dim`: latent prior dimension (default `3`).
+- `output_activation`: final output activation (default `identity`).
 
 Returns:
 - Constructed `SetVAE` instance.
+
+Throws:
+- `ErrorException` if `length(induced_set_sizes) != length(latent_dims)`.
 """
 function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::AbstractVector{<:Integer}, 
     latent_dims::AbstractVector{<:Integer}, zed_depth::Int, zed_hidden_dim::Int, activation::Function=Flux.relu, 
@@ -460,10 +544,29 @@ function SetVAE(input_dim::Int, hidden_dim::Int, heads::Int, induced_set_sizes::
 end
 
 """
-Build SetVAE from a named-tuple style config (typically loaded from JSON/TOML).
+`setvae_constructor_from_named_tuple(; idim, hdim, heads, is_sizes, zdims, vb_depth, vb_hdim, activation, expansion_depth=1, expansion_hidden_dim=0, n_mixtures=5, prior_dim=32, output_activation=identity, prior="mog", init_seed=nothing, kwargs...)`
 
-Expected keys include `idim`, `hdim`, `heads`, `is_sizes`, `zdims`,
-`vb_depth`, `vb_hdim`, `activation`, and prior/output settings.
+Build SetVAE from a named-tuple style configuration (typically loaded from JSON/TOML/YAML).
+
+Keyword arguments (required):
+- `idim`: input feature dimension.
+- `hdim`: hidden feature width.
+- `heads`: number of attention heads.
+- `is_sizes`: induced set sizes (vector).
+- `zdims`: latent dimensions (vector).
+- `vb_depth`: variational bottleneck depth.
+- `vb_hdim`: variational bottleneck hidden dimension.
+- `activation`: activation function name as string (e.g., `"relu"`, `"sigmoid"`).
+
+Keyword arguments (optional):
+- `expansion_depth`: depth of expansion MLPs (default `1`).
+- `expansion_hidden_dim`: hidden width of expansion MLPs (default `0`).
+- `n_mixtures`: number of mixture components (default `5`).
+- `prior_dim`: prior dimension (default `32`).
+- `output_activation`: output activation (default `identity`).
+- `prior`: prior type (default `"mog"`; currently unused).
+- `init_seed`: random seed for initialization (default `nothing`; if provided, seed is reset after construction).
+- `kwargs...`: additional arguments (ignored).
 
 Returns:
 - Constructed `SetVAE` instance.
@@ -491,14 +594,24 @@ end
 ######################################
 
 """
-Reconstruct a set batch using posterior encoder states and prior samples.
+`reconstruct(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask=nothing; kwargs...) where T <: AbstractFloat`
 
-Arguments:
-- `x`: input tensor `(d, n, bs)`
-- `x_mask`: optional boolean mask `(1, n, bs)`
+Reconstruct a set batch by running forward pass in test mode (evaluation mode).
+
+Arguments (positional):
+- `svae`: SetVAE model instance.
+- `x`: input tensor `(d, n, bs)`.
+- `x_mask`: optional boolean mask `(1, n, bs)` (default `nothing`).
+
+Keyword arguments:
+- `kwargs...`: additional arguments passed to model forward pass (e.g., `β`).
 
 Returns:
-- Reconstructed set batch `x̂` with the same shape as `x`.
+- Reconstructed set batch `x̂` with the same shape as input `x`.
+
+Notes:
+- Model is switched to Flux test mode before forward pass and restored after.
+- In test mode, dropout and other stochastic layers are disabled.
 """
 function reconstruct(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask=nothing; kwargs...) where T <: AbstractFloat
     Flux.testmode!(svae, true)
@@ -508,19 +621,26 @@ function reconstruct(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask=nothing; kw
 end
 
 """
-Apply `reconstruct` to an iterable of sets and return CPU outputs.
+`transform_and_reconstruct(vae::SetVAE, data::AbstractArray; testmode=true)`
 
-`data` is expected to contain individual sets (or compatible outputs of
-preprocessing helpers). Reconstruction runs with `DataLoader(batchsize=1)`.
-When `testmode=true`, the model is switched to Flux test mode.
+Reconstruct all samples in a dataset using batched evaluation.
 
-Arguments:
-- `vae`: SetVAE instance.
-- `data`: collection of sets.
-- `testmode`: whether to switch model into Flux test mode.
+Iterates over `data` with batchsize=1, applies `reconstruct` to each sample, and returns CPU results.
+
+Arguments (positional):
+- `vae`: SetVAE model instance.
+- `data`: collection of sets (iterable or array; will be wrapped in DataLoader).
+
+Keyword arguments:
+- `testmode`: whether to switch model into Flux test mode (default `true`). In test mode, stochastic layers are disabled.
 
 Returns:
-- Vector of reconstructed sets moved to CPU, one output per input sample.
+- Vector of reconstructed sets moved to CPU, one output (squeezed) per input sample.
+
+Notes:
+- Uses `transform_batch(batch, true)` to extract `(x, x_mask)` from each sample.
+- Outputs are processed with `Flux.squeezebatch` to remove singleton batch dimension.
+- All results are moved to CPU before return.
 """
 function transform_and_reconstruct(vae::SetVAE, data::AbstractArray; testmode=true)
     # expect to get output from GroupAD.Models.unpack_mill(tr_data) or list of "sets"
