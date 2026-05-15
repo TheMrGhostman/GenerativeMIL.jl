@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "8ec8874f1780af85adf3ffdc0d4a563178b1317a"
+project_hash = "74f880654d59d2135c39ffe692f4b4b88a4ad18a"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -145,6 +145,16 @@ version = "7.24.0"
     SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
     StaticArraysCore = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
     Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
+
+[[deps.ArrayLayouts]]
+deps = ["FillArrays", "LinearAlgebra", "StaticArrays"]
+git-tree-sha1 = "e0b47732a192dd59b9d079a06d04235e2f833963"
+uuid = "4c555306-a7a7-4459-81d9-ec55ddd5c99a"
+version = "1.12.2"
+weakdeps = ["SparseArrays"]
+
+    [deps.ArrayLayouts.extensions]
+    ArrayLayoutsSparseArraysExt = "SparseArrays"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -1221,6 +1231,25 @@ git-tree-sha1 = "012e604e1c7458645cb8b436f8fba789a51b257f"
 uuid = "9b13fd28-a010-5f03-acff-a1bbcff69959"
 version = "1.0.0"
 
+[[deps.InfiniteArrays]]
+deps = ["ArrayLayouts", "FillArrays", "Infinities", "LazyArrays", "LinearAlgebra"]
+git-tree-sha1 = "10faeb745d3b22170113dbc0561b68b44bcc0363"
+uuid = "4858937d-0d70-526a-a4dd-2d5cb5dd786c"
+version = "0.14.4"
+
+    [deps.InfiniteArrays.extensions]
+    InfiniteArraysDSPExt = "DSP"
+    InfiniteArraysStatisticsExt = "Statistics"
+
+    [deps.InfiniteArrays.weakdeps]
+    DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
+    Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[[deps.Infinities]]
+git-tree-sha1 = "4495006c20b2fd27b8c453a1dd31d423654f3772"
+uuid = "e1ba4f0e-776d-440f-acd9-e1d2e9742647"
+version = "0.1.12"
+
 [[deps.Inflate]]
 git-tree-sha1 = "d1b1b796e47d94588b3757fe84fbf65a5ec4a80d"
 uuid = "d25df0c9-e2be-5dd7-82c8-3ad0b3e990b9"
@@ -1481,6 +1510,24 @@ deps = ["ArrayInterface", "LinearAlgebra", "ManualMemory", "SIMDTypes", "Static"
 git-tree-sha1 = "a9eaadb366f5493a5654e843864c13d8b107548c"
 uuid = "10f19ff3-798f-405d-979b-55457f8fc047"
 version = "0.1.17"
+
+[[deps.LazyArrays]]
+deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "MacroTools", "SparseArrays"]
+git-tree-sha1 = "33b5d8fafb7ab69eca907b359d00d0107feb2cbf"
+uuid = "5078a376-72f3-5289-bfd5-ec5146d43c02"
+version = "2.9.7"
+
+    [deps.LazyArrays.extensions]
+    LazyArraysBandedMatricesExt = "BandedMatrices"
+    LazyArraysBlockArraysExt = "BlockArrays"
+    LazyArraysBlockBandedMatricesExt = "BlockBandedMatrices"
+    LazyArraysStaticArraysExt = "StaticArrays"
+
+    [deps.LazyArrays.weakdeps]
+    BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
+    BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
+    BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
+    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.LazyArtifacts]]
 deps = ["Artifacts", "Pkg"]
@@ -2044,6 +2091,12 @@ deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "FriBidi_jl
 git-tree-sha1 = "58e5ed5e386e156bd93e86b305ebd21ac63d2d04"
 uuid = "36c8627f-9965-5494-a995-c6b170f724f3"
 version = "1.57.1+0"
+
+[[deps.ParameterSchedulers]]
+deps = ["InfiniteArrays", "Optimisers"]
+git-tree-sha1 = "c62f0da0663704d0472ae578c9bb802c44e70a4c"
+uuid = "d7d3b36b-41b8-4d0d-a2bf-768c6151755e"
+version = "0.4.3"
 
 [[deps.Parameters]]
 deps = ["OrderedCollections", "UnPack"]

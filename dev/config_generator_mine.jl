@@ -164,6 +164,8 @@ function base_train_config(;
     batch_size=256,
     beta=1.0,
     beta_anealer="linear",
+    beta_milestone = 0.9,
+    beta_initial = 0.0001,
     use_gpu=true,
     valid_check_interval=150,
     validation_check_after_epoch=false,
@@ -181,8 +183,20 @@ function base_train_config(;
 )
 
     lr_scheduler_ = lr_scheduler == "WarmupCosine" ? OrderedDict("type"=>"WarmupCosine","milestones"=>[0.02,0.8],"scale"=>10) : nothing
-    beta_anealer_ = beta_anealer == "linear" ? OrderedDict("type"=>"linear","max_value"=>1.0,"milestone"=>floor(0.9*epochs)) : beta_anealer
-
+    if beta_anealer == "linear"
+        beta_anealer_ = OrderedDict("type"=>"linear", "max_value"=>beta, "milestone"=>floor(last(beta_milestone)*epochs))
+    elseif beta_anealer == "step_linear"
+        @assert length(beta_milestone) == 2 && beta_milestone[1] < beta_milestone[2] "wrong milestones for beta scheduler, either not 2 values or not ascending"
+        beta_anealer_ = OrderedDict(
+            "type" => "step_linear",
+            "initial" => beta_initial,
+            "max_value" => beta,
+            "milestones" => [floor(beta_milestone[1] * epochs), floor(beta_milestone[2] * epochs)],
+        )
+    else
+        beta_anealer_ = beta_anealer
+    end
+    #beta_anealer_ = beta_anealer == "linear" ? OrderedDict("type"=>"linear","max_value"=>beta,"milestone"=>floor(0.9*epochs)) : beta_anealer
 
     return OrderedDict(
         "loss_function" => loss_function,
@@ -239,7 +253,7 @@ function make_base_config(id; model="setvae", dataset="mnist", npoints=512, kwar
 end
 
 
-function make_standard_grid_setvae_configs(pth::String; dataset="mnist", β = 1f0, save_cds=false, save_mmds=false)
+function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; dataset="mnist", β = 1f0, save_cds=false, save_mmds=false)
     #TBS = 38400
     more_then_iters = 1000 # I just want to avoid triggering the validation checks, because I want to perform valitation after epoch only. 
     
@@ -263,17 +277,17 @@ function make_standard_grid_setvae_configs(pth::String; dataset="mnist", β = 1f
 
     cd_train_cfgs = [
         (
-            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="linear", 
+            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="linear", 
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="linear", 
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
@@ -282,17 +296,17 @@ function make_standard_grid_setvae_configs(pth::String; dataset="mnist", β = 1f
     # If MMD is defined via EMA, then sigmas are scales [σ/4, σ/2, σ] and σ is updated via EMA. If not EMA, then σ is fixed and defined as [1/4, 1/2, 1/1]. (or different numbers)
     mmd_train_cfgs = [
         (
-            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="linear", 
+            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001,
             loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="linear", 
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001, 
             loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints,  "kernel" => "rbf"), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="linear", 
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001,
             loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
@@ -332,11 +346,11 @@ function make_standard_grid_setvae_configs(pth::String; dataset="mnist", β = 1f
     ]
 
     cd_configs, mmd_configs = [], []
-    cd_id = 1
-    mmd_id = 1
-    for (i, model_cfg) in enumerate(model_cfgs)
-        for (configs, train_cfgs, save_flag, dist_sym) in ((cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd))
-            for train_cfg in train_cfgs
+    cd_id = init_id
+    mmd_id = init_id
+    for (configs, train_cfgs, save_flag, dist_sym) in ((cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd))
+        for train_cfg in train_cfgs
+            for model_cfg in model_cfgs
                 cfg = OrderedDict(
                     "data" => data_cfg,
                     "model" => base_setvae_config(;model_cfg...),
@@ -370,6 +384,6 @@ function make_standard_grid_setvae_configs(pth::String; dataset="mnist", β = 1f
     return cd_configs, mmd_configs
 end
 
-t = make_standard_grid_setvae_configs("B:\\Github-Repos\\GenerativeMIL.jl\\scripts\\test_folder\\mnist"; dataset="mnist", β = 1f0, save_cds=true, save_mmds=true);
-t = make_standard_grid_setvae_configs("B:\\Github-Repos\\GenerativeMIL.jl\\scripts\\test_folder\\modelnet10"; dataset="modelnet10", β = 1f0, save_cds=true, save_mmds=true);
-slength.(t)
+#t = make_standard_grid_setvae_configs("B:\\Github-Repos\\GenerativeMIL.jl\\scripts\\test_folder\\mnist", 1; dataset="mnist", β = 0.05f0, save_cds=true, save_mmds=true);
+#t = make_standard_grid_setvae_configs("B:\\Github-Repos\\GenerativeMIL.jl\\scripts\\test_folder\\modelnet10", 1; dataset="modelnet10", β = 1f0, save_cds=true, save_mmds=true);
+#slength.(t)
