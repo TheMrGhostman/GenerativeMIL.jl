@@ -116,6 +116,7 @@ function base_setvae_config(;
 )
 
     return OrderedDict(
+        "model_type" => "setvae",
         "hdim" => hdim,
         "heads" => heads,
         "activation" => activation,
@@ -137,6 +138,7 @@ function base_poolmodel_config(;
 )
 
     return OrderedDict(
+        "model_type" => "poolmodel",
         "prpdim" => prpdim,
         "prpdepth" => prpdepth,
         "popdim" => popdim,
