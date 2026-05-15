@@ -68,7 +68,7 @@ function main()
 
     model = poolmodel_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...)
     lr = get(train_cfg, :lr, 1f-3)
-    optimiser = Optimisers.AdaMax(lr);
+    optimiser = Optimisers.AdamW(; eta=lr, lambda = get(train_cfg, :weight_decay, 0));
 
     loss_cfg = get(train_cfg, :loss_function, "chamfer_distance")
     loss_function = create_loss_function(loss_cfg)

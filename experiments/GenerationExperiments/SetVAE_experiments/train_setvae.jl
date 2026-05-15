@@ -77,7 +77,7 @@ function main()
 
     model = setvae_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...);
     lr = get(train_cfg, :lr, 1f-3)
-    optimiser = Optimisers.AdaMax(lr);
+    optimiser = Optimisers.AdamW(; eta=lr, lambda = get(train_cfg, :weight_decay, 0));
 
     loss_cfg = get(train_cfg, :loss_function, "chamfer_distance")
     loss_function = create_loss_function(loss_cfg)
@@ -117,6 +117,9 @@ function main()
         lr_scheduler = lr_scheduler,
         train_kwargs...
     );
+
+    #TODO add test set prediction. evaluation will be separate
+    
 
     run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
     serialize(run_config_file, (
