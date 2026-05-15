@@ -275,7 +275,7 @@ end
 """
 `elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA_Loss; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat`
 
-Compute ELBO and logging values for unmasked batches with MMD_EMA_Loss.
+Compute ELBO and logging values for unmasked batches with `MMD_EMA_Loss`.
 Updates EMA sigma estimate in Zygote.@ignore block to preserve gradient flow.
 
 Arguments (positional):
@@ -330,7 +330,7 @@ end
 
 
 """
-`optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat`
+`optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat`
 
 One optimization step for unmasked SetVAE batches with generic loss function.
 
@@ -338,7 +338,7 @@ Arguments (positional):
 - `model`: SetVAE instance.
 - `batch`: input batch `(d, n, bs)`.
 - `opt`: optimizer state returned by `Optimisers.setup(rule, model)`.
-- `logpdf`: reconstruction loss function (e.g., `chamfer_distance`).
+- `logpdf`: reconstruction loss function (e.g., `chamfer_distance` or `MMD_EMA_Loss`).
 - `device`: device transfer function (default `cpu`; e.g., `gpu`, `identity`, ...).
 
 Keyword arguments:
@@ -350,7 +350,7 @@ Returns:
 - Updated optimizer state `opt`.
 - Logging tuple from `elbo_with_logging`.
 """
-function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
+function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
     batch = device(batch)
     (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
         elbo_with_logging(m, x, logpdf; β=β)
@@ -359,36 +359,6 @@ function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, l
     return model, opt, logs
 end
 
-"""
-`optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::MMD_EMA_Loss, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat`
-
-One optimization step for unmasked SetVAE batches with MMD_EMA_Loss.
-Updates both model parameters and MMD sigma EMA state.
-
-Arguments (positional):
-- `model`: SetVAE instance.
-- `batch`: input batch `(d, n, bs)`.
-- `opt`: optimizer state returned by `Optimisers.setup(rule, model)`.
-- `logpdf`: MMD_EMA_Loss instance with encapsulated sigma EMA state.
-- `device`: device transfer function (default `cpu`; e.g., `gpu`, `identity`, ...).
-
-Keyword arguments:
-- `β`: scalar or per-layer KL weights.
-- `kwargs...`: additional keyword arguments.
-
-Returns:
-- Updated `model`.
-- Updated optimizer state `opt`.
-- Logging tuple from `elbo_with_logging` (includes `σᵣ`).
-"""
-function optim_step(model::SetVAE, batch::AbstractArray{T,3}, opt::NamedTuple, logpdf::MMD_EMA_Loss, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
-    batch = device(batch)
-    (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
-        elbo_with_logging(m, x, logpdf; β=β, kwargs...)
-    end
-    opt, model = Optimisers.update(opt, model, ∇model)
-    return model, opt, logs
-end
 
 
 """
