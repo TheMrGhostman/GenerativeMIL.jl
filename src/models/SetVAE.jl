@@ -412,7 +412,7 @@ Returns:
 - `logs`: named tuple with `ℒᵥ`, `ℒᵥ_rec`, `ℒᵥₖₗ`, `ℒᵥₖₗₛ` (averaged over dataloader).
 - `early_stopping_loss`: scalar validation loss `ℒᵥ` (averaged).
 """
-function valid_step(model::SetVAE, dataloader::DataLoader, logpdf::Function; β=1f0, device::Function=cpu, kwargs...)
+function valid_step(model::SetVAE, dataloader::DataLoader, logpdf; β=1f0, device::Function=cpu, kwargs...)
     ℒ, ℒ_rec, ℒₖₗ = 0f0, 0f0, 0f0
     ℒₖₗₛ = zeros(Float32, length(model.decoder.layers))
     for batch in dataloader
