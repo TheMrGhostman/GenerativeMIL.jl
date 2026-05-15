@@ -369,7 +369,7 @@ Returns:
 function validation_check(
     model::AbstractGenModel, 
     dataloader::DataLoader, 
-    loss_function::Function, 
+    loss_function::Union{Function, MMD_EMA_Loss},
     β::Union{Vector{T}, T}, 
     device::Function, 
     history::MVHistory, 
