@@ -108,7 +108,7 @@ function main()
     )
 
     # Launcher handles config + dataloaders and passes resolved schedulers to train_model!.
-    result = train_model!(
+    train_time = @elapsed result = train_model!(
         model,
         (train=dataloaders[:train], valid=dataloaders[:valid]),
         optimiser;
@@ -119,7 +119,7 @@ function main()
     );
 
     #TODO add test set prediction. evaluation will be separate
-    
+
 
     run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
     serialize(run_config_file, (
@@ -131,6 +131,7 @@ function main()
         train_kwargs = train_kwargs,
         beta_scheduler_cfg = beta_scheduler_cfg,
         lr_scheduler_cfg = lr_scheduler_cfg,
+        train_time = train_time,
     ))
     @info "Saved run configuration" file=run_config_file
 

@@ -95,7 +95,7 @@ function main()
         val_prediction_dirname = joinpath(get(train_cfg, :model_dir, ""), get(train_cfg, :val_prediction_dirname, "val_predictions")),
     )
 
-    result = train_model!(
+    train_time = @elapsed result = train_model!(
         model,
         (train=dataloaders[:train], valid=dataloaders[:valid]),
         optimiser;
@@ -103,6 +103,9 @@ function main()
         lr_scheduler = lr_scheduler,
         train_kwargs...
     );
+
+    #TODO add test set prediction. evaluation will be separate
+
 
     run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
     serialize(run_config_file, (
@@ -113,6 +116,7 @@ function main()
         loss_cfg = loss_cfg,
         train_kwargs = train_kwargs,
         lr_scheduler_cfg = lr_scheduler_cfg,
+        train_time = train_time,
     ))
     @info "Saved run configuration" file=run_config_file
 
