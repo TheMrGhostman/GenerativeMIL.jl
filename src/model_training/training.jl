@@ -130,7 +130,7 @@ function train_model!(
     model::AbstractGenModel, 
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
     optimiser::Optimisers.AbstractRule, 
-    loss_function::Function=chamfer_distance,
+    loss_function::Union{Function, MMD_EMA_Loss}=chamfer_distance,
     β_scheduler::Union{Function, Scheduler, Sequence} = x->0f0, 
     lr_scheduler::Union{Function, Scheduler, Sequence, Nothing} = nothing; # here starts kwargs
     use_gpu::Bool=true,
@@ -191,7 +191,7 @@ function train_model!(
     model::AbstractGenModel, 
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}}, 
     optimiser::Optimisers.AbstractRule; ## KWARGS FROM HERE
-    loss_function::Function=chamfer_distance, 
+    loss_function::Union{Function, MMD_EMA_Loss}=chamfer_distance, 
     β_scheduler::Union{Function, Scheduler, Sequence, Nothing} = x->0f0,
     lr_scheduler::Union{Function, Scheduler, Sequence, Nothing} = nothing,
     use_gpu::Bool=true,
