@@ -333,14 +333,14 @@ function train_model!(
         it_ = mod(idx, max_iters)
         serialize(
             joinpath(model_dir, "models", "best_model.jls"), 
-            (model = early_stop.best_model |> cpu, best_loss=early_stop.best_loss, reached_epoch = epoch_, reached_iter = it_, idx = idx)
+            (model = early_stop.best_model, best_loss=early_stop.best_loss, reached_epoch = epoch_, reached_iter = it_, idx = idx)
         )
         # saving best model and if error is occured it saved the last model, so we have something to work with
         # reached_epoch and reached_iter are for logging purposes, to know how long the training went on before error happened, if it happens. If not, they will just be the same as last checkpoint.
         # it saves BEST model not LAST model
     end
     @info "training took $(time() - start_time) s " #TODO make me nicer
-    return (model=model, opt=opt, history=history)
+    return (model=model, opt=opt, history=history, best_model=early_stop.best_model)
 end
 
 """

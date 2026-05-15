@@ -6,7 +6,7 @@ mutable struct EarlyStopping
 end
 
 function EarlyStopping(model, patience::Real)
-    return EarlyStopping(deepcopy(model), Inf, copy(patience), copy(patience))
+    return EarlyStopping(deepcopy(model)|> cpu, Inf, copy(patience), copy(patience))
 end
 
 function (es::EarlyStopping)(loss::Real, model)
