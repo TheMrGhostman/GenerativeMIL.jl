@@ -260,10 +260,10 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
     if dataset == "mnist"
         npoints = 512
         data_cfg = base_data_config("mnist", npoints; cardinality_count="balanced", sample_on_fly=false, normalize=true)
-        cd_epochs = 500
-        cd_batch_size= 256
+        cd_epochs = 1000
+        cd_batch_size= 128
         mmd_epochs = 300
-        mmd_batch_size = 64
+        mmd_batch_size = 32
     elseif dataset == "modelnet10"
         npoints = 2048
         data_cfg = base_data_config("modelnet10", npoints)
@@ -320,10 +320,10 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
             hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=1, vb_hdim=32, is_sizes=[32, 16, 8, 4, 2, 1, 1], zdims=[16, 16, 16, 16, 16, 16, 16], expansion_depth=1, expansion_hidden_dim=0, output_activation="identity"
         ),
         (
-            hdim=64, heads=4, activation="relu", prior_dim=32, n_mixtures=4, vb_depth=1, vb_hdim=32, is_sizes=[32, 16, 8], zdims=[16, 16, 32], expansion_depth=1, expansion_hidden_dim=0, output_activation="identity"
+            hdim=64, heads=4, activation="relu", prior_dim=32, n_mixtures=4, vb_depth=1, vb_hdim=32, is_sizes=[32, 16, 8], zdims=[16, 16, 32], expansion_depth=2, expansion_hidden_dim=64, output_activation="identity"
         ),
         (
-            hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=1, vb_hdim=32, is_sizes=[32, 16, 8], zdims=[16, 16, 32], expansion_depth=1, expansion_hidden_dim=0, output_activation="identity"
+            hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=1, vb_hdim=32, is_sizes=[32, 16, 8], zdims=[16, 16, 32], expansion_depth=2, expansion_hidden_dim=64, output_activation="identity"
         ),
         (
             hdim=64, heads=4, activation="relu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[4, 2, 1], zdims=[64, 64, 64], expansion_depth=2, expansion_hidden_dim=64, output_activation="identity"
@@ -338,10 +338,10 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
             hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[32], zdims=[32], expansion_depth=3, expansion_hidden_dim=64, output_activation="identity"
         ),
         (
-            hdim=64, heads=4, activation="relu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[1], zdims=[512], expansion_depth=5, expansion_hidden_dim=64, output_activation="identity"
+            hdim=64, heads=4, activation="relu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[1], zdims=[512], expansion_depth=4, expansion_hidden_dim=64, output_activation="identity"
         ),
         (
-            hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[1], zdims=[512], expansion_depth=5, expansion_hidden_dim=64, output_activation="identity"
+            hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[1], zdims=[512], expansion_depth=4, expansion_hidden_dim=64, output_activation="identity"
         ),   
     ]
 

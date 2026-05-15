@@ -9,10 +9,13 @@
 
     - [x] AdaMax to AdamW
     - [x] MMD with EMA estimator for sigma
+        - I striped type for valid_step and optim_step, dispatch is on elbo_with_logging
+        - Also train_model and validation_check have now loss function as union Function and MMD_EMA_loss
         - [x] code 
         - [x] incorporate to loss factory
         - [x] final testing
         - [x] add into config generator
+        - [ ] fix valid_step and optim_step for poolmodel!!!!
     - [x] new beta scheduler "step_linear"
         - it starts on inition value, stay on it till first milestone, then linearly ascend to max_value (final value)
         - final value is reached on second milestone and then beta is equal to final value till the end
