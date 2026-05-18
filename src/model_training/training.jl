@@ -473,7 +473,7 @@ function reconstruction_check(
             # Single forward pass returning (x̂, loss, logs)
             xhat, loss, logs = reconstruct_and_log(model, x_dev, x_mask_dev, loss_function; β=β)
 
-            push!(xs, cpu(x_dev))
+            #push!(xs, cpu(x_dev))
             push!(xhats, cpu(xhat))
             push!(x_masks, cpu(x_mask_dev))
 
@@ -484,7 +484,7 @@ function reconstruction_check(
             # Single forward pass returning (x̂, loss, logs)
             xhat, loss, logs = reconstruct_and_log(model, x_dev, nothing, loss_function; β=β)
 
-            push!(xs, cpu(x_dev))
+            #push!(xs, cpu(x_dev))
             push!(xhats, cpu(xhat))
         end
         
@@ -519,5 +519,5 @@ function reconstruction_check(
         xhats_ = xhats
     end
 
-    return (loss=avg_loss, logs=avg_logs, x=xs, xhat=xhats_, x_mask=x_masks)
+    return (loss=avg_loss, logs=avg_logs, xhat=xhats_, x_mask=x_masks) # x=xs,
 end

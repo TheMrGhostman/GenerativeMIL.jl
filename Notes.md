@@ -24,12 +24,12 @@
         - [x] add it into config generator
         - [x] test it 
 
-    - [ ] add reconstruction loop for test set
-        - [ ] write function
-        - [ ] evaluate final model
-        - [ ] evaluate best model
-        - [ ] save to folder
-        - [ ] save basic results like final loss (maybe final log), test loss
+    - [x] add reconstruction loop for test set
+        - [x] write function
+        - [x] evaluate final model
+        - [x] evaluate best model
+        - [x] save to folder
+        - [x] save basic results like final loss (maybe final log), test loss
 
 
     - [ ] make new ModelNet dataset 
