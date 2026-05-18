@@ -118,7 +118,6 @@ function main()
         train_kwargs...
     );
 
-    #TODO add test set prediction. evaluation will be separate
     _device = train_kwargs.use_gpu ? cu : cpu
     out_final  = reconstruction_check(result.model, dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
     out_es = reconstruction_check(_device(result.best_model), dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)

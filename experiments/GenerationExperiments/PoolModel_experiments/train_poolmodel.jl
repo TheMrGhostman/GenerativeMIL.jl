@@ -104,7 +104,16 @@ function main()
         train_kwargs...
     );
 
-    #TODO add test set prediction. evaluation will be separate
+    _device = train_kwargs.use_gpu ? cu : cpu
+    out_final  = reconstruction_check(result.model, dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
+    out_es = reconstruction_check(_device(result.best_model), dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
+    # save reconstruction outputs to results/ under model_dir
+    results_dir = joinpath(train_kwargs.model_dir, "results")
+    mkpath(results_dir)
+
+    serialize(joinpath(results_dir, "reconstructions_final.jls"), out_final)
+    serialize(joinpath(results_dir, "reconstructions_ES_best.jls"), out_es)
+    @info "Saved reconstructions into " folder=results_dir
 
 
     run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
