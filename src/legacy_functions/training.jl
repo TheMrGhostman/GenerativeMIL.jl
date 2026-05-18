@@ -82,7 +82,7 @@ function StatsBase.fit!(model, data::Tuple, loss::Function;
     end
     # 12) return everything
     best_model = early_stop.best_model |> cpu
-    iter_performed = length(get(history, :iter)[1])
+    iter_performed = length(get(history, :iter, nothing)[1])
     npars = sum(map(p -> length(p), Flux.params(best_model)))
     return (history = history, iterations = iter_performed, model = best_model, npars = npars)
 end
