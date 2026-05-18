@@ -119,7 +119,7 @@ function main()
     );
 
     #TODO add test set prediction. evaluation will be separate
-
+    out  = reconstruction_check(result.model, dataloaders[:test], loss_function; device=train_kwargs.use_gpu ? cu : cpu, log_results=train_kwargs.validation_verbose, return_cpu=true)
 
     run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
     serialize(run_config_file, (
