@@ -25,37 +25,47 @@ end
 
 loss(model::PoolModel, x::AbstractArray{Float32, 3}; loss_function::Function=chamfer_distance, kwargs...) = loss_function(model(x), x)
 
-function loss_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}; loss_function::Function=chamfer_distance, kwargs...)
+function loss_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}, loss_function::Function=chamfer_distance; kwargs...)
     x̂ = model(x)
     ℒ_rec = loss_function(x̂, x)
     return ℒ_rec, (;ℒ = ℒ_rec, ℒ_rec = ℒ_rec)
 end
 
+function loss_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}, loss_function::MMD_EMA_Loss; update_sigma::Bool=true, kwargs...)
+    x̂ = model(x)
+    Zygote.@ignore begin
+        σₙ = compute_rbf_sigma_estimate(x̂, x)
+        (update_sigma) && update_ema_sigma!(loss_function, σₙ)
+    end
+    ℒ_rec = loss_function(x̂, x)
+    return ℒ_rec, (;ℒ = ℒ_rec, ℒ_rec = ℒ_rec)
+end
 
-function elbo_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}; β::Float32=1f0, logpdf::Function=chamfer_distance, kwargs...)
+
+function elbo_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}, logpdf::Function=chamfer_distance; β::Float32=1f0, kwargs...)
     # not sure if ELBO makes sense for this model but we can still compute it if we want to
     x̂, ℒ_kld = model(x; kld=true)
     ℒ_rec = logpdf(x̂, x)
     return ℒ_rec + β * ℒ_kld , (ℒ_rec = ℒ_rec, ℒ_kld = ℒ_kld, β = β)
 end
 
-function optim_step(model::PoolModel, batch::AbstractArray{Float32, 3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; kwargs...)
+function optim_step(model::PoolModel, batch::AbstractArray{Float32, 3}, opt::NamedTuple, logpdf, device::Function=cpu; kwargs...)
     # 1) move data to device
     batch = batch |> device
     # 2) compute gradients
     (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
-        loss_with_logging(m, x; loss_function=logpdf)
+        loss_with_logging(m, x, logpdf; kwargs...)
     end
     # 3) update weights
     opt, model = Optimisers.update(opt, model, ∇model)
     return model, opt, logs
 end
 
-function valid_step(model::PoolModel, dataloader::DataLoader, logpdf::Function; device::Function=cpu, kwargs...)
+function valid_step(model::PoolModel, dataloader::DataLoader, logpdf; device::Function=cpu, kwargs...)
     ℒ, ℒ_rec = 0, 0
     for batch in dataloader
         x = batch |> device
-        loss, logs = loss_with_logging(model, x; loss_function=logpdf)
+        loss, logs = loss_with_logging(model, x, logpdf; update_sigma=false, kwargs...)
         ℒ += loss
         ℒ_rec += logs.ℒ_rec
     end
