@@ -45,7 +45,7 @@ function indentstr(n)
     return repeat("  ", n)
 end
 
-function dict_to_yaml(d::OrderedDict, indent::Int=0)
+function dict_to_yaml(d::Union{OrderedDict, Dict}, indent::Int=0)
     lines = String[]
     pref = indentstr(indent)
     items = collect(d)
