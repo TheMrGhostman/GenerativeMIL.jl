@@ -437,7 +437,6 @@ Returns:
 - Named tuple with:
   - `loss`: scalar averaged loss over dataloader.
   - `logs`: averaged logs from single dataloader pass.
-  - `x`: vector of input batches.
   - `xhat`: vector of reconstructed batches.
   - `x_mask`: vector of masks for masked datasets (empty for unmasked datasets).
 
@@ -457,7 +456,7 @@ function reconstruction_check(
     mode::String="test",
     kwargs...
 )
-    xs = Any[]
+    #xs = Any[]
     xhats = Any[]
     x_masks = Any[]
     total_loss = 0f0
