@@ -31,7 +31,7 @@ function create_loss_function(cfg)
                 return (x, y; kwargs...) -> chamfer_distance(x, y; w1 = w1, w2 = w2, kwargs...)
             end
         elseif type_norm in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
-            if get(cfg, :ema, false)
+            if get(cfg, :ema, false) || get(cfg, "ema", false)
                 sigma = get(cfg, :sigma, get(cfg, "sigma", 1f0))
                 sigma_init = get(cfg, :sigma_init, 1.6f0)
                 kernel = get(cfg, :kernel, get(cfg, "kernel", "rbf"))

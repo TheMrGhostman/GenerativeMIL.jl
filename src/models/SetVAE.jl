@@ -25,7 +25,7 @@ Arguments (positional):
 - `x_mask`: optional boolean mask `(1, n, bs)` (default `nothing`).
 
 Returns:
-- `h`: encoded hidden representation with same shape as input.
+- `h`: encoded hidden representation.
 - `h_encs`: `Zygote.Buffer` of intermediate skip states in reversed (decoder) order.
 
 Notes:
