@@ -38,7 +38,7 @@ function create_loss_function(cfg)
                 distance_kernel = _resolve_mmd_distance_kernel(kernel)
                 loss_scale = get(cfg, :loss_scale, 1f0) # for setvae loss scale was necessary so it simulate sum instead of mean
                 mmd_fn = (x, y; sigma=1f0, kwargs...) -> loss_scale * maximum_mean_discrepancy(x, y; sigma=sigma, distance_kernel=distance_kernel, kwargs...)
-                decay = get(cfg, :decay, get(cfg, "decay", 0.99))
+                decay = get(cfg, :decay, get(cfg, "decay", 0.99f0))
                 return MMD_EMA_Loss(mmd_fn, sigma, sigma_init, decay)
             else
                 sigma = get(cfg, :sigma, get(cfg, "sigma", 1f0))
