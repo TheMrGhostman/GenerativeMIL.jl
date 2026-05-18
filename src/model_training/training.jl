@@ -432,7 +432,6 @@ Keyword Arguments:
 - `log_results`: whether to write one evaluation row to logger (default `false`).
 - `idx`: optional global index for logger row.
 - `mode`: logger mode label (e.g. `"test"`, `"train_eval"`).
-- `return_cpu`: when `true`, returned arrays are moved to CPU (default `true`).
 
 Returns:
 - Named tuple with:

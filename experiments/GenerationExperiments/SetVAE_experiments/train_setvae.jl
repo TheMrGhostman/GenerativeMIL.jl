@@ -118,7 +118,7 @@ function main()
         train_kwargs...
     );
 
-    _device = train_kwargs.use_gpu ? cu : cpu
+    _device = (train_kwargs.use_gpu && CUDA.functional()) ? cu : cpu
     out_final  = reconstruction_check(result.model, dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
     out_es = reconstruction_check(_device(result.best_model), dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
     # save reconstruction outputs to results/ under model_dir
