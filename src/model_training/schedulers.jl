@@ -27,7 +27,23 @@ function create_beta_scheduler(beta_cfg::Union{Number, Dict})
     if type == "constant"
         value = get(beta_cfg, :value, get(beta_cfg, :max_value, 1f0))
         return _ -> Float32(value)
-    
+    elseif type == "step_linear"
+        # Use ParameterSchedulers.Sequence:
+        #  - hold `initial` for `m1` epochs
+        #  - Triangle from `initial` -> `max_value` over (m2-m1) epochs
+        #  - hold `max_value` afterwards
+        initial = get(beta_cfg, :initial, 0.0)
+        max_value = get(beta_cfg, :max_value, 1.0)
+        milestones = get(beta_cfg, :milestones, [100, 450])
+        @assert length(milestones) == 2 && milestones[1] < milestones[2] "milestones for step_linear must contain exactly 2 values and be in ascending order"
+        m1, m2 = Int.(floor.(milestones))
+        ramp_len = m2 - m1
+        seq = ParameterSchedulers.Sequence(
+            Float32(initial) => m1,
+            ParameterSchedulers.Triangle(λ0 = Float32(initial), λ1 = Float32(max_value), period = 2 * ramp_len) => ramp_len,
+            Float32(max_value) => Inf
+        )
+        return epoch -> Float32(seq(epoch))
     elseif type == "linear"
         max_value = get(beta_cfg, :max_value, 1f0)
         milestone = get(beta_cfg, :milestone, 500)

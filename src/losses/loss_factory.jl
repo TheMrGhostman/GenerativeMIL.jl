@@ -22,12 +22,31 @@ function create_loss_function(cfg)
         type_norm = _normalize_loss_name(loss_type)
 
         if type_norm == "chamfer_distance"
-            return chamfer_distance
+            # allow overrides for chamfer kwargs (e.g., w1, w2)
+            w1 = get(cfg, :w1, get(cfg, "w1", 1f0))
+            w2 = get(cfg, :w2, get(cfg, "w2", 1f0))
+            if w1 == 1f0 && w2 == 1f0
+                return chamfer_distance
+            else
+                return (x, y; kwargs...) -> chamfer_distance(x, y; w1 = w1, w2 = w2, kwargs...)
+            end
         elseif type_norm in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
-            sigma = get(cfg, :sigma, get(cfg, "sigma", 1f0))
-            kernel = get(cfg, :kernel, get(cfg, "kernel", "rbf"))
-            distance_kernel = _resolve_mmd_distance_kernel(kernel)
-            return (x, y) -> maximum_mean_discrepancy(x, y; sigma=sigma, distance_kernel=distance_kernel)
+            if get(cfg, :ema, false) || get(cfg, "ema", false)
+                sigma = get(cfg, :sigma, get(cfg, "sigma", 1f0))
+                sigma_init = get(cfg, :sigma_init, 1.6f0)
+                kernel = get(cfg, :kernel, get(cfg, "kernel", "rbf"))
+                distance_kernel = _resolve_mmd_distance_kernel(kernel)
+                loss_scale = get(cfg, :loss_scale, 1f0) # for setvae loss scale was necessary so it simulate sum instead of mean
+                mmd_fn = (x, y; sigma=1f0, kwargs...) -> loss_scale * maximum_mean_discrepancy(x, y; sigma=sigma, distance_kernel=distance_kernel, kwargs...)
+                decay = get(cfg, :decay, get(cfg, "decay", 0.99f0))
+                return MMD_EMA_Loss(mmd_fn, sigma, sigma_init, decay)
+            else
+                sigma = get(cfg, :sigma, get(cfg, "sigma", 1f0))
+                kernel = get(cfg, :kernel, get(cfg, "kernel", "rbf"))
+                loss_scale = get(cfg, :loss_scale, 1f0)
+                distance_kernel = _resolve_mmd_distance_kernel(kernel)
+                return (x, y) -> loss_scale * maximum_mean_discrepancy(x, y; sigma=sigma, distance_kernel=distance_kernel)
+            end
         else
             error("Unsupported loss_function type: $(loss_type)")
         end

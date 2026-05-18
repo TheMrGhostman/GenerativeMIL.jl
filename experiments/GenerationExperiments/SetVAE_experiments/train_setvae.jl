@@ -77,7 +77,7 @@ function main()
 
     model = setvae_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...);
     lr = get(train_cfg, :lr, 1f-3)
-    optimiser = Optimisers.AdaMax(lr);
+    optimiser = Optimisers.AdamW(; eta=lr, lambda = get(train_cfg, :weight_decay, 0));
 
     loss_cfg = get(train_cfg, :loss_function, "chamfer_distance")
     loss_function = create_loss_function(loss_cfg)
@@ -108,7 +108,7 @@ function main()
     )
 
     # Launcher handles config + dataloaders and passes resolved schedulers to train_model!.
-    result = train_model!(
+    train_time = @elapsed result = train_model!(
         model,
         (train=dataloaders[:train], valid=dataloaders[:valid]),
         optimiser;
@@ -117,6 +117,18 @@ function main()
         lr_scheduler = lr_scheduler,
         train_kwargs...
     );
+
+    _device = (train_kwargs.use_gpu && CUDA.functional()) ? cu : cpu
+    out_final  = reconstruction_check(result.model, dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
+    out_es = reconstruction_check(_device(result.best_model), dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
+    # save reconstruction outputs to results/ under model_dir
+    results_dir = joinpath(train_kwargs.model_dir, "results")
+    mkpath(results_dir)
+
+    serialize(joinpath(results_dir, "reconstructions_final.jls"), out_final)
+    serialize(joinpath(results_dir, "reconstructions_ES_best.jls"), out_es)
+    @info "Saved reconstructions into " folder=results_dir
+
 
     run_config_file = joinpath(train_kwargs.model_dir, "run_config.jls")
     serialize(run_config_file, (
@@ -128,6 +140,7 @@ function main()
         train_kwargs = train_kwargs,
         beta_scheduler_cfg = beta_scheduler_cfg,
         lr_scheduler_cfg = lr_scheduler_cfg,
+        train_time = train_time,
     ))
     @info "Saved run configuration" file=run_config_file
 

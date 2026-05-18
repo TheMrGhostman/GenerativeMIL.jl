@@ -76,7 +76,7 @@ include("model_training/early_stopping.jl")
 export EarlyStopping
 include("model_training/fits.jl") # deprecated but kept for GroupAD legacy code
 include("model_training/training.jl")
-export train_model!, validation_check
+export train_model!, validation_check, reconstruction_check
 
 
 # Temporary evaluation function
