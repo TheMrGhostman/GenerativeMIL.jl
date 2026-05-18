@@ -72,7 +72,7 @@ function reconstruct(model::PoolModel, x::AbstractArray{T}; kwargs...) where T <
 end
 
 
-function reconstruct_and_log(model::PoolModel, x::AbstractArray{T}, loss_function; β=1f0) where T <: AbstractFloat
+function reconstruct_and_log(model::PoolModel, x::AbstractArray{T}, x_mask::Mask, loss_function; β=1f0) where T <: AbstractFloat
     Flux.testmode!(model, true)
     x̂ = model(x)
     ℒ_rec = loss_function(x̂, x)
