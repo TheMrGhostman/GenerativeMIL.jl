@@ -71,6 +71,16 @@ function reconstruct(model::PoolModel, x::AbstractArray{T}; kwargs...) where T <
     return x̂
 end
 
+
+function reconstruct_and_log(model::PoolModel, x::AbstractArray{T}, loss_function; β=1f0) where T <: AbstractFloat
+    Flux.testmode!(model, true)
+    x̂ = model(x)
+    ℒ_rec = loss_function(x̂, x)
+    logs = (;ℒ = ℒ_rec, ℒ_rec = ℒ_rec)
+    Flux.testmode!(model, false)
+    return x̂, ℒ_rec, logs
+end
+
 function PoolModel(idim, prpdim, prpdepth, popdim, popdepth, zdim, decdim, decdepth, 
     poolf="mean-max",  gen_sigma="scalar", activation::Function=swish)
     """

@@ -291,11 +291,11 @@ Returns:
 - Total loss `ℒ = ℒ_rec + ℒₖₗ`.
 - Named tuple with keys `ℒ`, `ℒ_rec`, `ℒₖₗ`, `ℒₖₗₛ`, `β`, `σᵣ` (current EMA sigma).
 """
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA_Loss; β::BetaArg=1f0, kwargs... ) where T <: AbstractFloat
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA_Loss; β::BetaArg=1f0, update_sigma::Bool=true, kwargs... ) where T <: AbstractFloat 
     x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x; β=β)
     Zygote.@ignore begin
         σₙ = compute_rbf_sigma_estimate(x̂, x)
-        update_ema_sigma!(logpdf, σₙ)
+        (update_sigma) && update_ema_sigma!(logpdf, σₙ)
     end
     ℒ_rec = logpdf(x̂, x)
     ℒ = ℒ_rec + ℒₖₗ
@@ -420,10 +420,10 @@ function valid_step(model::SetVAE, dataloader::DataLoader, logpdf; β=1f0, devic
             x, x_mask = batch
             x = device(x)
             x_mask = device(x_mask)
-            elbo_with_logging(model, x, x_mask, logpdf; β=β)
+            elbo_with_logging(model, x, x_mask, logpdf; β=β, update_sigma=false) # don't update sigma during validation
         else
             x = device(batch)
-            elbo_with_logging(model, x, logpdf; β=β)
+            elbo_with_logging(model, x, logpdf; β=β, update_sigma=false)
         end
 
         ℒ += loss
@@ -589,6 +589,20 @@ function reconstruct(svae::SetVAE, x::AbstractArray{T}, x_mask::Mask=nothing; kw
     Flux.testmode!(svae, false)
     return x̂
 end
+
+
+
+function reconstruct_and_log(model::SetVAE, x::AbstractArray{T}, x_mask::Mask, logpdf; β=1f0) where T <: AbstractFloat
+    Flux.testmode!(model, true)
+    x̂, ℒₖₗ, ℒₖₗₛ, _ = x_mask === nothing ? model(x; β=β) : model(x, x_mask; β=β)
+    ℒ_rec = x_mask === nothing ? logpdf(x̂, x) : logpdf(x̂, x, x_mask, x_mask)
+    loss = ℒ_rec + ℒₖₗ
+    logs = (ℒ=loss, ℒ_rec=ℒ_rec, ℒₖₗ=ℒₖₗ, ℒₖₗₛ=ℒₖₗₛ, β=β)
+    Flux.testmode!(model, false)
+    return x̂, loss, logs
+end
+
+
 
 """
 `transform_and_reconstruct(vae::SetVAE, data::AbstractArray; testmode=true)`

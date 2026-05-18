@@ -8,7 +8,7 @@ valid_step(model::AbstractGenModel, args...; kwargs...) = error("valid_step not 
 optim_step(model::AbstractGenModel, args...; kwargs...) = error("optim_step not implemented for $(typeof(model))")
 
 include("SetVAE.jl")
-export SetVAE, HierarchicalEncoder, HierarchicalDecoder, elbo_with_logging, optim_step, valid_step
+export SetVAE, HierarchicalEncoder, HierarchicalDecoder
 export setvae_constructor_from_named_tuple
 
 include("FoldingVAE.jl")
@@ -25,7 +25,7 @@ export SetClassifier, loss
 include("SetVAEformer.jl") # TODO finish this
 
 include("vae.jl")
-export VariationalAutoencoder, elbo_with_logging, optim_step, valid_step
+export VariationalAutoencoder
 
 include("VQVAE.jl")
 export VectorQuantizer, VectorQuantizerEMA
@@ -36,3 +36,7 @@ include("VQVAE_PoolAE.jl")
 export VectorGaussianQuantizerEMA, ema_update!
 export VQ_PoolAE, VGQ_PoolAE, loss_gradient, loss_ema
 export vgq_poolae_constructor_from_named_tuple, vgq_poolae_constructor_from_named_tuple
+
+
+# common exports 
+export elbo_with_logging, optim_step, valid_step, reconstruct_and_log, reconstruct

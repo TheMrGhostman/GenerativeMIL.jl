@@ -413,3 +413,111 @@ function validation_check(
 
     stop_training
 end
+
+
+"""
+Evaluate reconstruction quality on an arbitrary dataloader.
+
+Uses `reconstruct_and_log` for single-pass evaluation (no seed inconsistency).
+
+Arguments:
+- `model`: model instance implementing `reconstruct_and_log`.
+- `dataloader`: dataloader for train/valid/test (or any split).
+- `loss_function`: reconstruction loss function.
+
+Keyword Arguments:
+- `β`: beta value used for evaluation step (default `0f0`).
+- `device`: active device transfer function (default `cpu`).
+- `logger`: optional JSONL logger used when `log_results=true`.
+- `log_results`: whether to write one evaluation row to logger (default `false`).
+- `idx`: optional global index for logger row.
+- `mode`: logger mode label (e.g. `"test"`, `"train_eval"`).
+- `return_cpu`: when `true`, returned arrays are moved to CPU (default `true`).
+
+Returns:
+- Named tuple with:
+  - `loss`: scalar averaged loss over dataloader.
+  - `logs`: averaged logs from single dataloader pass.
+  - `x`: vector of input batches.
+  - `xhat`: vector of reconstructed batches.
+  - `x_mask`: vector of masks for masked datasets (empty for unmasked datasets).
+
+Notes:
+- All computations (loss + reconstruction) happen in a single dataloader pass per batch.
+- Compatible with SetVAE and other models implementing `reconstruct_and_log`.
+"""
+function reconstruction_check(
+    model,
+    dataloader::DataLoader,
+    loss_function;
+    β=0f0,
+    device::Function=cpu,
+    logger::Union{JSONLLogger, Nothing}=nothing,
+    log_results::Bool=false,
+    idx::Union{Int, Nothing}=nothing,
+    mode::String="test",
+    kwargs...
+)
+    xs = Any[]
+    xhats = Any[]
+    x_masks = Any[]
+    total_loss = 0f0
+    logs_acc = nothing
+
+    for batch in dataloader
+        if batch isa Tuple && length(batch) == 2
+            x, x_mask = batch
+            x_dev = device(Array(x))
+            x_mask_dev = device(Array(x_mask))
+            
+            # Single forward pass returning (x̂, loss, logs)
+            xhat, loss, logs = reconstruct_and_log(model, x_dev, x_mask_dev, loss_function; β=β)
+
+            push!(xs, cpu(x_dev))
+            push!(xhats, cpu(xhat))
+            push!(x_masks, cpu(x_mask_dev))
+
+        else
+            x = batch
+            x_dev = device(Array(x))
+            
+            # Single forward pass returning (x̂, loss, logs)
+            xhat, loss, logs = reconstruct_and_log(model, x_dev, nothing, loss_function; β=β)
+
+            push!(xs, cpu(x_dev))
+            push!(xhats, cpu(xhat))
+        end
+        
+        total_loss += loss
+        if isnothing(logs_acc)
+            logs_acc = logs
+        else
+            logs_acc = merge(logs_acc, (k => logs_acc[k] + logs[k] for k in keys(logs)))           
+        end
+    end
+
+    n = length(dataloader)
+        avg_loss = total_loss / n
+        # build averaged NamedTuple from accumulated Dict
+        avg_logs = (; (k => logs_acc[k] / n for k in keys(logs_acc))...)
+
+    if log_results && !isnothing(logger)
+        log!(logger, merge((; idx=idx, mode=mode), avg_logs, (; eval_loss=avg_loss)))
+    end
+
+    # concatenate list of batches in xhats into one tensor along 3rd dim
+    if !isempty(xhats) && length(first(dataloader)) != 2 # only concatenate if unmasked, otherwise we keep the batch structure for logging
+        total_pts = sum(size(a, 3) for a in xhats)
+        xhats_ = zeros(eltype(xhats[1]), size(xhats[1], 1), size(xhats[1], 2), total_pts)
+        pos = 1
+        for a in xhats
+            len = size(a, 3)
+            xhats_[:, :, pos:pos+len-1] .= a
+            pos += len
+        end
+    else
+        xhats_ = xhats
+    end
+
+    return (loss=avg_loss, logs=avg_logs, x=xs, xhat=xhats_, x_mask=x_masks)
+end
