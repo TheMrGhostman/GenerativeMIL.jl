@@ -456,7 +456,7 @@ function reconstruction_check(
     mode::String="test",
     kwargs...
 )
-    #xs = Any[]
+    xs = Any[]
     xhats = Any[]
     x_masks = Any[]
     total_loss = 0f0
@@ -471,7 +471,7 @@ function reconstruction_check(
             # Single forward pass returning (x̂, loss, logs)
             xhat, loss, logs = reconstruct_and_log(model, x_dev, x_mask_dev, loss_function; β=β)
 
-            #push!(xs, cpu(x_dev))
+            push!(xs, cpu(x_dev))
             push!(xhats, cpu(xhat))
             push!(x_masks, cpu(x_mask_dev))
 
@@ -482,7 +482,7 @@ function reconstruction_check(
             # Single forward pass returning (x̂, loss, logs)
             xhat, loss, logs = reconstruct_and_log(model, x_dev, nothing, loss_function; β=β)
 
-            #push!(xs, cpu(x_dev))
+            push!(xs, cpu(x_dev))
             push!(xhats, cpu(xhat))
         end
         
@@ -513,9 +513,19 @@ function reconstruction_check(
             xhats_[:, :, pos:pos+len-1] .= a
             pos += len
         end
+
+        total_pts = sum(size(a, 3) for a in xs)
+        xs_ = zeros(eltype(xs[1]), size(xs[1], 1), size(xs[1], 2), total_pts)
+        pos = 1
+        for a in xs
+            len = size(a, 3)
+            xs_[:, :, pos:pos+len-1] .= a
+            pos += len
+        end
     else
         xhats_ = xhats
+        xs_ = xs
     end
 
-    return (loss=avg_loss, logs=avg_logs, xhat=xhats_, x_mask=x_masks) # x=xs,
+    return (loss=avg_loss, logs=avg_logs, xhat=xhats_, x=xs_, x_mask=x_masks) # x=xs,
 end
