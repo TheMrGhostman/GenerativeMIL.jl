@@ -5,7 +5,8 @@
 
 _mnist_balanced_path() = datadir("datasets/mnist_pc/mnist_4x_point_clouds_3x900_matrix.jls")
 _mnist_natural_path() = datadir("datasets/mnist_pc/mnist_4x_point_clouds_all_vec.jls")
-_modelnet10_path(npoints) = datadir("datasets/modelnet10/modelnet10_$(npoints).h5")
+_modelnet10_flux3d_path(npoints) = datadir("datasets/modelnet10_flux3d/modelnet10_$(npoints).h5")
+_modelnet10_path(balanced=false) = datadir("datasets/modelnet10/modelnet10_selected_" * (balanced ? "balanced" : "unbalanced") * "_8196.jls")
 
 #include("grayscale2pointcloud.jl")
 #export build_point_cloud_from_grayscale_image
