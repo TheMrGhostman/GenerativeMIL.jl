@@ -166,7 +166,6 @@ Load the selected ModelNet point-cloud dataset and create train/validation/test 
 
 # Arguments
 - `npoints`: number of points requested after sampling.
-- `type`: `"all"` or a specific class name present in the dataset.
 - `validation`: if `true`, returns train/val/test; otherwise train/test.
 - `ratio`: validation ratio from the training split.
 - `seed`: random seed for deterministic split/sampling behavior.
@@ -232,6 +231,7 @@ function load_modelnet10(npoints=2048; validation::Bool=true, ratio::AbstractFlo
     x_train_subset = x_train_full[:, :, train_idx]
     x_test_subset = x_test_full
 
+    Random.seed!(seed)
     if sample_on_fly
         x_train = mapobs(pc -> sample_fixed_n_from_matrix(pc, npoints), x_train_subset)
     else
@@ -356,8 +356,8 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
     if dataset_name == "modelnet10_flux3d"
         data = load_dataset(
             dataset_name,
-            npoints,
-            type_name;
+            npoints;
+            type=type_name,
             validation=validation,
             cardinality_count=cardinality_count,
             balanced_classes=balanced_classes,
