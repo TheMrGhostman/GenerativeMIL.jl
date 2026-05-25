@@ -21,7 +21,7 @@ function load_dataset(name::String, args...; kwargs...)
         return load_modelnet10(args...; kwargs...)
     elseif name == "mnist"
         return load_mnist(args...; kwargs...)
-    if name == "modelnet10_flux3d"
+    elseif name == "modelnet10_flux3d"
         return load_modelnet10_flux3d(args...; kwargs...)
     else
         error("Unknown dataset: $name")
