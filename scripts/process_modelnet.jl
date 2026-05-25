@@ -117,15 +117,13 @@ function sample_point_cloud(vertices, faces; num_points::Int = 2048, seed::Union
 end
 
 
-function main()
-    PTH = "/home/zorekmat/Datasets/ModelNet40/modelnet40-princeton-3d-object-dataset"
-    MODE = "train"
-    NPOINTS = 8196
-    MIN_SAMPLES_PER_CLASS = 600
-    SEED = 123
+function main(PTH::String; NPOINTS = 8196, MODE="train", MIN_SAMPLES_PER_CLASS=600, SEED = 123)
+    #MIN_SAMPLES_PER_CLASS = 600
     SELECTED_CLASSES = ["airplane", "car", "chair", "bed", "table", "sofa", "monitor", "lamp", "plant", "tent"]
 
     classes = readdir(PTH, join=true);
+    names = Dict()
+    pcs = Dict()
 
     for class in classes
         if !(basename(class) in SELECTED_CLASSES)
@@ -141,7 +139,7 @@ function main()
             additional_files = sample(off_files, MIN_SAMPLES_PER_CLASS - length(off_files); replace = true)
             off_files = vcat(off_files, additional_files)
         end
-        @info length(off_files) " OFF files found for class $cls in $MODE mode"
+        @info  "length = $(length(off_files)) |  OFF files found for class $(cls) in $(MODE) mode"
         #break
         for off_file in tqdm(off_files)
             #println("  Loading file: ", basename(off_file))
@@ -176,10 +174,12 @@ function main()
     end
 
     res_dict = Dict(
-        "features" => X,
+        "features" => permutedims(X, (3,2,1)), # (3, NPOINTS, M)
         "targets" => Y,
         "classes" => CLS,
         "names" => NAMES
     )
     return res_dict
 end
+
+pth = "/home/zorekmat/Datasets/ModelNet40/modelnet40-princeton-3d-object-dataset/versions/1/ModelNet40/"
