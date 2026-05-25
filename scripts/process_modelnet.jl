@@ -135,6 +135,10 @@ function main(PTH::String; NPOINTS = 8196, MODE="train", MIN_SAMPLES_PER_CLASS=6
         pcs[cls] = []
         names[cls] = []
         off_files = filter(f -> endswith(f, ".off"), readdir(mode_path, join=true))
+        if isempty(off_files)
+            @warn "No OFF files found for class $(cls) in $(MODE) mode at path: $(mode_path)"
+            continue
+        end
         if length(off_files) < MIN_SAMPLES_PER_CLASS
             additional_files = sample(off_files, MIN_SAMPLES_PER_CLASS - length(off_files); replace = true)
             off_files = vcat(off_files, additional_files)
@@ -182,4 +186,4 @@ function main(PTH::String; NPOINTS = 8196, MODE="train", MIN_SAMPLES_PER_CLASS=6
     return res_dict
 end
 
-pth = "/home/zorekmat/Datasets/ModelNet40/modelnet40-princeton-3d-object-dataset/versions/1/ModelNet40/"
+#pth = "/home/zorekmat/Datasets/ModelNet40/modelnet40-princeton-3d-object-dataset/versions/1/ModelNet40/"
