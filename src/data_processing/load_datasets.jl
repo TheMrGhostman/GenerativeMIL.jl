@@ -54,22 +54,6 @@ function _cfgget(cfg, key::Symbol, default)
 end
 
 
-function _dataset_get(data, key::Symbol)
-    if data isa AbstractDict
-        if haskey(data, key)
-            return data[key]
-        end
-        skey = String(key)
-        if haskey(data, skey)
-            return data[skey]
-        end
-    elseif hasproperty(data, key)
-        return getproperty(data, key)
-    end
-    error("Dataset is missing key: $key")
-end
-
-
 """
     load_mnist(npoints=512; validation=true, cardinality_count=:balanced,
                sample_on_fly=false, normalize=false, ratio=0.2, seed=666, kwargs...)
@@ -204,15 +188,15 @@ function load_modelnet10(npoints=2048; validation::Bool=true, ratio::AbstractFlo
     npoints <= 8196 || error("Number of requested points ($npoints) is greater than the dataset maximum (8196).")
 
     dict_loaded = Serialization.deserialize(_modelnet10_path(balanced_classes))
-    train_split = _dataset_get(dict_loaded, :train)
-    test_split = _dataset_get(dict_loaded, :test)
+    train_split = dict_loaded.train
+    test_split = dict_loaded.test
 
-    x_train_full = _dataset_get(train_split, :features)
-    y_train_full = _dataset_get(train_split, :targets)
-    #train_classes = _dataset_get(train_split, :classes)
-    x_test_full = _dataset_get(test_split, :features)
-    y_test_full = _dataset_get(test_split, :targets)
-    #test_classes = _dataset_get(test_split, :classes)
+    x_train_full = train_split["features"]
+    y_train_full = train_split["targets"]
+    #train_classes = train_split["classes"]
+    x_test_full = test_split["features"]
+    y_test_full = test_split["targets"]
+    #test_classes = test_split["classes"]
 
     if normalize
         # Use shared statistics across the fixed train/test splits to avoid
