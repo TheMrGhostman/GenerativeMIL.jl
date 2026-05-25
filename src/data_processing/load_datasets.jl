@@ -353,33 +353,18 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
     # Support special positional args for some datasets (e.g. ModelNet10 expects a `type` positional arg)
     type_name = _cfgget(data_cfg, :type, "all")
 
-    if dataset_name == "modelnet10_flux3d"
-        data = load_dataset(
-            dataset_name,
-            npoints;
-            type=type_name,
-            validation=validation,
-            cardinality_count=cardinality_count,
-            balanced_classes=balanced_classes,
-            sample_on_fly=sample_on_fly,
-            normalize=normalize,
-            ratio=ratio,
-            seed=seed
-        )
-    else
-        data = load_dataset(
-            dataset_name,
-            npoints;
-            validation=validation,
-            cardinality_count=cardinality_count,
-            balanced_classes=balanced_classes,
-            sample_on_fly=sample_on_fly,
-            normalize=normalize,
-            ratio=ratio,
-            seed=seed,
-            type=type_name
-        )
-    end
+    data = load_dataset(
+        dataset_name,
+        npoints;
+        validation=validation,
+        cardinality_count=cardinality_count,
+        balanced_classes=balanced_classes,
+        sample_on_fly=sample_on_fly,
+        normalize=normalize,
+        ratio=ratio,
+        seed=seed,
+        type=type_name
+    )
 
     if x_only
         train_data = data[1][1]
