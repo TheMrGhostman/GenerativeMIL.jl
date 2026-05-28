@@ -93,15 +93,15 @@ end
 ########################################
 # base configs
 
-function base_data_config(dataset="mnist", npoints=512; cardinality_count="balanced", sample_on_fly=false, normalize=true)
+function base_data_config(dataset="mnist", npoints=512; cardinality_count="balanced", sample_on_fly=false, normalize=true, balanced_classes=true)
     @assert dataset in ["mnist", "modelnet10"] "Unsupported dataset: $dataset"
     
     dict = OrderedDict("dataset" => dataset, "npoints" => npoints)
 
     if dataset == "mnist"
-        dict = merge(dict, OrderedDict("cardinality_count" => cardinality_count,"sample_on_fly" => sample_on_fly, "normalize" => normalize))
+        dict = merge(dict, OrderedDict("cardinality_count" => cardinality_count, "sample_on_fly" => sample_on_fly, "normalize" => normalize, "ratio" => 0.2))
     elseif dataset == "modelnet10"
-        dict = merge(dict, OrderedDict("type" => "all",))
+        dict = merge(dict, OrderedDict("balanced_classes"=>balanced_classes, "normalize"=>normalize, "sample_on_fly" => sample_on_fly, "ratio" => 0.1))#OrderedDict("type" => "all",)
     else
         error("Unknown dataset: $dataset")
     end
@@ -266,7 +266,7 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
         mmd_batch_size = 32
     elseif dataset == "modelnet10"
         npoints = 2048
-        data_cfg = base_data_config("modelnet10", npoints)
+        data_cfg = base_data_config("modelnet10", npoints; balanced_classes=true, sample_on_fly=false, normalize=true)
         cd_epochs = 1000
         cd_batch_size= 128
         mmd_epochs = 200
@@ -277,17 +277,12 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
 
     cd_train_cfgs = [
         (   # works with shallow models
-            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
-            loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
-            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
-        ),
-        (   # works with deeper models
-            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (   # test case if there is a free compute time
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
@@ -296,17 +291,12 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
     # If MMD is defined via EMA, then sigmas are scales [σ/4, σ/2, σ] and σ is updated via EMA. If not EMA, then σ is fixed and defined as [1/4, 1/2, 1/1]. (or different numbers)
     mmd_train_cfgs = [
         (
-            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001, 
-            loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints,  "kernel" => "rbf"), 
-            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
-        ),
-        (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),

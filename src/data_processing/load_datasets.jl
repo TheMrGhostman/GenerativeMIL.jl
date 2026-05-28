@@ -200,13 +200,10 @@ function load_modelnet10(npoints=2048; validation::Bool=true, ratio::AbstractFlo
     #test_classes = test_split["classes"]
 
     if normalize
-        # Use shared statistics across the fixed train/test splits to avoid
-        # shifting the test distribution relative to training data.
-        x_all = cat(x_train_full, x_test_full; dims=3)
-        x_all = normalize_point_cloud(x_all)
-        n_train_total = size(x_train_full, 3)
-        x_train_full = x_all[:, :, 1:n_train_total]
-        x_test_full = x_all[:, :, n_train_total+1:end]
+        # normalization to unit shpere. normal standardization does not make sense
+        # because you normalize airplanes and house plants together. model can not learn that
+        x_train_full = normalize_point_clouds_into_unit_shpere(x_train_full)
+        x_test_full = normalize_point_clouds_into_unit_shpere(x_test_full)
     end
 
     rng_split = MersenneTwister(seed)

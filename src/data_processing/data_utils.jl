@@ -4,13 +4,13 @@
 Normalize a batched point-cloud tensor feature-wise.
 
 # Arguments
-- `pc`: point-cloud tensor of shape `(D, P, N)` where:
+- `pc`: point-cloud tensor of shape `(D, N, BS)` where:
     - `D` is point dimensionality (typically 3),
-    - `P` is the number of points,
-    - `N` is the number of samples.
+    - `N` is the number of points,
+    - `BS` is the number of samples.
 
 # Returns
-- A normalized tensor with the same shape `(D, P, N)`.
+- A normalized tensor with the same shape `(D, N, BS)`.
 
 # Notes
 - Mean and standard deviation are computed independently per dimension,
@@ -28,7 +28,7 @@ end
 Normalize a vector of variable-cardinality point clouds.
 
 # Arguments
-- `pcs`: vector of point clouds, each of shape `(D, P_i)`.
+- `pcs`: vector of point clouds, each of shape `(D, N_i)`.
 
 # Returns
 - A vector of normalized point clouds with unchanged per-sample shapes.
@@ -46,16 +46,53 @@ function normalize_point_cloud(pcs::Vector{<:AbstractArray{T, 2}}) where T<:Abst
 end
 
 """
+        normalize_point_clouds_into_unit_shpere(pc::AbstractArray{T, 3}) where T<:AbstractFloat
+
+Normalize a batched collection of point clouds into the unit sphere per sample.
+
+# Arguments
+- `pc`: point-cloud tensor of shape `(D, N, BS)` where `D` is dimensionality,
+    `N` number of points, and `BS` number of samples in the batch.
+
+# Returns
+- A tensor of the same shape `(D, N, BS)` where each sample has been:
+    - translated so its centroid is at the origin, and
+    - scaled so the farthest point from the centroid lies at distance `1`.
+
+# Notes
+- Scaling is performed per-sample by dividing by the maximum distance from the
+    centroid to any point in that sample. To avoid division by zero, `eps(T)` is
+    added to the denominator.
+"""
+function normalize_point_clouds_into_unit_shpere(pc::AbstractArray{T, 3}) where T<:AbstractFloat
+    # pc is datasets of point clouds (D, N, BS), where D is dimension of pc, N is number of points, and BS is batch size or just number of all point clouds
+    # Compute per-sample centroids (D x 1 x BS)
+    μs = mean(pc, dims=2)
+    # Center points per-sample
+    centered = pc .- μs
+    # Squared distances of each point to its sample centroid: (1 x N x BS)
+    sqd = sum(abs2.(centered), dims=1)
+    # Maximum squared distance per sample (1 x 1 x N), then take sqrt -> scale per-sample
+    max_sq = maximum(sqd, dims=2)
+    scale = sqrt.(max_sq)
+    # Avoid division by zero, compute inverse scale broadcastable to (D,N,BS)
+    inv_scale = 1 ./(scale .+ eps(T))
+    # Return centered point clouds scaled so the farthest point is at distance 1
+    return centered .* inv_scale
+end
+
+
+"""
     sample_fixed_n(pc, npoints)
 
 Sample up to `npoints` points from a single point cloud without replacement.
 
 # Arguments
-- `pc`: point cloud of shape `(D, P)`.
+- `pc`: point cloud of shape `(D, N)`.
 - `npoints`: requested number of points.
 
 # Returns
-- Array of shape `(D, min(npoints, P))`.
+- Array of shape `(D, min(npoints, N))`.
 """
 sample_fixed_n(pc, npoints) = pc[:, sample(axes(pc, 2), min(npoints, size(pc, 2)), replace=false)]
 
@@ -65,11 +102,11 @@ sample_fixed_n(pc, npoints) = pc[:, sample(axes(pc, 2), min(npoints, size(pc, 2)
 Equivalent to [`sample_fixed_n`](@ref), with a singleton third dimension.
 
 # Arguments
-- `pc`: point cloud of shape `(D, P)`.
+- `pc`: point cloud of shape `(D, N)`.
 - `npoints`: requested number of points.
 
 # Returns
-- Array of shape `(D, min(npoints, P), 1)`.
+- Array of shape `(D, min(npoints, N), 1)`.
 """
 sample_fixed_n_unsqueeze(pc, npoints) = unsqueeze(pc[:, sample(axes(pc, 2), min(npoints, size(pc, 2)), replace=false)], dims=3)
 
@@ -79,11 +116,11 @@ sample_fixed_n_unsqueeze(pc, npoints) = unsqueeze(pc[:, sample(axes(pc, 2), min(
 Sample the point dimension of a batched tensor without replacement.
 
 # Arguments
-- `xs`: tensor of shape `(D, P, N)`.
+- `xs`: tensor of shape `(D, N, BS)`.
 - `npoints`: requested number of points.
 
 # Returns
-- Tensor of shape `(D, min(npoints, P), N)`.
+- Tensor of shape `(D, min(npoints, N), BS)`.
 """
 function sample_fixed_n_from_matrix(xs::AbstractArray, npoints::Int)
     idx = sample(axes(xs, 2), min(npoints, size(xs, 2)), replace=false)
@@ -96,10 +133,10 @@ end
 Stack a vector of identically shaped 2D point clouds into one 3D tensor.
 
 # Arguments
-- `pcs`: vector of point clouds, each of shape `(D, P)`.
+- `pcs`: vector of point clouds, each of shape `(D, N)`.
 
 # Returns
-- Tensor of shape `(D, P, N)` where `N = length(pcs)`.
+- Tensor of shape `(D, N, BS)` where `BS = length(pcs)`.
 
 # Throws
 - `ErrorException` if `pcs` is empty.
@@ -122,11 +159,11 @@ end
 Collate function for on-the-fly sampled point-cloud batches.
 
 # Arguments
-- `batch`: vector of tuples `(pc, label)` where `pc` has shape `(D, P, 1)`.
+- `batch`: vector of tuples `(pc, label)` where `pc` has shape `(D, N, 1)`.
 
 # Returns
 - Tuple `(x, y)` where:
-    - `x` has shape `(D, P, BS)`,
+    - `x` has shape `(D, N, BS)`,
     - `y` is a label vector of length `BS`.
 """
 function on_fly_collate_fn(batch::Vector{Tuple{X, Y}}) where {X <: AbstractArray{<:AbstractFloat, 3}, Y <: Int}
