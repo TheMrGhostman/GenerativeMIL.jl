@@ -159,7 +159,7 @@ function process_airplanes(npoints=8192; normalize::Bool=true)
     #a = sample_pointcloud_from_obj(airplanes[4], 8192);
     #plot_pointcloud_sample(a)
 
-    PClouds = zeros(Float32, 3, NPOINTS, length(airplanes))
+    PClouds = zeros(Float32, 3, npoints, length(airplanes))
     for i in tqdm(axes(airplanes,1))
         PClouds[:,:,i] .= sample_pointcloud_from_obj(airplanes[i], npoints; normalize=normalize)
     end
