@@ -17,8 +17,8 @@ Normalize a batched point-cloud tensor feature-wise.
     across points and samples.
 """
 function normalize_point_cloud(pc::AbstractArray{T, 3}) where T<:AbstractFloat
-    mu = mean(mean(pc, dims=(3)), dims=2)
-    sigma = mean(std(pc, dims=(3)), dims=2)
+    mu = mean(pc, dims=(2,3))
+    sigma = std(pc, dims=(2,3))
     return (pc .- mu) ./ (sigma .+ eps(T))
 end
 
@@ -37,6 +37,7 @@ Normalize a vector of variable-cardinality point clouds.
 - Global statistics are estimated per dimension over the whole collection.
 """
 function normalize_point_cloud(pcs::Vector{<:AbstractArray{T, 2}}) where T<:AbstractFloat
+     #TODO fixme
     d1 = getindex.(pcs, 1, :)
     d2 = getindex.(pcs, 2, :)
     d3 = getindex.(pcs, 3, :)
@@ -44,6 +45,29 @@ function normalize_point_cloud(pcs::Vector{<:AbstractArray{T, 2}}) where T<:Abst
     sigma = [mean(std.(d1)), mean(std.(d2)), mean(std.(d3))]
     return map(p -> (p .- mu) ./ (sigma .+ eps(T)), pcs)
 end
+
+"""
+    _normalize_point_cloud_dataset(pcs::AbstractArray{T, 3}...) where T<:AbstractFloat
+
+Normalize one or more batched point-cloud tensors with first tensor statistics with scalar sigma.
+    μ = (μ_x, μ_y, x_z)
+    σ = scalar
+    X = (X .- μ) ./ σ
+
+# Arguments
+- `pcs`: one or more tensors of shape `(D, N, BS)`.
+
+# Returns
+- A tuple with each tensor normalized using the same per-dimension mean and
+  standard deviation computed on first element from provided tensors.
+"""
+function _normalize_point_cloud_dataset(pcs::AbstractArray{T, 3}...) where T<:AbstractFloat
+    isempty(pcs) && error("No point-cloud tensors provided for normalization")
+    μ = mean(pcs[1], dims=(2,3))
+    σ = std(vec(pcs[1]))
+    return tuple(((pc .- μ) ./ (σ .+ eps(T)) for pc in pcs)...)
+end
+
 
 """
         normalize_point_clouds_into_unit_shpere(pc::AbstractArray{T, 3}) where T<:AbstractFloat

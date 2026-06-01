@@ -23,6 +23,8 @@ function load_dataset(name::String, args...; kwargs...)
         return load_mnist(args...; kwargs...)
     elseif name == "modelnet10_flux3d"
         return load_modelnet10_flux3d(args...; kwargs...)
+    elseif name == "shapenet_class"
+        return load_shapenet_class(args...; kwargs...)
     else
         error("Unknown dataset: $name")
     end
@@ -154,6 +156,75 @@ function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbo
 
     return (x_train, y_train), (x_test, y_test)
 
+end
+
+
+"""
+    load_shapenet_class(classname::String, npoints::Int=2048; normalize=false, 
+                        validation=true, sample_on_fly=false, set_y_for_class=0)
+
+Load train/validation/test splits for a single ShapeNet class from a serialized
+subset file.
+
+# Arguments
+- `classname`: class name stored in the file name, for example `"car"`.
+- `npoints`: number of points to sample from each split (max 15000).
+- `normalize`: if `true`, normalize the full class dataset using shared
+    statistics across all points in all splits before sampling.
+- `validation`: if `true`, returns train/val/test; otherwise train/test.
+- `sample_on_fly`: if `true`, apply lazy sampling on the training split.
+- `set_y_for_class`: label value for all samples.
+
+# Returns
+- If `validation=true`:
+    - `((x_train, y_train), (x_val, y_val), (x_test, y_test))`
+- If `validation=false`:
+    - `((x_train, y_train), (x_test, y_test))`
+
+# Notes
+- Validation and test splits are always pre-sampled.
+- On-the-fly sampling is applied only to training data when enabled.
+"""
+function load_shapenet_class(classname::String, npoints::Int=2048; normalize::Bool=false, validation::Bool=true, sample_on_fly::Bool=false, set_y_for_class::Int=0, kwargs...)
+    path = _shapenet_class_15K_path(classname)
+    isfile(path) || error("Unknown ShapeNet class subset: $(classname) (missing file: $(path))")
+
+    data = Serialization.deserialize(path)
+    hasproperty(data, :train) || error("Invalid ShapeNet subset file: missing `train` split at $(path)")
+    hasproperty(data, :valid) || error("Invalid ShapeNet subset file: missing `valid` split at $(path)")
+    hasproperty(data, :test) || error("Invalid ShapeNet subset file: missing `test` split at $(path)")
+
+    x_train = data.train
+    x_valid = data.valid
+    x_test = data.test
+
+    @assert npoints <= size(x_train, 2) "Number of requested points ($npoints) is greater than the dataset cardinality ($(size(x_train, 2)))."
+
+    if normalize
+        x_train, x_valid, x_test = _normalize_point_cloud_dataset(x_train, x_valid, x_test)
+    end
+
+    if sample_on_fly
+        x_train = mapobs(pc -> sample_fixed_n_from_matrix(pc, npoints), x_train)
+    else
+        x_train = sample_fixed_n_from_matrix(x_train, npoints)
+    end
+    x_valid = sample_fixed_n_from_matrix(x_valid, npoints)
+    x_test  = sample_fixed_n_from_matrix(x_test , npoints)
+
+    y_train = fill(set_y_for_class, axes(x_train, 3))
+    y_valid = fill(set_y_for_class, axes(x_valid, 3))
+    y_test  = fill(set_y_for_class, axes(x_test , 3))
+
+    if validation
+        return (x_train, y_train), (x_valid, y_valid), (x_test, y_test)
+    else
+        return (x_train, y_train), (x_test, y_test)
+    end
+end
+
+function load_shapenet_class(npoints::Int=2048; type::AbstractString="car", kwargs...)
+    return load_shapenet_class(String(type), npoints; kwargs...)
 end
 
 
