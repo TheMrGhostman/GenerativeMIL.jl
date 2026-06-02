@@ -204,6 +204,10 @@ function load_shapenet_class(classname::String, npoints::Int=2048; normalize::Bo
         x_train, x_valid, x_test = _normalize_point_cloud_dataset(x_train, x_valid, x_test)
     end
 
+    y_train = fill(set_y_for_class, axes(x_train, 3))
+    y_valid = fill(set_y_for_class, axes(x_valid, 3))
+    y_test  = fill(set_y_for_class, axes(x_test , 3))
+
     if sample_on_fly
         x_train = mapobs(pc -> sample_fixed_n_from_matrix(pc, npoints), x_train)
     else
@@ -211,10 +215,6 @@ function load_shapenet_class(classname::String, npoints::Int=2048; normalize::Bo
     end
     x_valid = sample_fixed_n_from_matrix(x_valid, npoints)
     x_test  = sample_fixed_n_from_matrix(x_test , npoints)
-
-    y_train = fill(set_y_for_class, axes(x_train, 3))
-    y_valid = fill(set_y_for_class, axes(x_valid, 3))
-    y_test  = fill(set_y_for_class, axes(x_test , 3))
 
     if validation
         return (x_train, y_train), (x_valid, y_valid), (x_test, y_test)
