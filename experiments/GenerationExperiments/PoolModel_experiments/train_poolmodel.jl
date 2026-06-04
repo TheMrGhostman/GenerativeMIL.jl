@@ -19,12 +19,17 @@ function load_cfg(path::String)
     return Dict(Symbol(k) => v for (k, v) in yaml)
 end
 
+function resolve_activation(x)
+    x isa Function && return x
+    return eval(Symbol(x))
+end
+
 function main()
     s = ArgParseSettings()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "mnist_configs", "cd_poolmodel_c1.yml")
+            default = joinpath(@__DIR__, "configs", "airplane_configs", "cd_poolmodel_c001.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int
