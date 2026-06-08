@@ -6,10 +6,8 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Uprav jen tyto 4 veci:
 CONFIGS=(
-    "configs/cd_setvae_c15.yml"
-    "configs/cd_setvae_c16.yml"
-    "configs/mmd_setvae_c15.yml"
-    "configs/mmd_setvae_c16.yml"
+#    "configs/airplane_configs/mmd_setvae_c001.yml"
+
 )
 SEEDS=(1)
 TIME_LIMIT=24
@@ -32,32 +30,4 @@ done
 
 : '
 
-"configs/mmd_setvae_c1.yml"
-"configs/mmd_setvae_c2.yml"
-"configs/mmd_setvae_c3.yml"
-"configs/mmd_setvae_c4.yml"
-"configs/mmd_setvae_c5.yml"
-"configs/mmd_setvae_c6.yml"
-"configs/mmd_setvae_c7.yml"
-"configs/mmd_setvae_c8.yml"
-"configs/mmd_setvae_c9.yml"
-"configs/mmd_setvae_c10.yml"
-"configs/mmd_setvae_c11.yml"
-"configs/mmd_setvae_c12.yml"
-"configs/mmd_setvae_c13.yml"
-"configs/mmd_setvae_c14.yml"
-"configs/setvae_c1.yml"
-"configs/setvae_c2.yml"
-"configs/setvae_c3.yml"
-"configs/setvae_c4.yml"
-"configs/setvae_c5.yml"
-"configs/setvae_c6.yml"
-"configs/setvae_c7.yml"
-"configs/setvae_c8.yml"
-"configs/setvae_c9.yml"
-"configs/setvae_c10.yml"
-"configs/setvae_c11.yml"
-"configs/setvae_c12.yml"
-"configs/setvae_c13.yml"
-"configs/setvae_c14.yml"
     '

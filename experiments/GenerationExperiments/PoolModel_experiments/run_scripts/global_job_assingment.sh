@@ -6,22 +6,8 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Uprav jen tyto veci:
 CONFIGS=(
-    "configs/cd_poolmodel_c1.yml"
-    "configs/cd_poolmodel_c2.yml"
-    "configs/cd_poolmodel_c3.yml"
-    "configs/cd_poolmodel_c4.yml"
-    "configs/cd_poolmodel_c5.yml"
-    "configs/cd_poolmodel_c6.yml"
-    "configs/cd_poolmodel_c7.yml"
-    "configs/cd_poolmodel_c8.yml"
-    "configs/mmd_poolmodel_c1.yml"
-    "configs/mmd_poolmodel_c2.yml"
-    "configs/mmd_poolmodel_c3.yml"
-    "configs/mmd_poolmodel_c4.yml"
-    "configs/mmd_poolmodel_c5.yml"
-    "configs/mmd_poolmodel_c6.yml"
-    "configs/mmd_poolmodel_c7.yml"
-    "configs/mmd_poolmodel_c8.yml"
+    #"configs/airplane_configs/mmd_poolmodel_c001.yml"
+      
 )
 SEEDS=(1)
 TIME_LIMIT=24
