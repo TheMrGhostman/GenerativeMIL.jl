@@ -65,6 +65,23 @@ function optim_step(model::NeuralStatistician, batch::AbstractArray{T, 3}, opt::
 end
 
 
+function valid_step(model::NeuralStatistician, dataloader::DataLoader, logpdf; β=1f0, device::Function=cpu, kwargs...)
+    ℒ, ℒ_rec, ℒₖₗ_z, ℒₖₗ_c = 0f0, 0f0, 0f0, 0f0
+    for batch in dataloader
+        x = device(batch)
+        loss, logs = elbo_with_logging(model, x, logpdf; β₁=β, β₂=β)
+
+        ℒ += loss
+        ℒ_rec += logs.ℒ_rec
+        ℒₖₗ_z += logs.ℒₖₗ_z
+        ℒₖₗ_c += logs.ℒₖₗ_c
+    end
+
+    n = length(dataloader)
+    logs = (; ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥₖₗ_z = ℒₖₗ_z / n, ℒᵥₖₗ_c = ℒₖₗ_c/n)
+    return logs, ℒ/n
+end
+
 function reconstruct(model::NeuralStatistician, x::AbstractArray{T, 3}; kwargs...) where T <: AbstractFloat
     Flux.testmode!(model, true)
     x̂ = model(x)
@@ -72,7 +89,7 @@ function reconstruct(model::NeuralStatistician, x::AbstractArray{T, 3}; kwargs..
     return x̂
 end
 
-function reconstruct_and_log(model::SetVAE, x::AbstractArray{T}, x_mask::Mask, logpdf; β=1f0, kwargs...) <: AbstractFloat
+function reconstruct_and_log(model::NeuralStatistician, x::AbstractArray{T}, x_mask::Mask, logpdf; β=1f0, kwargs...) where T <: AbstractFloat
     Flux.testmode!(model, true)
     x̂, loss, logs = elbo_with_logging(model, x, logpdf; β₁ = β, β₂ = β, reconstruct=true)
     Flux.testmode!(model, false)
