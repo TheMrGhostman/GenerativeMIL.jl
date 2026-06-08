@@ -19,6 +19,10 @@ include("PoolAE.jl")
 export PoolModel, loss, loss_with_logging, loss
 export poolmodel_constructor_from_named_tuple
 
+include("NeuralStatistician.jl")
+export NeuralStatistician
+export neuralstatistician_constructor_from_named_tuple
+
 include("SetTransformer.jl")
 export SetClassifier, loss
 

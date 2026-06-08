@@ -17,6 +17,7 @@
 
 
 kl_divergence(μ, Σ) = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σ.^2) - μ.^2  - Σ.^2, dims=1)) 
+l2(x,y) = sum(abs2, x .- y)
 export kl_divergence
 
 include("chamfer_distance.jl")

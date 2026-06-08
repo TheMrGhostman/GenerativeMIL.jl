@@ -47,6 +47,8 @@ function create_loss_function(cfg)
                 distance_kernel = _resolve_mmd_distance_kernel(kernel)
                 return (x, y) -> loss_scale * maximum_mean_discrepancy(x, y; sigma=sigma, distance_kernel=distance_kernel)
             end
+        elseif type_norm == "l2sum"
+            return (x, y) -> mean(sum(abs2, x .- y, dims=(1,2)))# it is sum per dimension and per number of points. i.e. unnormalized version
         else
             error("Unsupported loss_function type: $(loss_type)")
         end
@@ -61,6 +63,10 @@ function _resolve_named_loss(name)
         return chamfer_distance
     elseif name_norm in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
         return (x, y) -> maximum_mean_discrepancy(x, y)
+    elseif name_norm == "mse"
+        return Flux.mse
+    elseif name_norm == "l2sum"
+        return (x, y) -> mean(sum(abs2, x .- y, dims=(1,2)))
     else
         error("Unknown loss function name: $(name)")
     end
