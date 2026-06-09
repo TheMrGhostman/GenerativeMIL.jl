@@ -1,11 +1,66 @@
 # Notes and TODOs
+## To Remember : 
+- path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
+
+
+## Todos 8.6.2026
+- [ ] Neural Statistician experiment
+  - [ ] mix c and z from two different number (different classes)
+    - the reconstruction should show us if information (about class or shape) is inside $z$ or $c$
+    - I think $c$ will not be utilized that much or at all
+    - we can take a look at loss with zdim=2 and zdim=32, we will see that one reaches much lower reconstruction loss then other, also kld_c will be close to zero. and kld_z will be high. all this points to situation in which most info is in $z$, and when I make bottleneck ($z$) tighter we have problems with reconstruction. 
+
+## Todos 1.6.2026
+- [ ] Evaluation script
+  - [ ] Coverage
+  - [ ] Minimum Matching Distance
+  - [ ] FID
+  - [ ] 1-NNA
+  - [ ] final script
+
+- [ ] ShapeNetCore Training / Experiments
+  - [ ] SetVae training 
+    - [x]   I. Stage : Airplane (only)
+    - [ ]  II. Stage : airplane, car, chair, table, sofa
+    - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
+  - [ ] PoolModel
+    - [x]   I. Stage : Airplane (only)
+    - [ ]  II. Stage : airplane, car, chair, table, sofa
+    - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
+  - [ ] NeuralStatistician
+    - [x]   I. Stage : Airplane (only)
+    - [ ]  II. Stage : airplane, car, chair, table, sofa
+    - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
+  
+
+- [ ] MNIST point cloud Experiments
+  - [ ] NerualStatistician
+    - [x] l2
+    - [ ] chamfer
+    - [ ] mmd
+
+
+- [ ] ShapeNetCore dataset
+  - [x] download dataset
+  - [x] try to download 15K version used in PointFlow and SetVAE
+  - [x] write processing script
+  - [ ] write loaders
+    - [x] write loader for 15K version
+      - [x] make loader so it can select specific classes 
+      - [ ] make loader that can pick multiple classes
+        - [ ] add global normalization
+    - [ ] write loader for our processed version from raw data
+      - [ ] make loader so it can select specific classes 
+  - [x] test functions 
+  - [x] add normalization to loaders
+  - [x] pick intersting classes for all three stages
 
 ## Todos 15.5.2026
-- [ ] update training
-    - [ ] config generator
+- [x] update training
+    - [x] config generator
         - [x] setvae
-        - [ ] poolmodel
-        - [ ] neural statistician
+        - [x] poolmodel
+        - [x] neural statistician
 
     - [x] AdaMax to AdamW
     - [x] MMD with EMA estimator for sigma
