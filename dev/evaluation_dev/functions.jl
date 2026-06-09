@@ -27,9 +27,11 @@ function one_nn(distances::AbstractMatrix, labels::AbstractVector; exclude_self:
 	return predictions
 end
 
-
-
 function one_nn_accuracy(pdm::AbstractMatrix{T}, labels::AbstractVector; exclude_self::Bool = false) where T<: AbstractFloat
     nn_labels = one_nn(pdm, labels; exclude_self=exclude_self)
     return mean(nn_labels .== labels)
+end
+
+function tensor_to_vector_of_matrices(tensor::AbstractArray{T, 3}) where T
+    return [tensor[:, :, i] for i in axes(tensor, 3)]
 end
