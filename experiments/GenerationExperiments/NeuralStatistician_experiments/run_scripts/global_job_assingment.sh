@@ -7,7 +7,7 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Uprav jen tyto veci:
 CONFIGS=(
     #"configs/airplane_configs/mmd_poolmodel_c001.yml"
-      
+ 
 )
 SEEDS=(1)
 TIME_LIMIT=24
@@ -22,7 +22,7 @@ for cfg in "${CONFIGS[@]}"; do
         job_name="${cfg_name}_s${seed}"
         echo "Submitting ${cfg_name}, seed=${seed}"
         sbatch --job-name="${job_name}" --chdir "${EXP_DIR}" \
-            "${SCRIPT_DIR}/run_poolmodel_training.sh" \
+            "${SCRIPT_DIR}/run_neuralstatistician_training.sh" \
             "${cfg}" "${seed}" "${TIME_LIMIT}" "${model_dir}" "${EPOCHS}"
     done
 done

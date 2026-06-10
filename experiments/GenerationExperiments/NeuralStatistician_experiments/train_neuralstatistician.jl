@@ -29,7 +29,7 @@ function main()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "airplane_configs", "cd_poolmodel_c001.yml")
+            default = joinpath(@__DIR__, "configs", "test_configs", "neuralstatistician.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int
@@ -65,25 +65,28 @@ function main()
     args[:epochs] > 0 && (train_cfg[:epochs] = args[:epochs])
     !isempty(args[:model_dir]) && (train_cfg[:model_dir] = args[:model_dir])
     if !isdir(train_cfg[:model_dir])
-        train_cfg[:model_dir] = datadir("GenExperiments", "$(data_cfg[:dataset])", "poolmodel", "seed=$(args[:seed])", "$(train_cfg[:model_dir])_ID-$(lpad_number(args[:ui], Int(1e5)))")
+        train_cfg[:model_dir] = datadir("GenExperiments", "$(data_cfg[:dataset])", "neuralstatistician", "seed=$(args[:seed])", "$(train_cfg[:model_dir])_ID-$(lpad_number(args[:ui], Int(1e5)))")
     end
 
     dataloaders = create_dataloaders(batch_size=get(train_cfg, :batch_size, 16), x_only=true, data_cfg)
     idim = size(first(dataloaders[:train]), 1)
 
-    model = poolmodel_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...)
+    model = neuralstatistician_constructor_from_named_tuple(; idim=idim, dict2nt(model_cfg)...)
     lr = get(train_cfg, :lr, 1f-3)
     optimiser = Optimisers.AdamW(; eta=lr, lambda = get(train_cfg, :weight_decay, 0));
 
     loss_cfg = get(train_cfg, :loss_function, "chamfer_distance")
     loss_function = create_loss_function(loss_cfg)
 
+    # Vytvoř β_scheduler z konfigurace
+    beta_scheduler_cfg = get(train_cfg, :beta_anealer, get(train_cfg, :beta, 1f0))
+    beta_scheduler = create_beta_scheduler(beta_scheduler_cfg)
     lr_scheduler_cfg = get(train_cfg, :lr_scheduler, nothing)
     lr_scheduler = create_lr_scheduler(lr_scheduler_cfg, lr, get(train_cfg, :epochs, 1000))
 
     train_kwargs = (; 
         use_gpu = get(train_cfg, :use_gpu, true),
-        model_dir = get(train_cfg, :model_dir, datadir("experiments", "poolmodel", "seed=$(args[:seed])")),
+        model_dir = get(train_cfg, :model_dir, datadir("experiments", "neuralstatistician", "seed=$(args[:seed])")),
         verbose = get(train_cfg, :verbose, false),
         valid_check_interval = get(train_cfg, :valid_check_interval, 1000),
         validation_check_after_epoch = get(train_cfg, :validation_check_after_epoch, false),
@@ -105,6 +108,7 @@ function main()
         (train=dataloaders[:train], valid=dataloaders[:valid]),
         optimiser;
         loss_function = loss_function,
+        β_scheduler = beta_scheduler,
         lr_scheduler = lr_scheduler,
         train_kwargs...
     );
@@ -129,6 +133,7 @@ function main()
         train_cfg = train_cfg,
         loss_cfg = loss_cfg,
         train_kwargs = train_kwargs,
+        beta_scheduler_cfg = beta_scheduler_cfg,
         lr_scheduler_cfg = lr_scheduler_cfg,
         train_time = train_time,
     ))

@@ -38,7 +38,7 @@ function loss_with_logging(model::PoolModel, x::AbstractArray{Float32, 3}, loss_
         (update_sigma) && update_ema_sigma!(loss_function, σₙ)
     end
     ℒ_rec = loss_function(x̂, x)
-    return ℒ_rec, (;ℒ = ℒ_rec, ℒ_rec = ℒ_rec)
+    return ℒ_rec, (;ℒ = ℒ_rec, ℒ_rec = ℒ_rec, σᵣ = logpdf.σᵣ)
 end
 
 

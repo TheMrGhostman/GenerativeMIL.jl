@@ -93,15 +93,15 @@ end
 ########################################
 # base configs
 
-function base_data_config(dataset="mnist", npoints=512; cardinality_count="balanced", sample_on_fly=false, normalize=true)
+function base_data_config(dataset="mnist", npoints=512; cardinality_count="balanced", sample_on_fly=false, normalize=true, balanced_classes=true)
     @assert dataset in ["mnist", "modelnet10"] "Unsupported dataset: $dataset"
     
     dict = OrderedDict("dataset" => dataset, "npoints" => npoints)
 
     if dataset == "mnist"
-        dict = merge(dict, OrderedDict("cardinality_count" => cardinality_count,"sample_on_fly" => sample_on_fly, "normalize" => normalize))
+        dict = merge(dict, OrderedDict("cardinality_count" => cardinality_count, "sample_on_fly" => sample_on_fly, "normalize" => normalize, "ratio" => 0.2))
     elseif dataset == "modelnet10"
-        dict = merge(dict, OrderedDict("type" => "all",))
+        dict = merge(dict, OrderedDict("balanced_classes"=>balanced_classes, "normalize"=>normalize, "sample_on_fly" => sample_on_fly, "ratio" => 0.1))#OrderedDict("type" => "all",)
     else
         error("Unknown dataset: $dataset")
     end
@@ -132,6 +132,25 @@ function base_setvae_config(;
     )
 end
 
+function base_poolmodel_config(;
+    prpdim=64, prpdepth=3, popdim=64, popdepth=3, zdim=64, decdim=64, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="swish", output_activation="identity",kwargs...
+)
+    return OrderedDict(
+        "model_type" => "poolmodel",
+        "prpdim" => prpdim,
+        "prpdepth" => prpdepth,
+        "popdim" => popdim,
+        "popdepth" => popdepth,
+        "zdim" => zdim,
+        "decdim" => decdim,
+        "decdepth" => decdepth,
+        "poolf" => poolf,
+        "gen_sigma" => gen_sigma,
+        "activation" => activation,
+        "output_activation" => output_activation,
+    )
+end
+
 
 function base_poolmodel_config(;
     prpdim=64, prpdepth=3, popdim=64, popdepth=3, zdim=64, decdim=64, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="gelu", init_seed=1, output_activation="identity", kwargs...
@@ -154,6 +173,22 @@ function base_poolmodel_config(;
     )
 end
 
+function base_neuralstatistician_config(;
+    hdim=64, vdim=64, cdim=64, zdim=16, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu", kwargs...
+)
+
+    return OrderedDict(
+        "model_type" => "neuralstatistician",
+        "hdim" => hdim,
+        "vdim" => vdim,
+        "cdim" => cdim,
+        "zdim" => zdim,
+        "enc_nlayers" => enc_nlayers,
+        "inner_nlayers" => inner_nlayers,
+        "poolf" => poolf,
+        "activation" => activation,
+    )
+end
 
 function base_train_config(;
     loss_function=OrderedDict("type" => "chamfer_distance"),
@@ -253,23 +288,30 @@ function make_base_config(id; model="setvae", dataset="mnist", npoints=512, kwar
 end
 
 
-function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; dataset="mnist", β = 1f0, save_cds=false, save_mmds=false)
+function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; dataset="mnist", cd_epochs=nothing, mmd_epochs=nothing, β = 1f0, save_cds=false, save_mmds=false, warmupcosine=true)
     #TBS = 38400
     more_then_iters = 1000 # I just want to avoid triggering the validation checks, because I want to perform valitation after epoch only. 
     
     if dataset == "mnist"
         npoints = 512
         data_cfg = base_data_config("mnist", npoints; cardinality_count="balanced", sample_on_fly=false, normalize=true)
-        cd_epochs = 1000
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
         cd_batch_size= 128
-        mmd_epochs = 300
+        mmd_epochs = mmd_epochs === nothing ? 300 : mmd_epochs
         mmd_batch_size = 32
     elseif dataset == "modelnet10"
         npoints = 2048
-        data_cfg = base_data_config("modelnet10", npoints)
-        cd_epochs = 1000
+        data_cfg = base_data_config("modelnet10", npoints; balanced_classes=true, sample_on_fly=false, normalize=true)
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
         cd_batch_size= 128
-        mmd_epochs = 200
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
+        mmd_batch_size = 16
+    elseif dataset == "airplane"
+        npoints = 2048
+        data_cfg = OrderedDict("dataset" => "shapenet_class", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "airplane")
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
         mmd_batch_size = 16
     else
         error("Unknown dataset: $dataset")
@@ -277,17 +319,17 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
 
     cd_train_cfgs = [
         (   # works with shallow models
-            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
-        (   # works with deeper models
-            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
+        (   # works with shallow models
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[0.4, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (   # test case if there is a free compute time
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[150/cd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
@@ -296,17 +338,12 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
     # If MMD is defined via EMA, then sigmas are scales [σ/4, σ/2, σ] and σ is updated via EMA. If not EMA, then σ is fixed and defined as [1/4, 1/2, 1/1]. (or different numbers)
     mmd_train_cfgs = [
         (
-            lr = 0.003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
         (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001, 
-            loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints,  "kernel" => "rbf"), 
-            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
-        ),
-        (
-            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.0001,
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="step_linear", beta_milestone=[50/mmd_epochs, 0.9], beta_initial=0.00001,
             loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         ),
@@ -344,6 +381,11 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
             hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[1], zdims=[512], expansion_depth=4, expansion_hidden_dim=64, output_activation="identity"
         ),   
     ]
+
+    if !warmupcosine
+        cd_train_cfgs  = [cd_train_cfgs[1:end-1]...]
+        mmd_train_cfgs = [mmd_train_cfgs[1:end-1]...]
+    end
 
     cd_configs, mmd_configs = [], []
     cd_id = init_id
@@ -384,6 +426,301 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
     return cd_configs, mmd_configs
 end
 
+function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dataset="mnist", cd_epochs=nothing, mmd_epochs=nothing, save_cds=false, save_mmds=false, warmupcosine=true)
+    #TBS = 38400
+    more_then_iters = 1000 # I just want to avoid triggering the validation checks, because I want to perform valitation after epoch only. 
+    
+    if dataset == "mnist"
+        npoints = 512
+        data_cfg = base_data_config("mnist", npoints; cardinality_count="balanced", sample_on_fly=false, normalize=true)
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 300 : mmd_epochs
+        mmd_batch_size = 32
+    elseif dataset == "modelnet10"
+        npoints = 2048
+        data_cfg = base_data_config("modelnet10", npoints; balanced_classes=true, sample_on_fly=false, normalize=true)
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
+        mmd_batch_size = 16
+    elseif dataset == "airplane"
+        npoints = 2048
+        data_cfg = OrderedDict("dataset" => "shapenet_class", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "airplane")
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
+        mmd_batch_size = 16
+    else
+        error("Unknown dataset: $dataset")
+    end
+
+    cd_train_cfgs = [
+        (   # works with shallow models
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size,
+            loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+        (   # test case if there is a free compute time
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=cd_epochs, batch_size=cd_batch_size,
+            loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+    ]
+
+    # If MMD is defined via EMA, then sigmas are scales [σ/4, σ/2, σ] and σ is updated via EMA. If not EMA, then σ is fixed and defined as [1/4, 1/2, 1/1]. (or different numbers)
+    mmd_train_cfgs = [
+        (
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size,
+            loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+        (
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=mmd_epochs, batch_size=mmd_batch_size,
+            loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+    ]
+
+    model_cfgs = [
+        (
+            prpdim=64, prpdepth=5, popdim=128, popdepth=5, zdim=128, decdim=64, decdepth=5, poolf="mean-max", gen_sigma="scalar", activation="gelu"
+        ),
+        (
+            prpdim=64, prpdepth=3, popdim=128, popdepth=3, zdim=128, decdim=64, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="gelu"
+        ),
+        (
+            prpdim=128, prpdepth=5, popdim=128, popdepth=5, zdim=128, decdim=128, decdepth=5, poolf="mean-max", gen_sigma="scalar", activation="gelu"
+        ),
+        (
+            prpdim=128, prpdepth=3, popdim=128, popdepth=3, zdim=128, decdim=128, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="gelu"
+        ),
+        (
+            prpdim=64, prpdepth=3, popdim=64, popdepth=3, zdim=64, decdim=64, decdepth=3, poolf="mean-max", gen_sigma="diag", activation="gelu"
+        ),
+        (
+            prpdim=64, prpdepth=5, popdim=64, popdepth=5, zdim=64, decdim=64, decdepth=5, poolf="mean-max", gen_sigma="diag", activation="gelu"
+        ),
+        (
+            prpdim=64, prpdepth=3, popdim=64, popdepth=3, zdim=128, decdim=64, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="gelu"
+        ),
+        (
+            prpdim=128, prpdepth=3, popdim=128, popdepth=3, zdim=64, decdim=128, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="gelu"
+        ),
+        (
+            prpdim=64, prpdepth=3, popdim=64, popdepth=3, zdim=64, decdim=64, decdepth=3, poolf="mean", gen_sigma="diag", activation="gelu"
+        )
+    ]
+
+    if !warmupcosine
+        cd_train_cfgs  = [cd_train_cfgs[1:end-1]...]
+        mmd_train_cfgs = [mmd_train_cfgs[1:end-1]...]
+    end
+
+    cd_configs, mmd_configs = [], []
+    cd_id = init_id
+    mmd_id = init_id
+    for (configs, train_cfgs, save_flag, dist_sym) in ((cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd))
+        for train_cfg in train_cfgs
+            for model_cfg in model_cfgs
+                cfg = OrderedDict(
+                    "data" => data_cfg,
+                    "model" => base_poolmodel_config(;model_cfg...),
+                    "train" => base_train_config(;train_cfg...)
+                )
+                #@show cfg
+                dist_ = cfg["train"]["loss_function"]["type"]
+                dist = if dist_ == "chamfer_distance"
+                    "cd"
+                elseif dist_ in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
+                    "mmd"
+                else
+                    error("Unknown loss function type: $dist_")
+                end
+                id = dist_sym == :cd ? cd_id : mmd_id
+                model_dir = join([dist, "poolmodel", "c$(lpad(string(id), 3, '0'))"], "_")  #lpad_number(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
+                cfg["train"]["model_dir"] = model_dir
+                push!(configs, cfg)
+                if save_flag
+                    save_to_file(cfg, pth, model_dir)
+                end
+                if dist_sym == :cd
+                    cd_id += 1
+                else
+                    mmd_id += 1
+                end
+            end
+        end
+    end
+
+    return cd_configs, mmd_configs
+end
+
+
+function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int = 1; β=1f0, dataset="mnist", cd_epochs=nothing, mmd_epochs=nothing, save_l2=false, save_cds=false, save_mmds=false, warmupcosine=true) #TODO update this
+    #TBS = 38400
+    more_then_iters = 1000 # I just want to avoid triggering the validation checks, because I want to perform valitation after epoch only. 
+    
+    if dataset == "mnist"
+        npoints = 512
+        data_cfg = base_data_config("mnist", npoints; cardinality_count="balanced", sample_on_fly=false, normalize=true)
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 300 : mmd_epochs
+        mmd_batch_size = 32
+    elseif dataset == "modelnet10"
+        npoints = 2048
+        data_cfg = base_data_config("modelnet10", npoints; balanced_classes=true, sample_on_fly=false, normalize=true)
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
+        mmd_batch_size = 16
+    elseif dataset == "airplane"
+        npoints = 2048
+        data_cfg = OrderedDict("dataset" => "shapenet_class", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "airplane")
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
+        mmd_batch_size = 16
+    else
+        error("Unknown dataset: $dataset")
+    end
+
+    l2_train_cfgs = [
+        (   # works with shallow models
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="constant",
+            loss_function="l2sum", 
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+    ]
+
+    cd_train_cfgs = [        
+        (   # test case if there is a free compute time
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=cd_epochs, batch_size=cd_batch_size, beta=β, beta_anealer="constant",
+            loss_function=OrderedDict("type" => "chamfer_distance", "w1" => npoints, "w2" => npoints), 
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+    ]
+
+    # If MMD is defined via EMA, then sigmas are scales [σ/4, σ/2, σ] and σ is updated via EMA. If not EMA, then σ is fixed and defined as [1/4, 1/2, 1/1]. (or different numbers)
+    mmd_train_cfgs = [
+        (
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=mmd_epochs, batch_size=mmd_batch_size, beta=β, beta_anealer="constant",
+            loss_function=OrderedDict("type" => "maximum_mean_discrepancy", "sigma" => [0.25, 0.5, 1.0], "sigma_init" => 1.7305675f0, "ema" => true, "decay" => 0.99, "loss_scale" => npoints, "kernel" => "rbf"), 
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+    ]
+
+    model_cfgs = [
+        (
+            hdim=64, vdim=64, cdim=128, zdim=32, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=128, vdim=128, cdim=128, zdim=32, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=64, vdim=64, cdim=128, zdim=16, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=128, vdim=128, cdim=128, zdim=16, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=64, vdim=64, cdim=128, zdim=2, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=128, vdim=128, cdim=128, zdim=2, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=64, vdim=64, cdim=1024, zdim=2, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=128, vdim=128, cdim=1024, zdim=2, enc_nlayers=3, inner_nlayers=3, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=64, vdim=64, cdim=1024, zdim=2, enc_nlayers=4, inner_nlayers=4, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=128, vdim=128, cdim=1024, zdim=2, enc_nlayers=4, inner_nlayers=4, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=64, vdim=64, cdim=512, zdim=8, enc_nlayers=4, inner_nlayers=4, poolf="mean-max", activation="gelu"
+        ),
+        (
+            hdim=128, vdim=128, cdim=512, zdim=8, enc_nlayers=4, inner_nlayers=4, poolf="mean-max", activation="gelu"
+        ),
+    ]
+
+    #if !warmupcosine
+    #    cd_train_cfgs  = [cd_train_cfgs[1:end-1]...]
+    #    mmd_train_cfgs = [mmd_train_cfgs[1:end-1]...]
+    #end
+
+    l2_configs, cd_configs, mmd_configs = [], [], []
+    cd_id = init_id
+    mmd_id = init_id
+    l2sum_id = init_id
+    for (configs, train_cfgs, save_flag, dist_sym) in ((l2_configs, l2_train_cfgs, save_l2, :l2sum), (cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd))
+        for train_cfg in train_cfgs
+            for model_cfg in model_cfgs
+                cfg = OrderedDict(
+                    "data" => data_cfg,
+                    "model" => base_neuralstatistician_config(;model_cfg...),
+                    "train" => base_train_config(;train_cfg...)
+                )
+                delete!(cfg["train"], "beta_anealer") # neural statistician configs should not have beta anealer, because they are not VAEs, so we delete it from the train config. We can keep the beta value, but it will not be used.
+                #@show cfg # TODO continue from here and make base_neuralstatistician_config
+                if cfg["train"]["loss_function"]  == "l2sum"
+                    dist = "l2"
+                else
+                    dist_ = cfg["train"]["loss_function"]["type"]
+                    dist = if dist_ == "chamfer_distance"
+                        "cd"
+                    elseif dist_ in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
+                        "mmd"
+                    else
+                        error("Unknown loss function type: $dist_")
+                    end
+                end
+                id = if dist_sym == :cd
+                    cd_id
+                elseif dist_sym == :l2sum
+                    l2sum_id
+                else
+                    mmd_id
+                end
+                model_dir = join([dist, "neuralstatistician", "c$(lpad(string(id), 3, '0'))"], "_")  #lpad_number(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
+                cfg["train"]["model_dir"] = model_dir
+                push!(configs, cfg)
+                if save_flag
+                    save_to_file(cfg, pth, model_dir)
+                end
+                if dist_sym == :cd
+                    cd_id += 1
+                elseif dist_sym == :mmd
+                    mmd_id += 1
+                elseif dist_sym == :l2sum
+                    l2sum_id += 1
+                else
+                    error("Unknown dist_sym => $(dist_sym)")
+                end
+            end
+        end
+    end
+
+    return l2_configs, cd_configs, mmd_configs
+end
+
 #t = make_standard_grid_setvae_configs("/home/zorekmat/MIL/GenerativeMIL/experiments/GenerationExperiments/SetVAE_experiments/configs/mnist_configs", 1; dataset="mnist", β = 0.05f0, save_cds=true, save_mmds=true);
 #t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_experiments/configs/modelnet10_configs", 1; dataset="modelnet10", β = 1f0, save_cds=true, save_mmds=true);
 #slength.(t)
+
+#t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_experiments/configs/airplane_configs", 1; dataset="airplane", β = 1f0, save_cds=true, save_mmds=true, warmupcosine=false);
+
+#t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_experiments/configs/airplane_configs", 401; dataset="airplane", cd_epochs=4000, β = 0.1f0, save_cds=true, save_mmds=false, warmupcosine=false);
+
+#t = make_standard_grid_poolmodel_configs("experiments/GenerationExperiments/PoolModel_experiments/configs/airplane_configs", 1; dataset="airplane", cd_epochs=4000, mmd_epochs=1000, save_cds=true, save_mmds=true, warmupcosine=false);
+
+t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperiments/NeuralStatistician_experiments/configs/mnist_configs", 1; dataset="mnist", cd_epochs=500, mmd_epochs=300, save_cds=false, save_mmds=false, save_l2=false, β=1f0, warmupcosine=false);
+
+
+t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperiments/NeuralStatistician_experiments/configs/airplane_configs", 1; dataset="airplane", cd_epochs=1000, mmd_epochs=300, save_cds=false, save_mmds=false, save_l2=false, β=1f0, warmupcosine=false);
