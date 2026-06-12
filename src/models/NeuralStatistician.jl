@@ -8,24 +8,7 @@ end
 
 Flux.@layer NeuralStatistician
 
-function (m::NeuralStatistician)(x::AbstractArray{T, 3}) where T <: AbstractFloat
-    # x: (input_dim, n_points, batch_size)
-    hᵢ = m.shared_encoder(x) # (hidden_dim, n_points, batch_size)
-
-    μ_c, Σ_c = m.statistic_net(hᵢ) # (context_dim, 1, batch_size) - parameters of q(c|X)
-    c = μ_c .+ Σ_c .* MLUtils.randn_like(μ_c) # (context_dim, 1, batch_size) - sampled context vector
-    cᵢ = repeat(c, 1, size(x, 2), 1); # (context_dim, n_points, batch_size) - repeat context for each point
-
-    μ_zᵢ, Σ_zᵢ = m.inference_net(hᵢ, cᵢ) # (latent_dim, n_points, batch_size) - parameters of q(zᵢ|xᵢ,c)
-    
-    zᵢ = μ_zᵢ .+ Σ_zᵢ .* MLUtils.randn_like(μ_zᵢ) # (latent_dim, n_points, batch_size) - sampled latent variables
-    x̂ = m.observation_decoder(zᵢ, cᵢ) # (output_dim * 2, n_points, batch_size) - parameters of p(xᵢ|zᵢ,c)
-
-    return x̂
-end
-
-
-function elbo_with_logging(m::NeuralStatistician, x::AbstractArray{T, 3}, logpdf::Function=Flux.mse; β₁::F=1f0, β₂::F=1f0, reconstruct::Bool=false) where {T <: AbstractFloat, F <: AbstractFloat}
+function (m::NeuralStatistician)(x::AbstractArray{T, 3}) where {T <: AbstractFloat, F <: AbstractFloat}
     # x: (input_dim, n_points, batch_size)
     hᵢ = m.shared_encoder(x) # (hidden_dim, n_points, batch_size)
 
@@ -39,9 +22,16 @@ function elbo_with_logging(m::NeuralStatistician, x::AbstractArray{T, 3}, logpdf
     zᵢ = μ_zᵢ .+ Σ_zᵢ .* MLUtils.randn_like(μ_zᵢ) # (latent_dim, n_points, batch_size) - sampled latent variables
     x̂ = m.observation_decoder(zᵢ, cᵢ) # (output_dim * 2, n_points, batch_size) - parameters of p(xᵢ|zᵢ,c)
 
-    ℒᵣ = logpdf(x̂, x) # reconstruction loss
     ℒₖₗ_z =  Flux.mean(0.5f0 * sum(log.(Σ_ẑᵢ.^2) .- log.(Σ_zᵢ.^2) .+ (Σ_zᵢ.^2 .+ (μ_zᵢ .- μ_ẑᵢ).^2) ./ Σ_ẑᵢ.^2 .- 1f0, dims=1)) #kld N(μ_zᵢ, Σ_zᵢ) || N(μ_ẑᵢ, Σ_ẑᵢ)
     ℒₖₗ_c = - Flux.mean(0.5f0 * sum(1f0 .+ log.(Σ_c.^2) .- μ_c.^2  .- Σ_c.^2, dims=1)) # KL divergence for c (assuming p(c) is standard normal)
+
+    return x̂, (ℒₖₗ_z, ℒₖₗ_c)
+end
+
+
+function elbo_with_logging(m::NeuralStatistician, x::AbstractArray{T, 3}, logpdf::Function=Flux.mse; β₁::F=1f0, β₂::F=1f0, reconstruct::Bool=false) where {T <: AbstractFloat, F <: AbstractFloat}
+    x̂, (ℒₖₗ_z, ℒₖₗ_c) = m(x)
+    ℒᵣ = logpdf(x̂, x) # reconstruction loss
     ℒ = ℒᵣ + β₁ * ℒₖₗ_z + β₂ * ℒₖₗ_c
     if reconstruct
         return x̂, ℒ, (ℒ = ℒ, ℒ_rec = ℒᵣ, ℒₖₗ_z = ℒₖₗ_z, ℒₖₗ_c = ℒₖₗ_c, β₁ = β₁, β₂ = β₂)
@@ -50,9 +40,24 @@ function elbo_with_logging(m::NeuralStatistician, x::AbstractArray{T, 3}, logpdf
 end
 
 
+function elbo_with_logging(m::NeuralStatistician, x::AbstractArray{T,3}, logpdf::MMD_EMA_Loss; β₁::F=1f0, β₂::F=1f0, reconstruct::Bool=false, update_sigma::Bool=true, kwargs... ) where {T <: AbstractFloat, F <: AbstractFloat}
+    # x: (input_dim, n_points, batch_size)
+    x̂, (ℒₖₗ_z, ℒₖₗ_c) = m(x)
+    Zygote.@ignore begin
+        σₙ = compute_rbf_sigma_estimate(x̂, x)
+        (update_sigma) && update_ema_sigma!(logpdf, σₙ)
+    end
+    ℒᵣ = logpdf(x̂, x) # reconstruction loss
+    ℒ = ℒᵣ + β₁ * ℒₖₗ_z + β₂ * ℒₖₗ_c
+    if reconstruct
+        return x̂, ℒ, (ℒ = ℒ, ℒ_rec = ℒᵣ, ℒₖₗ_z = ℒₖₗ_z, ℒₖₗ_c = ℒₖₗ_c, β₁ = β₁, β₂ = β₂, σᵣ = logpdf.σᵣ)
+    end
+    return ℒ, (ℒ = ℒ, ℒ_rec = ℒᵣ, ℒₖₗ_z = ℒₖₗ_z, ℒₖₗ_c = ℒₖₗ_c, β₁ = β₁, β₂ = β₂, σᵣ = logpdf.σᵣ)
+end
 
 
-function optim_step(model::NeuralStatistician, batch::AbstractArray{T, 3}, opt::NamedTuple, logpdf::Function, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
+
+function optim_step(model::NeuralStatistician, batch::AbstractArray{T, 3}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, kwargs...) where T <: AbstractFloat
     # 1) move data to device
     batch = batch |> device
     # 2) compute gradients
@@ -84,7 +89,7 @@ end
 
 function reconstruct(model::NeuralStatistician, x::AbstractArray{T, 3}; kwargs...) where T <: AbstractFloat
     Flux.testmode!(model, true)
-    x̂ = model(x)
+    x̂, _ = model(x)
     Flux.testmode!(model, false)
     return x̂
 end
