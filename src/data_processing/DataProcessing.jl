@@ -18,4 +18,4 @@ export normalize_point_cloud, on_fly_collate_fn
 export sample_fixed_n_from_matrix, sample_fixed_n_unsqueeze, sample_fixed_n, _stack_point_clouds
 
 include("load_datasets.jl")
-export load_modelnet10, load_mnist, load_shapenet_class, create_dataloaders
+export load_modelnet10, load_mnist, load_shapenet_class, load_shapenet_multiple_classes, create_dataloaders

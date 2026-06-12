@@ -61,10 +61,11 @@ Normalize one or more batched point-cloud tensors with first tensor statistics w
 - A tuple with each tensor normalized using the same per-dimension mean and
   standard deviation computed on first element from provided tensors.
 """
-function _normalize_point_cloud_dataset(pcs::AbstractArray{T, 3}...) where T<:AbstractFloat
+function _normalize_point_cloud_dataset(pcs::AbstractArray{T, 3}...; verbose::Bool=false) where T<:AbstractFloat
     isempty(pcs) && error("No point-cloud tensors provided for normalization")
     μ = mean(pcs[1], dims=(2,3))
     σ = std(vec(pcs[1]))
+    verbose && println("μ = $(μ) \n σ = $(σ)")
     return tuple(((pc .- μ) ./ (σ .+ eps(T)) for pc in pcs)...)
 end
 
@@ -177,6 +178,58 @@ function _stack_point_clouds(pcs)
     return x
 end
 
+
+"""
+    _merge_dict_into_tensor(dict_data::Dict{String, AbstractArray{T,3}}, dict_classes::Dict{String, Int})
+
+Merge a dictionary of class-indexed point-cloud tensors into a single concatenated tensor.
+
+# Arguments
+- `dict_data`: dictionary mapping class names (strings) to 3D tensors of shape `(D, N, BS_i)`,
+    where `D` is dimensionality, `N` is number of points, and `BS_i` is batch size for class `i`.
+- `dict_classes`: dictionary mapping the same class names to their integer class labels.
+
+# Returns
+- Tuple `(x_merged, y_merged)` where:
+    - `x_merged`: concatenated tensor of shape `(D, N, total_BS)` where `total_BS = sum(BS_i)`.
+    - `y_merged`: label vector of shape `(total_BS,)` with class indices repeated according
+        to the number of samples in each class.
+
+# Throws
+- `AssertionError` if class name sets differ between dictionaries.
+- `AssertionError` if dimensions `D` or `N` are inconsistent across classes.
+
+# Notes
+- Classes are processed in sorted order to ensure deterministic output.
+- This function acts as an efficient alternative to repeated `cat` operations.
+"""
+function _merge_dict_into_tensor(dict_data::Dict{String, Array{T,3}}, dict_classes::Dict{String, Int}) where T<: AbstractFloat
+    data_keys = sort(collect(keys(dict_data)))
+    classes_keys = sort(collect(keys(dict_classes)))
+    @assert data_keys == classes_keys "data_keys and classes_keys are not the same!!!"
+    # ensure all tensors have the same D and N, collect per-class sample counts
+    first_key = data_keys[1]
+    d = size(dict_data[first_key], 1)
+    p = size(dict_data[first_key], 2)
+    nsamples = [size(dict_data[k], 3) for k in data_keys]
+    @assert all(size(dict_data[k],1) == d for k in data_keys) && all(size(dict_data[k],2) == p for k in data_keys) "Dimensions of samples or number of points is not the same for all classes"
+    total = sum(nsamples)
+    x_train_data = zeros(T, d, p, total)
+    y_train_data = Vector{Int}(undef, total)
+    pos = 1
+    @inbounds for classname in data_keys
+        n = size(dict_data[classname], 3)
+        if n > 0
+            x_train_data[:, :, pos:pos+n-1] = dict_data[classname]
+            y_train_data[pos:pos+n-1] .= dict_classes[classname]
+            pos += n
+        end
+    end
+    return x_train_data, y_train_data
+end
+
+
+
 """
     on_fly_collate_fn(batch)
 
@@ -202,3 +255,5 @@ function on_fly_collate_fn(batch::Vector{Tuple{X, Y}}) where {X <: AbstractArray
     end
     return (x, y)
 end
+
+
