@@ -29,7 +29,7 @@ function main()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "airplane_configs", "cd_setvae_c201.yml")
+            default = joinpath(@__DIR__, "configs", "test_configs", "cd_setvae_test.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int

@@ -522,13 +522,13 @@ Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
     `on_fly_collate_fn` is used for training unless a custom collate function is
     provided.
 """
-function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing)
+function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing, verbose::Bool=false)
     dataset_name = String(_cfgget(data_cfg, :dataset, "mnist"))
     npoints = _cfgget(data_cfg, :npoints, 512)
     validation = _cfgget(data_cfg, :validation, true)
     cardinality_count = Symbol(_cfgget(data_cfg, :cardinality_count, :balanced))
     balanced_classes = _cfgget(data_cfg, :balanced_classes, false)
-    upper_bound_n = _cfget(data_cfg, :upper_bound_n, 10000)
+    upper_bound_n = _cfgget(data_cfg, :upper_bound_n, 10000)
     sample_on_fly = _cfgget(data_cfg, :sample_on_fly, false)
     normalize = _cfgget(data_cfg, :normalize, false)
     ratio = _cfgget(data_cfg, :ratio, 0.2)
@@ -549,6 +549,7 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
         seed=seed,
         type=type_name,
         upper_bound_n=upper_bound_n,
+        verbose=verbose,
     )
 
     if x_only

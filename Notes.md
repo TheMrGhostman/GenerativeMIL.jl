@@ -21,7 +21,7 @@
 - [ ] ShapeNetCore Training / Experiments
   - [ ] SetVae training 
     - [x]   I. Stage : Airplane (only)
-    - [ ]  II. Stage : airplane, car, chair, table, sofa
+    - [x]  II. Stage : airplane, car, chair, table, sofa
     - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
   - [ ] PoolModel
     - [x]   I. Stage : Airplane (only)
@@ -33,22 +33,22 @@
     - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
   
 
-- [ ] MNIST point cloud Experiments
-  - [ ] NerualStatistician
+- [x] MNIST point cloud Experiments
+  - [x] NerualStatistician
     - [x] l2
-    - [ ] chamfer
-    - [ ] mmd
+    - [x] chamfer
+    - [x] mmd
 
 
-- [ ] ShapeNetCore dataset
+- [x] ShapeNetCore dataset
   - [x] download dataset
   - [x] try to download 15K version used in PointFlow and SetVAE
   - [x] write processing script
-  - [ ] write loaders
+  - [x] write loaders
     - [x] write loader for 15K version
       - [x] make loader so it can select specific classes 
       - [ ] make loader that can pick multiple classes
-        - [ ] add global normalization
+        - [x] add global normalization
     - [ ] write loader for our processed version from raw data
       - [ ] make loader so it can select specific classes 
   - [x] test functions 
