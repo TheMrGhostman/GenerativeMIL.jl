@@ -46,6 +46,7 @@ const Mask = Union{AbstractArray{Bool}, Nothing}
 const MaskT{T} = Union{AbstractArray{Bool}, AbstractArray{T} , Nothing}
 const BetaArg = Union{AbstractFloat,AbstractVector{<:AbstractFloat}}
 
+abstract type AbstractScheduler end
 
 # Loading & Helper functions for datasets
 #include("dataset.jl")

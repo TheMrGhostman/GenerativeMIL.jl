@@ -171,7 +171,7 @@ WarmupCosine(startlr, initlr, finallr, warmup, total_iters) =
 
 
 
-struct SigmoidSchedule{T<:AbstractFloat, C<:Int, S<:AbstractFloat}
+struct SigmoidSchedule{T<:AbstractFloat, C<:Int, S<:AbstractFloat} <: AbstractScheduler
     max_value::T
     center::C
     slope::S

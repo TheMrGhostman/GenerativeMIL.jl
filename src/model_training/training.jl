@@ -192,7 +192,7 @@ function train_model!(
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}}, 
     optimiser::Optimisers.AbstractRule; ## KWARGS FROM HERE
     loss_function::Union{Function, MMD_EMA_Loss}=chamfer_distance, 
-    β_scheduler::Union{Function, Scheduler, Sequence, Nothing} = x->0f0,
+    β_scheduler::Union{Function, AbstractScheduler, Scheduler, Sequence, Nothing} = x->0f0,
     lr_scheduler::Union{Function, Scheduler, Sequence, Nothing} = nothing,
     use_gpu::Bool=true,
     model_dir::String=pwd(), 
