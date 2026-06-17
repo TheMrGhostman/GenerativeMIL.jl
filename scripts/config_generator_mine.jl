@@ -132,25 +132,6 @@ function base_setvae_config(;
     )
 end
 
-function base_poolmodel_config(;
-    prpdim=64, prpdepth=3, popdim=64, popdepth=3, zdim=64, decdim=64, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="swish", output_activation="identity",kwargs...
-)
-    return OrderedDict(
-        "model_type" => "poolmodel",
-        "prpdim" => prpdim,
-        "prpdepth" => prpdepth,
-        "popdim" => popdim,
-        "popdepth" => popdepth,
-        "zdim" => zdim,
-        "decdim" => decdim,
-        "decdepth" => decdepth,
-        "poolf" => poolf,
-        "gen_sigma" => gen_sigma,
-        "activation" => activation,
-        "output_activation" => output_activation,
-    )
-end
-
 
 function base_poolmodel_config(;
     prpdim=64, prpdepth=3, popdim=64, popdepth=3, zdim=64, decdim=64, decdepth=3, poolf="mean-max", gen_sigma="scalar", activation="gelu", init_seed=1, output_activation="identity", kwargs...
@@ -399,6 +380,9 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
         ),
         (
             hdim=64, heads=4, activation="gelu", prior_dim=32, n_mixtures=4, vb_depth=1, vb_hdim=64, is_sizes=[32, 16, 8, 4, 2, 1], zdims=[8, 16, 32, 64, 64, 128], expansion_depth=2, expansion_hidden_dim=64, output_activation="identity"
+        ),
+        (
+            hdim=64, heads=4, activation="relu", prior_dim=32, n_mixtures=4, vb_depth=2, vb_hdim=32, is_sizes=[32, 16, 8, 4, 2, 1, 1], zdims=[16, 16, 16, 16, 16, 16, 16], expansion_depth=2, expansion_hidden_dim=64, output_activation="identity"
         ), 
         ]
         append!(model_cfgs, big_models)
@@ -469,6 +453,13 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
     elseif dataset == "airplane"
         npoints = 2048
         data_cfg = OrderedDict("dataset" => "shapenet_class", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "airplane")
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
+        mmd_batch_size = 16
+    elseif dataset == "core5"
+        npoints = 2048
+        data_cfg = OrderedDict("dataset" => "shapenet_multiple_classes", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "core5", "balanced_classes"=>true,  "upper_bound_n" => 3000)
         cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
         cd_batch_size= 128
         mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
@@ -754,3 +745,7 @@ t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_
 t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_experiments/configs/core5_configs", 101; dataset="core5", β = 0.1f0, save_cds=true, save_mmds=false, warmupcosine=false, cd_epochs=4000, add_big_models=true);
 
 t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_experiments/configs/core5_configs", 201; dataset="core5", β = 1f0, save_cds=true, save_mmds=false, warmupcosine=false, cd_epochs=4000, add_big_models=true);
+
+t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_experiments/configs/core5_configs", 401; dataset="core5", β = 0.5f0, save_cds=true, save_mmds=false, warmupcosine=false, cd_epochs=1000, add_big_models=true);
+
+t = make_standard_grid_poolmodel_configs("experiments/GenerationExperiments/PoolModel_experiments/configs/core5_configs", 1; dataset="core5", cd_epochs=1000, mmd_epochs=600, save_cds=true, save_mmds=false, warmupcosine=false);

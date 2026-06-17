@@ -13,6 +13,7 @@ Pokud je Dict, vytvoří anealer podle typu.
 - `Dict(:type => "linear", :max_value => 1.0, :milestone => 500)` → lineárně roste od 0 v prvních 500 epoch
 - `Dict(:type => "exponential", :initial => 0.0, :final => 1.0, :decay_rate => 0.95)` → exponenciální
 - `Dict(:type => "cosine", :max_value => 1.0, :total_epochs => 1000)` → cosine annealing
+- `Dict(:type => "sigmoidal", :max_value => 1.0, :milestone => 800, :slope_factor => 0.015)` → sigmoida
 
 # Vrací
 
@@ -59,7 +60,13 @@ function create_beta_scheduler(beta_cfg::Union{Number, Dict})
         max_value = get(beta_cfg, :max_value, 1f0)
         total_epochs = get(beta_cfg, :total_epochs, 1000)
         return epoch -> Float32(max_value * (1 + cos(π * epoch / total_epochs)) / 2)
-    
+
+    elseif type == "sigmoidal"
+        max_value = get(beta_cfg, :max_value, 1f0)
+        slope_factor = get(beta_cfg, :slope_factor, 0.015f0)
+        milestone = get(beta_cfg, :milestone, 800) # centre of sigmoid of sigmoid
+        return SigmoidSchedule(max_value, milestone, slope_factor)
+
     else
         @warn "Unknown β scheduler type: $type, using constant 1.0"
         return _ -> 1f0
@@ -163,4 +170,15 @@ WarmupCosine(startlr, initlr, finallr, warmup, total_iters) =
     )
 
 
+
+struct SigmoidSchedule{T<:AbstractFloat, C<:Int, S<:AbstractFloat}
+    max_value::T
+    center::C
+    slope::S
+end
+
+function (s::SigmoidSchedule)(step::Integer)
+    x = s.slope * (step - s.center)
+    return s.max_value / (1 + exp(-x))
+end
 
