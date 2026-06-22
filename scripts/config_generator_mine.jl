@@ -595,6 +595,13 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
         cd_batch_size= 128
         mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
         mmd_batch_size = 16
+    elseif dataset == "core5"
+        npoints = 2048
+        data_cfg = OrderedDict("dataset" => "shapenet_multiple_classes", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "core5", "balanced_classes"=>true,  "upper_bound_n" => 3000)
+        cd_epochs = cd_epochs === nothing ? 1000 : cd_epochs
+        cd_batch_size= 128
+        mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
+        mmd_batch_size = 16
     else
         error("Unknown dataset: $dataset")
     end
@@ -738,7 +745,7 @@ t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperim
 
 t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperiments/NeuralStatistician_experiments/configs/airplane_configs", 1; dataset="airplane", cd_epochs=1000, mmd_epochs=300, save_cds=false, save_mmds=false, save_l2=false, β=1f0, warmupcosine=false);
 
-
+t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperiments/NeuralStatistician_experiments/configs/core5_configs", 1; dataset="core5", cd_epochs=1000, mmd_epochs=300, save_cds=true, save_mmds=false, save_l2=true, β=1f0, warmupcosine=false);
 
 t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_experiments/configs/core5_configs", 1; dataset="core5", β = 1f0, save_cds=true, save_mmds=false, warmupcosine=false, cd_epochs=1000, add_big_models=true);
 

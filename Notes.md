@@ -2,6 +2,11 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
+## Todos 23.6.2026
+- [ ] use elbo and reconstruction terms as evaluation measures
+  - [ ] mean and std per reconstruction
+  - [ ] mean and std within class 
+  - [ ] mean and std within dataset ? ?  
 
 ## Todos 8.6.2026
 - [ ] Neural Statistician experiment
@@ -25,11 +30,11 @@
     - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
   - [ ] PoolModel
     - [x]   I. Stage : Airplane (only)
-    - [ ]  II. Stage : airplane, car, chair, table, sofa
+    - [x]  II. Stage : airplane, car, chair, table, sofa
     - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
   - [ ] NeuralStatistician
     - [x]   I. Stage : Airplane (only)
-    - [ ]  II. Stage : airplane, car, chair, table, sofa
+    - [x]  II. Stage : airplane, car, chair, table, sofa
     - [ ] III. Stage : + rifle, lamp, watercraft, loudspeaker, display
   
 
