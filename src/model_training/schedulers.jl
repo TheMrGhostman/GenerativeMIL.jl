@@ -14,6 +14,7 @@ Pokud je Dict, vytvoří anealer podle typu.
 - `Dict(:type => "exponential", :initial => 0.0, :final => 1.0, :decay_rate => 0.95)` → exponenciální
 - `Dict(:type => "cosine", :max_value => 1.0, :total_epochs => 1000)` → cosine annealing
 - `Dict(:type => "sigmoidal", :max_value => 1.0, :milestone => 800, :slope_factor => 0.015)` → sigmoida
+- `Dict(:type => "sigmoidal_cyclical", :max_value => 1.0, :beta_warmup => 1e-4, :warmup_epochs => 180, :rise_epochs => 100, :hold_epochs => 100, :cycles => 4)` → warmup + cykly
 
 # Vrací
 
@@ -66,6 +67,16 @@ function create_beta_scheduler(beta_cfg::Union{Number, Dict})
         slope_factor = get(beta_cfg, :slope_factor, 0.015f0)
         milestone = get(beta_cfg, :milestone, 800) # centre of sigmoid of sigmoid
         return SigmoidSchedule(max_value, milestone, slope_factor)
+
+    elseif type in ("sigmoidal_cyclical", "cyclical_sigmoidal", "sigmoid_cyclical")
+        max_value = get(beta_cfg, :max_value, 1f0)
+        beta_warmup = get(beta_cfg, :beta_warmup, 0f0)
+        warmup_epochs = Int(get(beta_cfg, :warmup_epochs, 180))
+        rise_epochs = Int(get(beta_cfg, :rise_epochs, 100))
+        hold_epochs = Int(get(beta_cfg, :hold_epochs, 100))
+        cycles = Int(get(beta_cfg, :cycles, 4))
+        slope_factor = get(beta_cfg, :slope_factor, 12f0/rise_epochs)
+        return CyclicalSigmoidSchedule(max_value, beta_warmup, warmup_epochs, rise_epochs, hold_epochs, cycles; slope_factor=slope_factor)
 
     else
         @warn "Unknown β scheduler type: $type, using constant 1.0"
@@ -182,3 +193,27 @@ function (s::SigmoidSchedule)(step::Integer)
     return s.max_value / (1 + exp(-x))
 end
 
+function CyclicalSigmoidSchedule(max_value, beta_warmup, warmup_epochs, rise_epochs, hold_epochs, cycles; slope_factor=12f0/rise_epochs)#0.08f0
+    @assert warmup_epochs >= 0 "warmup_epochs must be non-negative"
+    @assert rise_epochs > 0 "rise_epochs must be positive"
+    @assert hold_epochs >= 0 "hold_epochs must be non-negative"
+    @assert cycles >= 1 "cycles must be at least 1"
+
+    max_value = Float32(max_value)
+    beta_warmup = Float32(beta_warmup)
+    slope_factor = Float32(slope_factor)
+    warmup_center = max(1, warmup_epochs ÷ 2)
+    rise_center = max(1, rise_epochs ÷ 2)
+
+    schedules = Any[beta_warmup => warmup_epochs]
+
+    for _ in 1:cycles
+        push!(schedules, SigmoidSchedule(max_value, rise_center, slope_factor) => rise_epochs)
+        push!(schedules, max_value => hold_epochs)
+    end
+
+    push!(schedules, max_value => Inf)
+    return ParameterSchedulers.Sequence(schedules...)
+end
+
+#cs = CyclicalSigmoidSchedule(1, 1e-5, 150, 200, 50, 4; slope_factor=13/200f0)
