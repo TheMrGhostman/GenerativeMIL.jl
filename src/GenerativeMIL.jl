@@ -33,6 +33,8 @@ using AbstractTrees
 using Distances
 # for chamfer distance
 using NearestNeighbors 
+# for sinkhorn distance
+using ChainRulesCore, OptimalTransport
 
 dict2nt(x) = (; (Symbol(k) => v for (k,v) in x)...)
 
