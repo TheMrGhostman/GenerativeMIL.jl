@@ -34,7 +34,11 @@ function create_loss_function(cfg)
             loss_scale = Float32.(get(cfg, :loss_scale, get(cfg, "loss_scale", 1f0)))
             eps = Float32.(get(cfg, :eps, get(cfg, "eps", 1f0)))
             reg = get(cfg, :regularization, get(cfg, "regularization", false))
-            return (x,y) -> loss_scale .* sinkhorn_divergence_loss(x,y,eps; regularization=reg) 
+            kwargs = (;regularization = reg, )
+            maxiter = get(cfg, :maxiter, 0)
+            kwargs =  maxiter > 0 ? merge(kwargs, (;maxiter=maxiter)) : kwargs
+            @info kwargs
+            return (x,y) -> loss_scale .* sinkhorn_divergence_loss(x,y,eps; kwargs...) 
         elseif type_norm in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
             if get(cfg, :ema, false) || get(cfg, "ema", false)
                 sigma = get(cfg, :sigma, get(cfg, "sigma", 1f0))
