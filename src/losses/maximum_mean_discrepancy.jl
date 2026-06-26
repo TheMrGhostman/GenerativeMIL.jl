@@ -81,7 +81,7 @@ function _pairwise_sqdist_batched(x::CuArray{T, 3}, y::CuArray{T, 3}) where T<:A
 
     # Fast CuArray path: fully batched GEMM.
     x_t = permutedims(x, (2, 1, 3))
-    y_t = permutedims(y, (2, 1, 3))
+    #y_t = permutedims(y, (2, 1, 3))
 
     x2 = sum(abs2, x; dims=1)
     y2 = sum(abs2, y; dims=1)
