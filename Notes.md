@@ -2,7 +2,17 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
-## Todos 23.6.2026
+## Todos 22.6.2026
+- [ ] sinkhorn divergence
+  - [ ] implement it
+  - [ ] testing on gpu
+  - [ ] run with poolmodel first (then if it works add to setvae and neural statistician)
+
+- [x] cyclic sinusoidal scheduler
+  - [x] implement
+  - [x] add to framework
+  - [x] test
+  - [x] apply to core5
 - [ ] use elbo and reconstruction terms as evaluation measures
   - [ ] mean and std per reconstruction
   - [ ] mean and std within class 
