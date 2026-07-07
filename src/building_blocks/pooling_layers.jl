@@ -43,14 +43,18 @@ end
 masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2) # TODO find if i did not figure this out anywhere
 masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=dims) #FIXME set masked values to -Inf
 
+mean_max_pooling_(x) = cat(Flux.mean(x, dims=2), maximum(x, dims=2), dims=1)
+mean_pooling_(x) = Flux.mean(x, dims=2)
+max_pooling_(x) = maximum(x, dims=2)
+
 
 function _make_pooling(poolf::String, feature_dim::Int, activation::Function; pool_hidden_dim::Int=feature_dim, pma_heads::Int=4)
     if poolf == "mean-max"
-        return x -> cat(Flux.mean(x, dims=2), maximum(x, dims=2), dims=1), 2
+        return mean_max_pooling_, 2
     elseif poolf == "mean"
-        return x -> Flux.mean(x, dims=2), 1
+        return mean_pooling_, 1
     elseif poolf == "max"
-        return x -> maximum(x, dims=2), 1
+        return max_pooling_, 1
     elseif poolf == "attention"
         score_net = Flux.Chain(
             Dense(feature_dim, pool_hidden_dim, activation),
