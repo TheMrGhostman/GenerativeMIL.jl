@@ -2,11 +2,37 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
+## Todos 7.7. 2026
+- not able to load old PoolModel and NeuralStatistician (can with sinkhorn) -> retraining mnist
+  - [ ] MNIST
+    - [ ] poolmodel
+      - [x] cd 
+      - [ ] mmd
+    - [ ] neuralstatistician
+      - [ ] cd
+      - [ ] mmd
+      - [ ] l2
+- [ ] evaluation scripts
+  - [ ] evaluate FINAL models
+  - [ ] !!OPTIONAL!! evaluate on checkpoint with best reconstruciton on validation set in given run.
+    - [ ] prepare script to analyze histories and pick best checkpoint
+- [ ] eval source code for renconstruction
+  - [x] implement
+  - [x] test on dummy case
+  - [ ] test on real case (Poolmodel for example)
+
+## Todos 26.6.2026
+- [ ] implement regularized sinkhorn 
+  - [ ] froward
+  - [ ] rrule
+- !!!! not possible for now, I can not backpropagate throughout solver, I could write it myself but I think it is not worth it now. 
+
 ## Todos 22.6.2026
-- [ ] sinkhorn divergence
-  - [ ] implement it
-  - [ ] testing on gpu
-  - [ ] run with poolmodel first (then if it works add to setvae and neural statistician)
+- [x] sinkhorn divergence
+  - [x] implement it
+  - [x] custom rrule
+  - [x] testing on gpu
+  - [x] run with poolmodel first (then if it works add to setvae and neural statistician)
 
 - [x] cyclic sinusoidal scheduler
   - [x] implement
@@ -85,7 +111,7 @@
         - [x] incorporate to loss factory
         - [x] final testing
         - [x] add into config generator
-        - [ ] fix valid_step and optim_step for poolmodel!!!!
+        - [x] fix valid_step and optim_step for poolmodel!!!!
     - [x] new beta scheduler "step_linear"
         - it starts on inition value, stay on it till first milestone, then linearly ascend to max_value (final value)
         - final value is reached on second milestone and then beta is equal to final value till the end

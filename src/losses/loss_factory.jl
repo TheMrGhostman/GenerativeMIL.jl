@@ -70,7 +70,7 @@ function _resolve_named_loss(name)
     name_norm = _normalize_loss_name(name)
     if name_norm == "chamfer_distance"
         return chamfer_distance
-    elseif norm_name == "sinkhorn_divergence_loss"
+    elseif name_norm == "sinkhorn_divergence_loss"
         return (x,y) -> sinkhorn_divergence_loss(x, y, 0.1f0)
     elseif name_norm in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
         return (x, y) -> maximum_mean_discrepancy(x, y)
