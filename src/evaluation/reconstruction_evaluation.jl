@@ -16,6 +16,7 @@ function reconstruction_eval(
     device::Function=cpu,
     return_reconstructions::Bool=false,
     idx::Union{Int, Nothing}=nothing,
+    verbose::Bool=false,
     kwargs...
 )
     isempty(loss_functions) && error("loss_functions cannot be empty.")
@@ -28,8 +29,10 @@ function reconstruction_eval(
     x_masks = Any[]
     # pre allocate losses_per_samples?
 
+    iterator_ = verbose ? tqdm(dataloader) : dataloader
+
     batch_idx = 0
-    for batch in dataloader
+    for batch in iterator_
         batch_idx += 1
         if batch isa Tuple && length(batch) == 2
             x, x_mask = batch
@@ -116,14 +119,14 @@ end
 function reconstruction_eval_repeated(
     model,
     dataloader::DataLoader,
-    loss_functions::Dict{Symbol, Function};
-    n_runs::Int,
+    loss_functions::Dict{Symbol, Function},
+    n_runs::Int;
     kwargs...
 )
     n_runs > 0 || error("n_runs must be > 0.")
     runs = NamedTuple[]
-    for _ in 1:n_runs
-        push!(runs, reconstruction_eval(model, dataloader, loss_functions; kwargs...))
+    for i in 1:n_runs
+        push!(runs, reconstruction_eval(model, dataloader, loss_functions; idx = i, kwargs...))
     end
 
     merged = _merge_reconstruction_eval_runs(runs)

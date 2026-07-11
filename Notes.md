@@ -2,24 +2,41 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
-## Todos 7.7. 2026
+## Todos 8.7.2026
+- [ ] add special version for mmd evaluation 
+- [ ] density-aware chamfer distance
+  - [ ] implement
+  - [ ] start with only forward 
+  - [ ] write rrule or fast backward
+
+## Todos 7.7.2026
 - not able to load old PoolModel and NeuralStatistician (can with sinkhorn) -> retraining mnist
-  - [ ] MNIST
-    - [ ] poolmodel
+  - [x] MNIST
+    - [x] poolmodel
       - [x] cd 
-      - [ ] mmd
+      - [x] mmd
+    - [x] neuralstatistician
+      - [x] cd
+      - [x] mmd
+      - [x] l2
+  - [ ] airplane
+    - [ ] poolmodel
+      - [x] cd
+      - [x] mmd (?)
+      - [ ] sh (?)
     - [ ] neuralstatistician
-      - [ ] cd
-      - [ ] mmd
-      - [ ] l2
+      - [x] l2
+      - [x] cd
+      - [x] mmd (?)
+      - [ ] sh (?)
 - [ ] evaluation scripts
   - [ ] evaluate FINAL models
   - [ ] !!OPTIONAL!! evaluate on checkpoint with best reconstruciton on validation set in given run.
     - [ ] prepare script to analyze histories and pick best checkpoint
-- [ ] eval source code for renconstruction
+- [x] eval source code for renconstruction
   - [x] implement
   - [x] test on dummy case
-  - [ ] test on real case (Poolmodel for example)
+  - [x] test on real case (Poolmodel for example)
 
 ## Todos 26.6.2026
 - [ ] implement regularized sinkhorn 
@@ -39,10 +56,10 @@
   - [x] add to framework
   - [x] test
   - [x] apply to core5
-- [ ] use elbo and reconstruction terms as evaluation measures
-  - [ ] mean and std per reconstruction
-  - [ ] mean and std within class 
-  - [ ] mean and std within dataset ? ?  
+- [x] use elbo and reconstruction terms as evaluation measures
+  - [x] mean and std per reconstruction
+  - [x] mean and std within class 
+  - [x] mean and std within dataset ? ?  
 
 ## Todos 8.6.2026
 - [ ] Neural Statistician experiment
