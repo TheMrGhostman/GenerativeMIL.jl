@@ -2,14 +2,33 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
+## Todos 13.7.2026
+train density aware chamfer distance
+  - [x] make config files
+  - [ ] MNIST
+    - [ ] poolmodel
+      - [ ] dcd
+    - [ ] neuralstatistician
+      - [ ] dcd
+    - [ ] setvae
+      - [ ] dcd
+      - [ ] cd (?)
+  - [ ] airplane
+    - [ ] poolmodel
+      - [ ] dcd
+    - [ ] neuralstatistician
+      - [ ] dcd
+    - [ ] setvae
+      - [ ] dcd
+
 ## Todos 8.7.2026
-- [ ] add special version for mmd evaluation 
-- [ ] density-aware chamfer distance
+- [ ] add special version of mmd and dcd for evaluation 
+- [x] density-aware chamfer distance
   - [x] implement
   - [x] start with only forward 
   - [x] write rrule or fast backward
   - [x] cpu ready
-  - [ ] make to gpu ready
+  - [x] make to gpu ready
 
 ## Todos 7.7.2026
 - not able to load old PoolModel and NeuralStatistician (can with sinkhorn) -> retraining mnist
