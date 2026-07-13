@@ -468,7 +468,7 @@ function make_standard_grid_setvae_configs(pth::String, init_id::Int = 1; datase
     return cd_configs, mmd_configs, sh_configs
 end
 
-function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dataset="mnist", cd_epochs=nothing, mmd_epochs=nothing, sh_epochs=nothing, save_cds=false, save_mmds=false, save_shs=false, warmupcosine=true)
+function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dataset="mnist", cd_epochs=nothing, mmd_epochs=nothing, sh_epochs=nothing, dcd_epochs=nothing,  save_cds=false, save_mmds=false, save_shs=false, save_dcd=false, warmupcosine=true)
     #TBS = 38400
     more_then_iters = 1000 # I just want to avoid triggering the validation checks, because I want to perform valitation after epoch only. 
     
@@ -481,6 +481,8 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
         mmd_batch_size = 32
         sh_epochs = sh_epochs === nothing ? 300 : sh_epochs
         sh_batch_size = 64
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     elseif dataset == "modelnet10"
         npoints = 2048
         data_cfg = base_data_config("modelnet10", npoints; balanced_classes=true, sample_on_fly=false, normalize=true)
@@ -490,6 +492,8 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
         mmd_batch_size = 16
         sh_epochs = sh_epochs === nothing ? 200 : sh_epochs
         sh_batch_size = 16
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     elseif dataset == "airplane"
         npoints = 2048
         data_cfg = OrderedDict("dataset" => "shapenet_class", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "airplane")
@@ -498,7 +502,9 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
         mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
         mmd_batch_size = 16
         sh_epochs = sh_epochs === nothing ? 200 : sh_epochs
-        sh_batch_size = 16
+        sh_batch_size = 64
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     elseif dataset == "core5"
         npoints = 2048
         data_cfg = OrderedDict("dataset" => "shapenet_multiple_classes", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "core5", "balanced_classes"=>true,  "upper_bound_n" => 3000)
@@ -508,6 +514,8 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
         mmd_batch_size = 16
         sh_epochs = sh_epochs === nothing ? 200 : sh_epochs
         sh_batch_size = 16
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     else
         error("Unknown dataset: $dataset")
     end
@@ -553,6 +561,19 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
         ),
     ]
 
+    dcd_train_cfgs = [
+        (
+            lr = 0.0003, weight_decay=1e-4, lr_scheduler=nothing, epochs=dcd_epochs, batch_size=dcd_batch_size,
+            loss_function=OrderedDict("type" => "density_aware_chamfer_distance", "loss_scale" => npoints,"alpha"=>1000f0),
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+        (
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler="WarmupCosine", epochs=dcd_epochs, batch_size=dcd_batch_size,
+            loss_function=OrderedDict("type" => "density_aware_chamfer_distance", "loss_scale" => npoints,"alpha"=>1000f0),
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
+    ]
+
     model_cfgs = [
         (
             prpdim=64, prpdepth=5, popdim=128, popdepth=5, zdim=128, decdim=64, decdepth=5, poolf="mean-max", gen_sigma="scalar", activation="gelu"
@@ -587,13 +608,15 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
         cd_train_cfgs  = [cd_train_cfgs[1:end-1]...]
         mmd_train_cfgs = [mmd_train_cfgs[1:end-1]...]
         sh_train_cfgs  = [sh_train_cfgs[1:end-1]...]
+        dcd_train_cfgs = [dcd_train_cfgs[1:end-1]...]
     end
 
-    cd_configs, mmd_configs, sh_configs = [], [], []
+    cd_configs, mmd_configs, sh_configs, dcd_configs = [], [], [], []
     cd_id = init_id
     mmd_id = init_id
     sh_id = init_id
-    for (configs, train_cfgs, save_flag, dist_sym) in ((cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd), (sh_configs, sh_train_cfgs, save_shs, :sh))
+    dcd_id = init_id
+    for (configs, train_cfgs, save_flag, dist_sym) in ((cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd), (sh_configs, sh_train_cfgs, save_shs, :sh), (dcd_configs, dcd_train_cfgs, save_dcd, :dcd))
         for train_cfg in train_cfgs
             for model_cfg in model_cfgs
                 cfg = OrderedDict(
@@ -609,6 +632,8 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
                     "mmd"
                 elseif dist_ == "sinkhorn_divergence_loss"
                     "sh"
+                elseif dist_ == "density_aware_chamfer_distance"
+                    "dcd"
                 else
                     error("Unknown loss function type: $dist_")
                 end
@@ -616,8 +641,12 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
                     cd_id
                 elseif dist_sym == :mmd
                     mmd_id
-                else
+                elseif dist_sym == :sh
                     sh_id
+                elseif dist_sym == :dcd
+                    dcd_id
+                else 
+                    error("unknown dist_sym")
                 end
                 model_dir = join([dist, "poolmodel", "c$(lpad(string(id), 3, '0'))"], "_")  #lpad_number(ep, epochs) = lpad(string(ep), length(string(epochs)), "0")
                 cfg["train"]["model_dir"] = model_dir
@@ -629,18 +658,22 @@ function make_standard_grid_poolmodel_configs(pth::String, init_id::Int = 1; dat
                     cd_id += 1
                 elseif dist_sym == :mmd
                     mmd_id += 1
-                else
+                elseif dist_sym == :sh
                     sh_id += 1
+                elseif dist_sym == :dcd
+                    dcd_id += 1
+                else
+                    error("unknown dist_sym")
                 end
             end
         end
     end
 
-    return cd_configs, mmd_configs, sh_configs
+    return cd_configs, mmd_configs, sh_configs, dcd_configs
 end
 
 
-function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int = 1; β=1f0, dataset="mnist", cd_epochs=nothing, mmd_epochs=nothing, sh_epochs=nothing, save_l2=false, save_cds=false, save_mmds=false, save_shs=false, warmupcosine=true) #TODO update this
+function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int = 1; β=1f0, dataset="mnist", cd_epochs=nothing, mmd_epochs=nothing, sh_epochs=nothing, dcd_epochs=nothing, save_l2=false, save_cds=false, save_mmds=false, save_shs=false, save_dcd=false, warmupcosine=true) #TODO update this
     #TBS = 38400
     more_then_iters = 1000 # I just want to avoid triggering the validation checks, because I want to perform valitation after epoch only. 
     
@@ -653,6 +686,8 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
         mmd_batch_size = 32
         sh_epochs = sh_epochs === nothing ? 300 : sh_epochs
         sh_batch_size = 64
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     elseif dataset == "modelnet10"
         npoints = 2048
         data_cfg = base_data_config("modelnet10", npoints; balanced_classes=true, sample_on_fly=false, normalize=true)
@@ -662,6 +697,8 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
         mmd_batch_size = 16
         sh_epochs = sh_epochs === nothing ? 200 : sh_epochs
         sh_batch_size = 16
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     elseif dataset == "airplane"
         npoints = 2048
         data_cfg = OrderedDict("dataset" => "shapenet_class", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "airplane")
@@ -670,7 +707,9 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
         mmd_epochs = mmd_epochs === nothing ? 200 : mmd_epochs
         mmd_batch_size = 16
         sh_epochs = sh_epochs === nothing ? 200 : sh_epochs
-        sh_batch_size = 16
+        sh_batch_size = 64
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     elseif dataset == "core5"
         npoints = 2048
         data_cfg = OrderedDict("dataset" => "shapenet_multiple_classes", "npoints" => npoints, "normalize"=>true, "sample_on_fly" => true, "type" => "core5", "balanced_classes"=>true,  "upper_bound_n" => 3000)
@@ -680,6 +719,8 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
         mmd_batch_size = 16
         sh_epochs = sh_epochs === nothing ? 200 : sh_epochs
         sh_batch_size = 16
+        dcd_epochs = dcd_epochs === nothing ? 1000 : dcd_epochs
+        dcd_batch_size = 128
     else
         error("Unknown dataset: $dataset")
     end
@@ -716,6 +757,14 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
             loss_function=OrderedDict("type" => "sinkhorn_divergence_loss", "loss_scale" => npoints,"eps" => 1.0, "maxiter" => 50, "regularization"=>false), 
             valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
         )
+    ]
+
+    dcd_train_cfgs = [        
+        (   # test case if there is a free compute time
+            lr = 0.0001, weight_decay=1e-4, lr_scheduler=nothing, epochs=dcd_epochs, batch_size=dcd_batch_size, beta=β, beta_anealer="constant",
+            loss_function=OrderedDict("type" => "density_aware_chamfer_distance", "loss_scale" => npoints,"alpha"=>1000f0),  
+            valid_check_interval=more_then_iters, validation_check_after_epoch=true, checkpoint_interval_epochs=10, early_stopping=true, patience=100000, verbose=true
+        ),
     ]
 
     model_cfgs = [
@@ -762,12 +811,13 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
     #    mmd_train_cfgs = [mmd_train_cfgs[1:end-1]...]
     #end
 
-    l2_configs, cd_configs, mmd_configs, sh_configs = [], [], [], []
+    l2_configs, cd_configs, mmd_configs, sh_configs, dcd_configs = [], [], [], [], []
     cd_id = init_id
     mmd_id = init_id
     l2sum_id = init_id
     sh_id = init_id
-    for (configs, train_cfgs, save_flag, dist_sym) in ((l2_configs, l2_train_cfgs, save_l2, :l2sum), (cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd), (sh_configs, sh_train_cfgs, save_shs, :sh))
+    dcd_id = init_id
+    for (configs, train_cfgs, save_flag, dist_sym) in ((l2_configs, l2_train_cfgs, save_l2, :l2sum), (cd_configs, cd_train_cfgs, save_cds, :cd), (mmd_configs, mmd_train_cfgs, save_mmds, :mmd), (sh_configs, sh_train_cfgs, save_shs, :sh), (dcd_configs, dcd_train_cfgs, save_dcd, :dcd))
         for train_cfg in train_cfgs
             for model_cfg in model_cfgs
                 cfg = OrderedDict(
@@ -787,6 +837,8 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
                         "mmd"
                     elseif dist_ == "sinkhorn_divergence_loss"
                         "sh"
+                    elseif dist_ == "density_aware_chamfer_distance"
+                        "dcd"
                     else
                         error("Unknown loss function type: $dist_")
                     end
@@ -797,6 +849,8 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
                     l2sum_id
                 elseif dist_sym == :sh
                     sh_id
+                elseif dist_sym == :dcd
+                    dcd_id
                 else
                     mmd_id
                 end
@@ -814,6 +868,8 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
                     l2sum_id += 1
                 elseif dist_sym == :sh
                     sh_id += 1
+                elseif dist_sym == :dcd
+                    dcd_id += 1
                 else
                     error("Unknown dist_sym => $(dist_sym)")
                 end
@@ -821,7 +877,7 @@ function make_standard_grid_neuralstatistician_configs(pth::String, init_id::Int
         end
     end
 
-    return l2_configs, cd_configs, mmd_configs, sh_configs
+    return l2_configs, cd_configs, mmd_configs, sh_configs, dcd_configs
 end
 
 #t = make_standard_grid_setvae_configs("/home/zorekmat/MIL/GenerativeMIL/experiments/GenerationExperiments/SetVAE_experiments/configs/mnist_configs", 1; dataset="mnist", β = 0.05f0, save_cds=true, save_mmds=true);
@@ -852,6 +908,10 @@ t = make_standard_grid_setvae_configs("experiments/GenerationExperiments/SetVAE_
 t = make_standard_grid_poolmodel_configs("experiments/GenerationExperiments/PoolModel_experiments/configs/core5_configs", 1; dataset="core5", cd_epochs=1000, mmd_epochs=600, save_cds=true, save_mmds=false, warmupcosine=false);
 
 
-t = make_standard_grid_poolmodel_configs("experiments/GenerationExperiments/PoolModel_experiments/configs/mnist_configs", 1; dataset="mnist", cd_epochs=4000, mmd_epochs=1000, sh_epochs=1000, save_cds=true, save_mmds=true, save_shs=false, warmupcosine=false);
+t = make_standard_grid_poolmodel_configs("experiments/GenerationExperiments/PoolModel_experiments/configs/mnist_configs", 1; dataset="mnist", cd_epochs=2000, mmd_epochs=1000, sh_epochs=1000, dcd_epochs=1000, save_cds=false, save_mmds=false, save_shs=false, save_dcd=true, warmupcosine=false);
 
-t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperiments/NeuralStatistician_experiments/configs/mnist_configs", 1; dataset="mnist", cd_epochs=1000, mmd_epochs=300, sh_epochs=500, save_cds=false, save_mmds=false, save_l2=false, save_shs=true, β=1f0, warmupcosine=false);
+t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperiments/NeuralStatistician_experiments/configs/mnist_configs", 1; dataset="mnist", cd_epochs=1000, mmd_epochs=300, sh_epochs=500, dcd_epochs=500, save_cds=false, save_mmds=false, save_l2=false, save_shs=false, save_dcd=true, β=1f0, warmupcosine=false);
+
+t = make_standard_grid_poolmodel_configs("experiments/GenerationExperiments/PoolModel_experiments/configs/airplane_configs", 1; dataset="airplane", cd_epochs=4000, mmd_epochs=1000, sh_epochs=1000, dcd_epochs=1500, save_cds=false, save_mmds=false, save_shs=false, save_dcd=true, warmupcosine=false);
+
+t = make_standard_grid_neuralstatistician_configs("experiments/GenerationExperiments/NeuralStatistician_experiments/configs/airplane_configs", 1; dataset="airplane", cd_epochs=500, mmd_epochs=500, sh_epochs=500, dcd_epochs=1000, save_cds=false, save_mmds=false, save_l2=false, save_shs=false, save_dcd=true, β=1f0, warmupcosine=false);
