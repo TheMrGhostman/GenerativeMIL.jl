@@ -23,6 +23,3 @@ function _contributions(idx::AbstractArray)
     end
     return x[:,idx]
 end
-
-device_like(::Array, y::AbstractArray) = cpu(y)
-device_like(::CuArray, y::AbstractArray) = cu(y)

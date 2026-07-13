@@ -30,6 +30,10 @@ function create_loss_function(cfg)
             else
                 return (x, y; kwargs...) -> chamfer_distance(x, y; w1 = w1, w2 = w2, kwargs...)
             end
+        elseif type_norm in ("density_aware_chamfer_distance", "DCD")
+            loss_scale = Float32.(get(cfg, :loss_scale, get(cfg, "loss_scale", 1f0)))
+            α = Float32.(get(cfg, :alpha, get(cfg, "alpha", 1f0)))
+            return (x, y) -> loss_scale .* density_aware_chamfer_distance(x, y, α) 
         elseif type_norm in ("sinkhorn_divergence", "sinkhorn_divergence_loss")
             loss_scale = Float32.(get(cfg, :loss_scale, get(cfg, "loss_scale", 1f0)))
             eps = Float32.(get(cfg, :eps, get(cfg, "eps", 1f0)))

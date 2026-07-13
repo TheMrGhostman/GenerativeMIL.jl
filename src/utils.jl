@@ -55,3 +55,7 @@ function unpack_mill(dt::T) where T <: Tuple{Array,Any}
 	bag_data = dt[1]
     return bag_data, bag_labels
 end
+
+
+device_like(::Array, y::AbstractArray) = cpu(y)
+device_like(::CuArray, y::AbstractArray) = cu(y)

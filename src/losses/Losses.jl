@@ -23,6 +23,8 @@ export kl_divergence
 
 include("chamfer_distance.jl")
 export chamfer_distance
+include("density_aware_chamfer_distance.jl")
+export density_aware_chamfer_distance
 include("masked_chamfer_distance.jl")
 export chamfer_distance, masked_chamfer_distance, masked_chamfer_distance_cpu
 include("maximum_mean_discrepancy.jl")
