@@ -5,9 +5,11 @@
 ## Todos 8.7.2026
 - [ ] add special version for mmd evaluation 
 - [ ] density-aware chamfer distance
-  - [ ] implement
-  - [ ] start with only forward 
-  - [ ] write rrule or fast backward
+  - [x] implement
+  - [x] start with only forward 
+  - [x] write rrule or fast backward
+  - [x] cpu ready
+  - [ ] make to gpu ready
 
 ## Todos 7.7.2026
 - not able to load old PoolModel and NeuralStatistician (can with sinkhorn) -> retraining mnist
@@ -20,10 +22,10 @@
       - [x] mmd
       - [x] l2
   - [ ] airplane
-    - [ ] poolmodel
+    - [x] poolmodel
       - [x] cd
       - [x] mmd (?)
-      - [ ] sh (?)
+      - [x] sh (?)
     - [ ] neuralstatistician
       - [x] l2
       - [x] cd

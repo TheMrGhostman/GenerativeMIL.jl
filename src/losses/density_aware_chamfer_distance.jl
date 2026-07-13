@@ -4,8 +4,8 @@ function density_aware_chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{
     # Compute pairwise squared distances
     ỹᵢ, x̃ᵢ = Zygote.@ignore _nearest_neighbors(x, y)
 
-    ny = Zygote.@ignore _contributions(ỹᵢ) # (N, BS) -> (1, N, BS)
-    nx = Zygote.@ignore _contributions(x̃ᵢ) # (M, BS) -> (1, M, BS)
+    ny = Zygote.@ignore device_like(x,_contributions(ỹᵢ)) # (N, BS) -> (1, N, BS)
+    nx = Zygote.@ignore device_like(y,_contributions(x̃ᵢ)) # (M, BS) -> (1, M, BS)
     
     d_x = sum((x .- y[:, ỹᵢ]) .^ 2, dims=1) # (D, N, BS) -> (1,1,BS) 
     d_y = sum((y .- x[:, x̃ᵢ]) .^ 2, dims=1) # (D, M, BS) -> (1,1,BS)  # we assume that N=M to reflect paper
@@ -24,3 +24,5 @@ function _contributions(idx::AbstractArray)
     return x[:,idx]
 end
 
+device_like(::Array, y::AbstractArray) = cpu(y)
+device_like(::CuArray, y::AbstractArray) = cu(y)
