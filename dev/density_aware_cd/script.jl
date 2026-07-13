@@ -91,3 +91,42 @@ sxx = sum((xx .- yy[:, yyᵢ]) .^ 2, dims=1); # (D, N, BS) -> (1,1,BS)
 @benchmark tmp3($sxx, $nyy)
 
 @benchmark _contributions($yyᵢ)
+
+#gpu test
+x = randn(T, 3, 256, 32);
+y = randn(T, 3, 256, 32);
+
+xg = x |> cu;
+yg = y |> cu;
+
+l = density_aware_chamfer_distance(x, y, 1000f0)
+@benchmark density_aware_chamfer_distance($x, $y, $1000f0)
+
+lg = density_aware_chamfer_distance(xg, yg, 1000f0)
+@benchmark density_aware_chamfer_distance($xg, $yg, $1000f0)
+
+d = Flux.Dense(3,3);
+dg = d |>cu;
+
+g = Zygote.gradient((dd)->density_aware_chamfer_distance(xg, dd(yg), 1000f0), dg)
+
+g[1].weight
+
+@benchmark Zygote.gradient((dd)->density_aware_chamfer_distance($x, dd($y), $1000f0), $d)
+
+@benchmark Zygote.gradient((dd)->density_aware_chamfer_distance($xg, dd($yg), $1000f0), $dg)
+
+@benchmark Zygote.gradient((dd)->chamfer_difstance($xg, dd($yg)), $dg)
+
+
+
+
+loss_cfg = Dict{Symbol, Any}(
+    :type=>"density_aware_chamfer_distance",
+    :loss_scale=>1, #512
+    :alpha => 1000f0
+    )
+
+loss_function = create_loss_function(loss_cfg)
+
+loss_function(xg, yg) ≈ loss_cfg[:loss_scale] * density_aware_chamfer_distance(xg, yg, loss_cfg[:alpha])
