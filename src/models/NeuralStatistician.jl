@@ -8,7 +8,7 @@ end
 
 Flux.@layer NeuralStatistician
 
-function (m::NeuralStatistician)(x::AbstractArray{T, 3}) where {T <: AbstractFloat, F <: AbstractFloat}
+function (m::NeuralStatistician)(x::AbstractArray{T, 3}) where {T <: AbstractFloat}
     # x: (input_dim, n_points, batch_size)
     hᵢ = m.shared_encoder(x) # (hidden_dim, n_points, batch_size)
 

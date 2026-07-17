@@ -3,23 +3,28 @@
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
 ## Todos 13.7.2026
-train density aware chamfer distance
+- alpha = 1000 seems to be too high, it is better to use alpha=1, at least i think so according to data ->> was like day and night !!
+#### train density aware chamfer distance
   - [x] make config files
-  - [ ] MNIST
-    - [ ] poolmodel
-      - [ ] dcd
-    - [ ] neuralstatistician
-      - [ ] dcd
-    - [ ] setvae
-      - [ ] dcd
-      - [ ] cd (?)
+  - [x] MNIST
+    - [x] poolmodel
+      - [x] dcd
+    - [x] neuralstatistician
+      - [x] dcd
+    - [x] setvae
+      - [x] dcd
+      - [x] cd (?)
+        - [x] cyclical
+        - [x] sigmoidal
+        - [ ] linear
   - [ ] airplane
     - [ ] poolmodel
       - [ ] dcd
     - [ ] neuralstatistician
-      - [ ] dcd
+      - [x] dcd
     - [ ] setvae
       - [ ] dcd
+      - [ ] sh (?)
 
 ## Todos 8.7.2026
 - [ ] add special version of mmd and dcd for evaluation 
