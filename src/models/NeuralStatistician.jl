@@ -118,12 +118,12 @@ function neuralstatistician_constructor_from_named_tuple(; idim::Int, hdim::Int,
         create_gaussian_mlp(pooled_multiplier * vdim, hdim, inner_nlayers, cdim, activation_fn; softplus_=true)
     )
     inference_net = Flux.Chain(
-        x -> cat(x[1], x[2], dims=1), # concatenate hᵢ and c
+        _dimension_concat, # concatenate hᵢ and c
         create_gaussian_mlp(hdim + cdim, hdim, inner_nlayers, zdim, activation_fn; softplus_=true)
     )
     latent_decoder = create_gaussian_mlp(cdim, hdim, inner_nlayers, zdim, activation_fn; softplus_=true)
     observation_decoder = Flux.Chain(
-        x -> cat(x[1], x[2], dims=1), # concatenate zᵢ and c
+        _dimension_concat, # concatenate zᵢ and c
         create_mlp(zdim + cdim, hdim, inner_nlayers, idim, activation_fn; out_identity=true)
     )
 

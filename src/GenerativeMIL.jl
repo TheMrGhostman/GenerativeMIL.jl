@@ -82,6 +82,8 @@ include("model_training/training.jl")
 export train_model!, validation_check, reconstruction_check
 
 
+include("evaluation/Evaluation.jl")
+
 # Temporary evaluation function
 # now in legacy_functions folder
 #include("evaluation.jl")
