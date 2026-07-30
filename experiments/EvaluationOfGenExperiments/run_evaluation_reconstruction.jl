@@ -3,19 +3,9 @@ using ArgParse
 using DrWatson
 @quickactivate
 
-using Random
-using Serialization
-using Flux
-#using Zygote
-using Statistics
-using StatsBase
+using Dates
 using GenerativeMIL 
-using MLUtils
-#using YAML
-using ProgressBars
 using CUDA
-#using GenerativeMIL: CUDA, OptimalTransport
-
 
     s = ArgParseSettings()
     @add_arg_table! s begin
@@ -63,10 +53,6 @@ using CUDA
             arg_type = Int
             default = 24
             help = "training time budget in hours"
-        "ui"
-            arg_type = Int
-            default = Int(rand(1:10^6))
-            help = "optional unique identifier for this run, used for naming output directory if model_dir is not set"
     end
 
     args = parse_args(ARGS, s; as_symbols=true)
@@ -116,10 +102,14 @@ using CUDA
         :dcd     => (x,y,args...) -> GenerativeMIL.density_aware_chamfer_distance_eval(x,y,α),
         :mmd     => (x,y,args...) -> GenerativeMIL.maximum_mean_discrepancy_rbf_eval(x,y; sigma=σᵢ .* multipliers),
     )
-    losses_to_drop = setdiff(keys(loss_functions), losses_to_use)
-    loss_functions = delete!(loss_functions, losses_to_drop...)
+    # Filter to keep only the requested loss functions
+    loss_functions = filter(kv -> kv[1] in losses_to_use, loss_functions)
 
     path_to_folder = readdir(datadir("GenExperiments/$(dataset_name)/$(args[:model_name])/seed=$(args[:seed])/"), join=true)
+
+    @assert ispath(joinpath(@__DIR__, "processing_logs")) "\"processing_logs\" folder is missing"
+    logname = "$(dataset_name)_$(args[:model_name])_$(args[:seed])_$(now()).jsonl"
+    jsonl_log_path = joinpath(@__DIR__, "processing_logs", logname)
 
     o = evaluate_reconstructions(
         path_to_folder, 
@@ -129,5 +119,6 @@ using CUDA
         test_repeats=args[:test_repeats], 
         device=CUDA.functional() ? cu : cpu,
         find_best=false,  
-        verbose=true
+        verbose=true,
+        jsonl_log_path = jsonl_log_path,
     );
