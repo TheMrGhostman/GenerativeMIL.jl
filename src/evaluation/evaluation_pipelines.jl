@@ -10,7 +10,7 @@
 
 
 
-function evaluate_reconstructions(paths::Vector{String}, data_cfg::Dict, loss_functions::Dict{Symbol, Function}; find_best::Bool=false, device::Function=cpu, verbose::Bool=true, batch_size::I=64, valid_repeats::I=2, test_repeats::I=5, kwargs...) where I <: Int
+function evaluate_reconstructions(paths::Vector{String}, data_cfg::Dict, loss_functions::Dict{Symbol, Function}; find_best::Bool=false, device::Function=cpu, verbose::Bool=true, batch_size::I=64, valid_repeats::I=2, test_repeats::I=5, jsonl_log_path::Union{String, Nothing}=nothing, kwargs...) where I <: Int
 
     errors = [[],[]]
     runs_valid = NamedTuple[]
@@ -21,7 +21,10 @@ function evaluate_reconstructions(paths::Vector{String}, data_cfg::Dict, loss_fu
     y_t = reduce(vcat,getindex.(collect(dataloaders.test),2))
     dataloaders = create_dataloaders(batch_size=batch_size, x_only=true, data_cfg)
 
-    verbose && @info "dataloaders created"
+    verbose && @info "dataloaders created"
+    
+    # Initialize JSONL logger if path is provided
+    logger = !isnothing(jsonl_log_path) ? JSONLLogger(jsonl_log_path) : nothing
 
     for path in paths
         # TODO add try except statement
@@ -49,10 +52,19 @@ function evaluate_reconstructions(paths::Vector{String}, data_cfg::Dict, loss_fu
             
             push!(runs_valid, o_v)
             push!(runs_test, o_t)
+            
+            # Log successful processing
+            !isnothing(logger) && log!(logger, (;path=path, status="done"))
         catch e 
             push!(errors[1], e)
             push!(errors[2], path)
+            # Log error
+            !isnothing(logger) && log!(logger, (;path=path, status="error", error_message=string(e)))
         end
     end
+    
+    # Close logger if it was initialized
+    !isnothing(logger) && close(logger)
+    
     return errors, runs_valid, runs_test
 end
