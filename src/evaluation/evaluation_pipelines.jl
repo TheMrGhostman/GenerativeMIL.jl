@@ -10,71 +10,49 @@
 
 
 
-function evaluate_reconstructions(paths::Vector{String}, dataloader::DataLoader, loss_functions::Dict{Symbol, Function}; find_best::Bool=false, verbose::Bool=true, kwargs...)
-    init_data_cofig = deserialize(joinpath(first(paths), "run_config.jls"))[:data_cfg]
-    config_file_init = (ratio=get(init_data_cofig, :ratio, 0.2), seed=get(init_data_cofig, :seed, 1)) # initial config file, just confirm if all models were trained on the same seed and ratio of train/valid/test. we need it to be sure that test data was not seen by any model and that we are feeding correct dataloader so results are obtained from the same valid and test set
-    
+function evaluate_reconstructions(paths::Vector{String}, data_cfg::Dict, loss_functions::Dict{Symbol, Function}; find_best::Bool=false, device::Function=cpu, verbose::Bool=true, batch_size::I=64, valid_repeats::I=2, test_repeats::I=5, kwargs...) where I <: Int
+
     errors = [[],[]]
-    verbose_list = [[],[]]
-    runs = NamedTuple[]
+    runs_valid = NamedTuple[]
+    runs_test = NamedTuple[]
+
+    dataloaders = create_dataloaders(batch_size=batch_size, x_only=false, data_cfg)
+    y_v = reduce(vcat,getindex.(collect(dataloaders.valid),2))
+    y_t = reduce(vcat,getindex.(collect(dataloaders.test),2))
+    dataloaders = create_dataloaders(batch_size=batch_size, x_only=true, data_cfg)
+
+    verbose && @info "dataloaders created"
+
     for path in paths
         # TODO add try except statement
         try
-            df = deserialize(joinpath(path, "run_config.jls"))
-            data_config = df[:data_cfg]
-            @assert get(data_config, :ratio, "notspecified") == config_file_init.ratio && get(data_config, :seed, "notspecified") == config_file_init[:seed] "data_cfg of $(path) is different from init_data_config ($(first(paths)))!!"
-
-            # find  
-            model_path = joinpath(path, "models")    
-            @assert isdir(model_path) "Models forlder for $(path) does not exist!!"
-            model_checkpoints = readdir(model_path);
+            @assert isfile(joinpath(path, "run_config.jls")) "Run config for $(path) does not exist!!"
+            # find  model
+            model_paths = joinpath(path, "models")    
+            @assert isdir(model_paths) "Models forlder for $(path) does not exist!!"
+            model_checkpoints = readdir(model_paths);
             max_epoch_model = maximum(model_checkpoints) # this is ugly ugly thing but works! # REVIEW: review and redo
 
-            model_path = find_best ? joinpath(model_path, "best_model.jls") : joinpath(model_path,max_epoch_model) 
+            model_path = find_best ? joinpath(model_paths, "best_model.jls") : joinpath(model_paths, max_epoch_model) 
             
-            verbose && push!(verbose_list[1], path)
-            verbose && push!(verbose_list[2], max_epoch_model)
-
             @assert isfile(model_path)
-            #df = deserialize(model_path)
-            #df = df.model
-            # REDO: 
-            #model = df.model
-            # TODO: add labels from dataloader 
-            #run = reconstruction_eval(model, dataloader, loss_functions; kwargs...)
-            #push!(runs, run)
+            df = deserialize(model_path)
+            model = df.model |> device
+
+            o_v = reconstruction_eval_repeated(model, dataloaders.valid, loss_functions, valid_repeats; device=device, verbose=true)
+            o_t = reconstruction_eval_repeated(model, dataloaders.test, loss_functions, test_repeats; device=device, verbose=true)
+            
+            o_v = merge(o_v, (;labels = y_v))
+            o_t = merge(o_t, (;labels = y_t))
+
+            serialize(joinpath(path, "results", "evaluation_reconstruction.jls"), (valid=o_v, test=o_t))
+            
+            push!(runs_valid, o_v)
+            push!(runs_test, o_t)
         catch e 
             push!(errors[1], e)
             push!(errors[2], path)
         end
     end
-    #return _merge_reconstruction_eval_runs(runs)
-    return errors, verbose_list
+    return errors, runs_valid, runs_test
 end
-
-
-pth_to_model = "/home/zorekmat/MIL/GenerativeMIL/data/GenExperiments/mnist/poolmodel/seed=1/"
-model_paths = readdir(pth_to_model, join=true) 
-model_path = first(model_paths)
-
-run_config = deserialize(joinpath(model_path, "run_config.jls"))
-keys(run_config)
-run_config[:data_cfg]
-
-o = evaluate_reconstructions(readdir("/home/zorekmat/MIL/GenerativeMIL/data/GenExperiments/mnist/poolmodel/seed=1/", join=true), DataLoader(randn(3,3)), Dict{Symbol, Function}(:a=>identity), find_best=false, verbose=true);
-
-o[1] # errors
-o[2] # verbose list
-
-o = evaluate_reconstructions(readdir("/home/zorekmat/MIL/GenerativeMIL/data/GenExperiments/mnist/poolmodel/seed=1/", join=true), DataLoader(randn(3,3)), Dict{Symbol, Function}(:a=>identity), find_best=true);
-
-o[1] # errors
-o[2] # verbose list
-
-o = evaluate_reconstructions(readdir("/home/zorekmat/MIL/GenerativeMIL/data/GenExperiments/mnist/setvae/seed=1/", join=true), DataLoader(randn(3,3)), Dict{Symbol, Function}(:a=>identity), find_best=false, verbose=true);
-
-o[1][1]
-
-o = evaluate_reconstructions(readdir("/home/zorekmat/MIL/GenerativeMIL/data/GenExperiments/shapenet_class/setvae/seed=1/", join=true), DataLoader(randn(3,3)), Dict{Symbol, Function}(:a=>identity), find_best=false, verbose=true);
-
-o[1] # errors

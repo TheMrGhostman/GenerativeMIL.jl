@@ -2,6 +2,42 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
+## Todos 24.7.2026
+- [x] MNIST - PM - Sinkhorn -- can not be loaded -> needs retraining :/
+- [ ] most likely all neural statisticians too
+  - [ ] mnist
+    - [ ] l2
+    - [ ] cd
+    - [ ] dcd
+    - [ ] sh
+    - [ ] mmd
+  - [ ] airplane
+    - [ ] l2
+    - [ ] cd
+    - [ ] dcd
+    - [ ] sh
+    - [ ] mmd
+  - [ ] core5
+    - [ ] l2
+    - [ ] cd
+    - [ ] dcd
+    - [ ] sh
+    - [ ] mmd
+
+## Todos 21.7.2026
+- [ ] try to plot UMAP from top (the deepest) layer for encoder, to see if classes are separated somehow in latent space
+- [ ] try "guided" generation of samples 
+  - [ ] if umap and separation works then i can use centroids of classes in latent space to generate samples from specific class, which may be interesting for MNIST and ShapeNetCore (core5)
+    - [ ] mnist
+    - [ ] core5
+#### reconstruction evaluation copyed from 7.7.2026
+- [ ] evaluation scripts
+  - [ ] evaluate FINAL models
+  - [ ] !!OPTIONAL!! evaluate on checkpoint with best reconstruciton on validation set in given run.
+    - [x] prepare script to analyze histories and pick best checkpoint
+    - [x] script can evaluate best model and also last saved checkpoint (most likely final model)
+
+
 ## Todos 13.7.2026
 - alpha = 1000 seems to be too high, it is better to use alpha=1, at least i think so according to data ->> was like day and night !!
 #### train density aware chamfer distance
@@ -16,18 +52,24 @@
       - [x] cd (?)
         - [x] cyclical
         - [x] sigmoidal
-        - [ ] linear
+        - [ ] linear (?)
   - [ ] airplane
-    - [ ] poolmodel
-      - [ ] dcd
-    - [ ] neuralstatistician
+    - [x] poolmodel
+      - [x] dcd
+    - [x] neuralstatistician
       - [x] dcd
     - [ ] setvae
       - [ ] dcd
+        - [x] cyclical (1-5 done, 6-10 in progress)
+        - [ ] sigmoidal (?)
+        - [ ] linear (?)
       - [ ] sh (?)
+        - [ ] cyclical
 
 ## Todos 8.7.2026
-- [ ] add special version of mmd and dcd for evaluation 
+- [x] add special version of mmd and dcd for evaluation 
+  - [x] dcd
+  - [x] mmd
 - [x] density-aware chamfer distance
   - [x] implement
   - [x] start with only forward 
@@ -41,24 +83,21 @@
     - [x] poolmodel
       - [x] cd 
       - [x] mmd
+      - [ ] sh
     - [x] neuralstatistician
       - [x] cd
       - [x] mmd
       - [x] l2
-  - [ ] airplane
+  - [x] airplane
     - [x] poolmodel
       - [x] cd
       - [x] mmd (?)
       - [x] sh (?)
-    - [ ] neuralstatistician
+    - [x] neuralstatistician
       - [x] l2
       - [x] cd
       - [x] mmd (?)
-      - [ ] sh (?)
-- [ ] evaluation scripts
-  - [ ] evaluate FINAL models
-  - [ ] !!OPTIONAL!! evaluate on checkpoint with best reconstruciton on validation set in given run.
-    - [ ] prepare script to analyze histories and pick best checkpoint
+      - [x] sh (?)
 - [x] eval source code for renconstruction
   - [x] implement
   - [x] test on dummy case
