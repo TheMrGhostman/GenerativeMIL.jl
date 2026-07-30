@@ -48,7 +48,16 @@ function evaluate_reconstructions(paths::Vector{String}, data_cfg::Dict, loss_fu
             o_v = merge(o_v, (;labels = y_v))
             o_t = merge(o_t, (;labels = y_t))
 
-            serialize(joinpath(path, "results", "evaluation_reconstruction.jls"), (valid=o_v, test=o_t))
+            out_nt = (valid=o_v, test=o_t)
+
+            save_path = joinpath(path, "evaluation")
+            !isdir(save_path) && mkdir(save_path) 
+            # save as jls
+            serialize(joinpath(save_path, "evaluation_reconstruction.jls"), out_nt)
+            # save as json for compatibility
+            open(joinpath(save_path, "evaluation_reconstruction.json"), "w") do io
+                JSON3.pretty(io, out_nt)
+            end
             
             push!(runs_valid, o_v)
             push!(runs_test, o_t)
