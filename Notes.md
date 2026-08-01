@@ -2,15 +2,43 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
+## Todos 1.8.2026
+#### saving update 
+- [x] update saving functions. 
+  - [x] save config as JSON or YAML into results folder, so it is easier to load it later and run evaluation script on it. 
+    - It will also make results more reproducible, because we will know exactly what config was used for training.
+  - [x] save model as Flux.state and .jld2, so it is easier to load it later. This is also reason for saving config as JSON or YAML as it will be easier to reconstruct model from config and load state from .jld2 file.
+- [ ] think about .BSON 
+#### Visualization and small experiment
+  - [ ] make umap of arbitrary PoolModel on MNIST on E(x_i) and D(c) ... i.e. after pool encoder and after decoder (generator) before instance decoder
+    - [ ] try to color it by classes and see if it is separated in latent space.
+    - [ ] It my help understand how PoolModel works and if it is able to separate classes in latent space.
+  - [ ] try similar thing with shallow setvae
+
+## Todos 30.7.2026
+- [ ] Evaluation
+  - [ ] mnist
+    - [y] neural statistician
+    - [y] poolmodel
+    - [y] setvae
+  - [ ] airplane
+    - [ ] neural statistician
+    - [ ] poolmodel
+    - [ ] setvae
+  - [ ] core5
+    - [ ] nerual statistician
+    - [ ] poolmodel
+    - [ ] setvae
+
 ## Todos 24.7.2026
 - [x] MNIST - PM - Sinkhorn -- can not be loaded -> needs retraining :/
 - [ ] most likely all neural statisticians too
   - [ ] mnist
     - [ ] l2
-    - [ ] cd
-    - [ ] dcd
-    - [ ] sh
-    - [ ] mmd
+    - [x] cd
+    - [x] dcd
+    - [x] sh
+    - [x] mmd
   - [ ] airplane
     - [ ] l2
     - [ ] cd
@@ -31,9 +59,9 @@
     - [ ] mnist
     - [ ] core5
 #### reconstruction evaluation copyed from 7.7.2026
-- [ ] evaluation scripts
-  - [ ] evaluate FINAL models
-  - [ ] !!OPTIONAL!! evaluate on checkpoint with best reconstruciton on validation set in given run.
+- [x] evaluation scripts
+  - [x] evaluate FINAL models
+  - [y] !!OPTIONAL!! evaluate on checkpoint with best reconstruciton on validation set in given run. (possible to do)
     - [x] prepare script to analyze histories and pick best checkpoint
     - [x] script can evaluate best model and also last saved checkpoint (most likely final model)
 

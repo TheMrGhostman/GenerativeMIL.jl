@@ -7,11 +7,13 @@ using Dates
 using GenerativeMIL 
 using CUDA
 
+
+function main()
     s = ArgParseSettings()
     @add_arg_table! s begin
         "model_name"
             arg_type = String
-            default = "poolmodel"
+            default = "setvae"
             help = "Name of the model to evaluate (\"poolmodel\", \"setvae\" or \"neuralstatistician\" )"
         "dataset"
             arg_type = String
@@ -34,15 +36,15 @@ using CUDA
             default = "cd,sh,dcd,mmd"
             help = "comma-separated list of loss functions to evaluate (\"cd\", \"sh\", \"dcd\", \"mmd\"). \n No other losses are implemented."
         "sinkhorn_epsilon"
-            arg_type = Real
+            arg_type = Float32
             default = 1f0
             help = "Sinkhorn regularization parameter for the Sinkhorn divergence loss function. If sinkhorn loss is not used, this parameter is ignored."
         "dcd_alpha"
-            arg_type = Real
+            arg_type = Float32
             default = 1f0
             help = "Alpha parameter for the density-aware Chamfer distance loss function. If DCD loss is not used, this parameter is ignored."
         "mmd_sigma"
-            arg_type = Real
+            arg_type = Float32
             default = 1.32f0
             help = "RBF kernel bandwidth for the MMD loss function. If MMD loss is not used, this parameter is ignored."
         "mmd_multipliers"
@@ -56,6 +58,7 @@ using CUDA
     end
 
     args = parse_args(ARGS, s; as_symbols=true)
+    println(args) # so it is readable in slurm.out
 
     # This I named datasets by loading functions instead of names like "airplane" or "core5", therefore this hashmap is used to map the dataset names to the corresponding folder names under which data are saved
     dataset_hashmap = Dict("mnist" => "mnist", "airplane" => "shapenet_class", "core5" => "shapenet_multiple_classes")
@@ -105,14 +108,14 @@ using CUDA
     # Filter to keep only the requested loss functions
     loss_functions = filter(kv -> kv[1] in losses_to_use, loss_functions)
 
-    path_to_folder = readdir(datadir("GenExperiments/$(dataset_name)/$(args[:model_name])/seed=$(args[:seed])/"), join=true)
+    paths_to_files = readdir(datadir("GenExperiments/$(dataset_name)/$(args[:model_name])/seed=$(args[:seed])/"), join=true)
 
     @assert ispath(joinpath(@__DIR__, "processing_logs")) "\"processing_logs\" folder is missing"
     logname = "$(dataset_name)_$(args[:model_name])_$(args[:seed])_$(now()).jsonl"
     jsonl_log_path = joinpath(@__DIR__, "processing_logs", logname)
 
     o = evaluate_reconstructions(
-        path_to_folder, 
+        paths_to_files, 
         data_cfg, 
         loss_functions; 
         valid_repeats=args[:valid_repeats], 
@@ -122,3 +125,7 @@ using CUDA
         verbose=true,
         jsonl_log_path = jsonl_log_path,
     );
+    return o
+end
+
+main()
