@@ -3,7 +3,7 @@
 #SBATCH --nodes=1 --ntasks-per-node=1 --cpus-per-task=1
 #SBATCH --gres=gpu:1
 #SBATCH --partition=gpu
-#SBATCH --mem=150G
+#SBATCH --mem=90G
 #SBATCH --output=slurms/%x_%j.out
 
 
