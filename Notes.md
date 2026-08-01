@@ -10,38 +10,42 @@
   - [x] save model as Flux.state and .jld2, so it is easier to load it later. This is also reason for saving config as JSON or YAML as it will be easier to reconstruct model from config and load state from .jld2 file.
 - [ ] think about .BSON 
 #### Visualization and small experiment
-  - [ ] make umap of arbitrary PoolModel on MNIST on E(x_i) and D(c) ... i.e. after pool encoder and after decoder (generator) before instance decoder
-    - [ ] try to color it by classes and see if it is separated in latent space.
-    - [ ] It my help understand how PoolModel works and if it is able to separate classes in latent space.
-  - [ ] try similar thing with shallow setvae
+  - [x] make umap of arbitrary PoolModel on MNIST on E(x_i) and D(c) ... i.e. after pool encoder and after decoder (generator) before instance decoder
+    - [x] try to color it by classes and see if it is separated in latent space.
+    - [x] It my help understand how PoolModel works and if it is able to separate classes in latent space.
+      - results are really nice, i think Neural Statistician might be nice as well. to see if "c" is actually used for anything
+  - [ ] Neural Statistician
+  - [ ] SetVAE
+    - [ ] shallow 
+    - [ ] deep (think about this more)
 
 ## Todos 30.7.2026
 - [ ] Evaluation
   - [ ] mnist
-    - [y] neural statistician
-    - [y] poolmodel
+    - [x] neural statistician
+    - [x] poolmodel
     - [y] setvae
   - [ ] airplane
     - [ ] neural statistician
-    - [ ] poolmodel
-    - [ ] setvae
+    - [y] poolmodel
+    - [y] setvae
   - [ ] core5
-    - [ ] nerual statistician
-    - [ ] poolmodel
-    - [ ] setvae
+    - [y] nerual statistician
+    - [y] poolmodel
+    - [y] setvae
 
 ## Todos 24.7.2026
 - [x] MNIST - PM - Sinkhorn -- can not be loaded -> needs retraining :/
 - [ ] most likely all neural statisticians too
   - [ ] mnist
-    - [ ] l2
+    - [y] l2
     - [x] cd
     - [x] dcd
     - [x] sh
     - [x] mmd
   - [ ] airplane
     - [ ] l2
-    - [ ] cd
+    - [y] cd
     - [ ] dcd
     - [ ] sh
     - [ ] mmd
