@@ -10,6 +10,7 @@ using OrderedCollections
 using GenerativeMIL
 using Flux
 using CUDA
+using JLD2, JSON3
 using MLUtils
 
 dict2nt(x) = (; (Symbol(k) => v for (k, v) in x)...)
@@ -100,6 +101,13 @@ function main()
         val_prediction_dirname = joinpath(get(train_cfg, :model_dir, ""), get(train_cfg, :val_prediction_dirname, "val_predictions")),
     )
 
+    # save config as json
+    mkpath(train_kwargs.model_dir)
+    open(joinpath(train_kwargs.model_dir, "config.json"), "w") do io
+        JSON3.pretty(io, (;train_cfg=train_cfg, model_cfg=cfg[:model], data_cfg=data_cfg, train_kwargs=train_kwargs))
+    end
+
+    # Launcher handles config + dataloaders and passes resolved schedulers to train_model!.
     train_time = @elapsed result = train_model!(
         model,
         (train=dataloaders[:train], valid=dataloaders[:valid]),
@@ -108,6 +116,13 @@ function main()
         lr_scheduler = lr_scheduler,
         train_kwargs...
     );
+
+    # save model and opt state
+    model_state = Flux.state(result.model|>cpu);
+    opt_state = Flux.state(result.opt|>cpu);
+    model_state_dir = joinpath(train_kwargs.model_dir, "model_state")
+    mkpath(model_state_dir)
+    jldsave(joinpath(model_state_dir, "model_state_final.jld2"), model_state = model_state, opt_state = opt_state)
 
     _device = (train_kwargs.use_gpu && CUDA.functional()) ? cu : cpu
     out_final  = reconstruction_check(result.model, dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)

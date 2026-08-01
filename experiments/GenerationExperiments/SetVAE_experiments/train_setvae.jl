@@ -10,6 +10,7 @@ using OrderedCollections
 using GenerativeMIL
 using Flux
 using CUDA
+using JLD2, JSON3
 using MLUtils
 
 dict2nt(x) = (; (Symbol(k) => v for (k, v) in x)...)
@@ -29,7 +30,7 @@ function main()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "test_configs", "cd_setvae_test.yml")
+            default = joinpath(@__DIR__, "configs", "test_configs", "cd_setvae_test1.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int
@@ -90,7 +91,7 @@ function main()
 
     train_kwargs = (; 
         use_gpu = get(train_cfg, :use_gpu, true),
-        model_dir = get(train_cfg, :model_dir, datadir("experiments", "setvae_modelnet", "seed=$(args[:seed])")),
+        model_dir = get(train_cfg, :model_dir, datadir("experiments", "setvae", "seed=$(args[:seed])")),
         verbose = get(train_cfg, :verbose, false),
         valid_check_interval = get(train_cfg, :valid_check_interval, 1000),
         validation_check_after_epoch = get(train_cfg, :validation_check_after_epoch, false),
@@ -107,6 +108,12 @@ function main()
         val_prediction_dirname = joinpath(get(train_cfg, :model_dir, ""), get(train_cfg, :val_prediction_dirname, "val_predictions")),
     )
 
+    # save config as json
+    mkpath(train_kwargs.model_dir)
+    open(joinpath(train_kwargs.model_dir, "config.json"), "w") do io
+        JSON3.pretty(io, (;train_cfg=train_cfg, model_cfg=cfg[:model], data_cfg=data_cfg, train_kwargs=train_kwargs))
+    end
+
     # Launcher handles config + dataloaders and passes resolved schedulers to train_model!.
     train_time = @elapsed result = train_model!(
         model,
@@ -117,6 +124,13 @@ function main()
         lr_scheduler = lr_scheduler,
         train_kwargs...
     );
+
+    # save model and opt state
+    model_state = Flux.state(result.model|>cpu);
+    opt_state = Flux.state(result.opt|>cpu);
+    model_state_dir = joinpath(train_kwargs.model_dir, "model_state")
+    mkpath(model_state_dir)
+    jldsave(joinpath(model_state_dir, "model_state_final.jld2"), model_state = model_state, opt_state = opt_state)
 
     _device = (train_kwargs.use_gpu && CUDA.functional()) ? cu : cpu
     out_final  = reconstruction_check(result.model, dataloaders[:test], loss_function; device=_device, log_results=train_kwargs.validation_verbose, return_cpu=true)
