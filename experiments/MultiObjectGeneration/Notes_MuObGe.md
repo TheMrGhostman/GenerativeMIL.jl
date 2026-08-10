@@ -297,6 +297,34 @@ slot 2 -> closest ground truth: class 7 (gt position 4) | L2 dist 0.392
 slot 4 -> closest ground truth: class 1 (gt position 1) | L2 dist 2.035
 slot 8 -> closest ground truth: class 2 (gt position 3) | L2 dist 0.511
 slot 12 -> closest ground truth: class 1 (gt position 2) | L2 dist 1.959
+
+
+
+x̂_gen, logits_gen = generate(model, 200; m_z=args.m_z)
+collapse_dists = Float32[]
+for b in 1:size(x̂_gen, 3)
+    S = x̂_gen[:, :, b]
+    for i in 1:size(S, 2), j in i+1:size(S, 2)
+        push!(collapse_dists, sqrt(sum(abs2, S[:, i] .- S[:, j])))
+    end
+end
+println("\nMean pairwise slot distance (unconditional generation): ", mean(collapse_dists), " (near 0 => collapse)")
+
+julia> for b in 1:10
+           active = findall(vec(logits_gen[1, :, b]) .> 0)
+           classes = [nearest_class(x̂_gen[:, s, b], μs_valid, ys_valid) for s in active]
+           println("sample $b -> $(sort(classes))")
+       end
+sample 1 -> [0, 9, 9]
+sample 2 -> [2, 4, 4, 7, 7, 8, 9]
+sample 3 -> [8, 9]
+sample 4 -> [2, 4, 4, 4]
+sample 5 -> [0, 0, 0, 0, 2, 4, 6, 8, 9]
+sample 6 -> [5, 5, 6]
+sample 7 -> [4, 4, 6, 6, 8, 8, 9]
+sample 8 -> [1, 2, 4, 8, 9]
+sample 9 -> [0, 0, 0, 0, 1, 2, 3, 3, 4, 5, 9, 9]
+sample 10 -> [0, 0, 0, 2, 3, 3, 3, 4, 5, 6, 8, 8]
 ~~~
 
 
@@ -450,4 +478,71 @@ slot 5 -> closest ground truth: class 1 (gt position 2) | L2 dist 1.137
 slot 9 -> closest ground truth: class 1 (gt position 1) | L2 dist 2.762
 slot 10 -> closest ground truth: class 7 (gt position 4) | L2 dist 2.151
 slot 12 -> closest ground truth: class 2 (gt position 3) | L2 dist 1.544
+~~~
+
+#### 200 epochs (not working as intended now)
+
+~~~julia
+Epoch 200 | train: (ℒ = 2.9667149f0, ℒ_rec = 2.1799822f0, ℒ_exist = 0.39321414f0, ℒ_kld = 0.030456733f0, β = 0.01f0, matched_frac = 0.65494794f0)
+
+julia> for slot in 1:N_MAX
+           exist_prob = round(Flux.sigmoid(logits_dup[1, slot, 1]); digits=2)
+           pred_class = nearest_class(x̂_dup[:, slot, 1], μs_valid, ys_valid)
+           if haskey(matched_gt_for_slot, slot)
+               gt = matched_gt_for_slot[slot]
+               gt_class = ys_valid[dup_idx[gt]]
+               dist = round(sqrt(sum(abs2, x̂_dup[:, slot, 1] .- x_dup[:, gt, 1])); digits=3)
+               println("slot $slot [MATCHED,   existence=$exist_prob] -> gt class $gt_class | nearest-neighbor predicted class $pred_class | L2 dist $dist")
+           else
+               println("slot $slot [unmatched, existence=$exist_prob] -> nearest-neighbor predicted class $pred_class (no ground truth to compare against)")
+           end
+       end
+slot 1 [unmatched, existence=0.22] -> nearest-neighbor predicted class 1 (no ground truth to compare against)
+slot 2 [unmatched, existence=0.49] -> nearest-neighbor predicted class 5 (no ground truth to compare against)
+slot 3 [unmatched, existence=0.43] -> nearest-neighbor predicted class 7 (no ground truth to compare against)
+slot 4 [unmatched, existence=0.08] -> nearest-neighbor predicted class 2 (no ground truth to compare against)
+slot 5 [MATCHED,   existence=0.51] -> gt class 1 | nearest-neighbor predicted class 1 | L2 dist 1.199
+slot 6 [unmatched, existence=0.7] -> nearest-neighbor predicted class 1 (no ground truth to compare against)
+slot 7 [unmatched, existence=0.15] -> nearest-neighbor predicted class 8 (no ground truth to compare against)
+slot 8 [MATCHED,   existence=0.57] -> gt class 1 | nearest-neighbor predicted class 1 | L2 dist 1.634
+slot 9 [unmatched, existence=0.65] -> nearest-neighbor predicted class 2 (no ground truth to compare against)
+slot 10 [MATCHED,   existence=0.65] -> gt class 7 | nearest-neighbor predicted class 7 | L2 dist 1.162
+slot 11 [unmatched, existence=0.14] -> nearest-neighbor predicted class 2 (no ground truth to compare against)
+slot 12 [MATCHED,   existence=0.97] -> gt class 2 | nearest-neighbor predicted class 2 | L2 dist 1.38
+
+julia> 
+
+julia> σ.(logits_dup) .>= 0.5
+1×12×1 BitArray{3}:
+[:, :, 1] =
+ 0  0  0  0  1  1  0  1  1  1  0  1
+
+julia> sum(σ.(logits_dup) .>= 0.5)
+6
+
+julia> active_slots = findall(vec(σ.(logits_dup[1, :, 1]) .>= 0.5f0))
+6-element Vector{Int64}:
+  5
+  6
+  8
+  9
+ 10
+ 12
+
+julia> println("\nThreshold-only view: $(length(active_slots))/$N_MAX slots predicted active (existence >= 0.5), vs $(length(dup_idx)) true objects")
+
+Threshold-only view: 6/12 slots predicted active (existence >= 0.5), vs 4 true objects
+
+julia> for slot in active_slots
+           gt_dists = [sqrt(sum(abs2, x̂_dup[:, slot, 1] .- x_dup[:, g, 1])) for g in 1:length(dup_idx)]
+           closest_gt = argmin(gt_dists)
+           closest_gt_class = ys_valid[dup_idx[closest_gt]]
+           println("slot $slot -> closest ground truth: class $closest_gt_class (gt position $closest_gt) | L2 dist $(round(gt_dists[closest_gt]; digits=3))")
+       end
+slot 5 -> closest ground truth: class 1 (gt position 2) | L2 dist 1.199
+slot 6 -> closest ground truth: class 1 (gt position 1) | L2 dist 1.706
+slot 8 -> closest ground truth: class 1 (gt position 1) | L2 dist 1.634
+slot 9 -> closest ground truth: class 2 (gt position 3) | L2 dist 2.788
+slot 10 -> closest ground truth: class 7 (gt position 4) | L2 dist 1.162
+slot 12 -> closest ground truth: class 2 (gt position 3) | L2 dist 1.38
 ~~~
