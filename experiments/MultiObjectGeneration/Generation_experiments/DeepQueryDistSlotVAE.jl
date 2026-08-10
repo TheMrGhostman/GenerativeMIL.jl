@@ -16,11 +16,18 @@ using GenerativeMIL
 import GenerativeMIL: elbo_with_logging, optim_step, valid_step
 
 # =====================================================================================
-# Outer-set-only prototype: latent -> {ẑ₁,...,ẑ_n}, using pretrained per-digit VAE
-# embeddings (VAE_pretrain/train_vae_images.jl) as stand-in "objects". The hierarchy
-# (inner point-cloud decoder) is not involved here -- this only tests whether a
-# DETR-style fixed-learned-query decoder can reproduce a *distinct* set of embeddings,
-# including true duplicates, from one global code. See CLAUDE.md ("Model A").
+# Combines the two ablations so far: sampled, input-conditioned queries (third.jl,
+# QueryDistSlotVAE) + a DEEPER decoder (second_test.jl, DeepSlotQueryVAE) -- n_layers
+# rounds of (self-attention among slots, cross-attention to Z) instead of just one round,
+# giving the sampled slots more iterations to negotiate/specialize before being read out.
+#
+#   h -> Dense -> SplitLayer -> (μ_q, Σ_q) [per slot] -> reparameterize -> Dense -> slots
+#   slots -> [self-attn -> cross-attn(Z)] x n_layers -> output/existence heads
+#
+# Same open issues as third.jl still apply here, unchanged by depth:
+#   - no KL / regularization term on queries_dist (Σ_q can shrink toward 0 unopposed)
+#   - generate() has no real `h` to condition on; approximated by reusing the freshly
+#     sampled `Z` as a stand-in (real train/generation mismatch, see third.jl header)
 # =====================================================================================
 
 const EMBED_RUN_ID = 394507 # z_dim = 8 VAE pretrain run
@@ -30,16 +37,15 @@ data = load(datadir("MultiObjectGeneration", "vae_mnist_$(EMBED_RUN_ID)", "predi
 const EMBED_DIM = size(μs, 1)
 
 Random.seed!(20260810)
-perm = randperm(length(ys));
+perm = randperm(length(ys))
 n_valid_pool = 6000
 valid_idx, train_idx = perm[1:n_valid_pool], perm[n_valid_pool+1:end]
 μs_train, ys_train = μs[:, train_idx], ys[train_idx]
 μs_valid, ys_valid = μs[:, valid_idx], ys[valid_idx]
 
 # -------------------------------------------------------------------------------------
-# Synthetic bag ("outer set") sampling with controlled duplicate injection, so we can
-# check whether the model reproduces true duplicates (e.g. two "1"s) instead of
-# collapsing them onto a single point.
+# Synthetic bag ("outer set") sampling with controlled duplicate injection -- identical
+# to the other ablations.
 # -------------------------------------------------------------------------------------
 
 function sample_bag_indices(class_pool::Dict{Int,Vector{Int}};
@@ -86,28 +92,28 @@ dataloaders = (
 )
 
 # =====================================================================================
-# SlotQueryVAE -- DETR-style fixed-learned-query outer decoder.
-# Encodes a permutation-invariant bag of embeddings into one global code Z, decodes Z
-# into n_slots output embeddings via learned queries + self/cross attention. No per-slot
-# noise (that's the noise-seeded "Model B" ablation) -- symmetry is broken purely by the
-# distinct learned query vectors + self-attention among slots.
+# DeepQueryDistSlotVAE -- sampled, input-conditioned queries + a stacked decoder.
 # =====================================================================================
 
-struct SlotQueryVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, SAT<:MultiheadAttentionBlock,
-        CAT<:MultiheadAttentionBlock, OT<:Flux.Dense, EXT<:Flux.Dense, QT<:AbstractMatrix{<:AbstractFloat}}
+struct DeepQueryDistSlotVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, QP<:Flux.Dense, QD<:SplitLayer,
+        QT<:Flux.Dense, SAT<:MultiheadAttentionBlock, CAT<:MultiheadAttentionBlock, OT<:Flux.Dense, EXT<:Flux.Dense}
     encoder::E
-    prior::PT
+    prior::PT              # h -> (μ_z, Σ_z)
     z_to_hidden::ZT
-    self_attn::SAT
-    cross_attn::CAT
+    queries_prenet::QP      # "process h by dense layer"
+    queries_dist::QD        # "then by split layer" -- outputs (μ_q, Σ_q), flattened over n_slots*q_dim
+    queries_to_hidden::QT   # "transform queries by dense layer (similar to z_to_hidden)"
+    self_attns::Vector{SAT}
+    cross_attns::Vector{CAT}
     output_head::OT
     exist_head::EXT
-    queries::QT
+    n_slots::Int
+    q_dim::Int
 end
 
-Flux.@layer SlotQueryVAE
+Flux.@layer DeepQueryDistSlotVAE
 
-function SlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int; activation::Function=relu)
+function DeepQueryDistSlotVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int, q_dim::Int, n_layers::Int; activation::Function=relu)
     prepool = Flux.Dense(embed_dim, hidden_dim, activation)
     pooling = PMA(1, hidden_dim, heads)
     postpool = Flux.Dense(hidden_dim, hidden_dim, activation)
@@ -116,48 +122,67 @@ function SlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int,
     prior = SplitLayer(hidden_dim, (z_dim, z_dim), (identity, Flux.softplus))
     z_to_hidden = Flux.Dense(z_dim, hidden_dim)
 
-    # standard (non-slot) attention on both sides: self_attn is plain self-attention
-    # among same-size slots, cross_attn broadcasts the single-token Z into every slot
-    self_attn = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
-    cross_attn = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
+    queries_prenet = Flux.Dense(hidden_dim, hidden_dim, activation)
+    queries_dist = SplitLayer(hidden_dim, (n_slots * q_dim, n_slots * q_dim), (identity, Flux.softplus))
+    queries_to_hidden = Flux.Dense(q_dim, hidden_dim)
+
+    self_attns = [MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention) for _ in 1:n_layers]
+    cross_attns = [MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention) for _ in 1:n_layers]
 
     output_head = Flux.Dense(hidden_dim, embed_dim)
     exist_head = Flux.Dense(hidden_dim, 1)
 
-    queries = randn(Float32, hidden_dim, n_slots)
-
-    return SlotQueryVAE(encoder, prior, z_to_hidden, self_attn, cross_attn, output_head, exist_head, queries)
+    return DeepQueryDistSlotVAE(encoder, prior, z_to_hidden, queries_prenet, queries_dist, queries_to_hidden,
+        self_attns, cross_attns, output_head, exist_head, n_slots, q_dim)
 end
 
-function (m::SlotQueryVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArray{Bool},Nothing}=nothing) where T <: AbstractFloat
+function (m::DeepQueryDistSlotVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArray{Bool},Nothing}=nothing) where T <: AbstractFloat
     bs = size(x, ndims(x))
-    h = m.encoder(x, x_mask)                # (hidden, 1, bs)
-    μ_z, Σ_z = m.prior(h)                     # (z_dim, 1, bs) each
+    h = m.encoder(x, x_mask)                        # (hidden, 1, bs)
+    μ_z, Σ_z = m.prior(h)                             # (z_dim, 1, bs) each
     z = μ_z + Σ_z .* MLUtils.randn_like(μ_z)
-    Z = m.z_to_hidden(z)                      # (hidden, 1, bs)
+    Z = m.z_to_hidden(z)                              # (hidden, 1, bs)
 
-    slots = repeat(m.queries, 1, 1, bs)       # (hidden, n_slots, bs)
-    slots = m.self_attn(slots)
-    slots = m.cross_attn(slots, Z)
+    hq = m.queries_prenet(h)                          # (hidden, 1, bs)
+    μ_q_flat, Σ_q_flat = m.queries_dist(hq)           # (n_slots*q_dim, 1, bs) each
+    μ_q = reshape(μ_q_flat, m.q_dim, m.n_slots, bs)
+    Σ_q = reshape(Σ_q_flat, m.q_dim, m.n_slots, bs)
+    queries = μ_q + Σ_q .* MLUtils.randn_like(μ_q)    # (q_dim, n_slots, bs) -- resampled every forward pass
+    slots = m.queries_to_hidden(queries)               # (hidden, n_slots, bs)
 
-    x̂ = m.output_head(slots)                   # (embed_dim, n_slots, bs)
-    logits_exist = m.exist_head(slots)          # (1, n_slots, bs)
+    for (sa, ca) in zip(m.self_attns, m.cross_attns)
+        slots = sa(slots)
+        slots = ca(slots, Z)
+    end
+
+    x̂ = m.output_head(slots)                           # (embed_dim, n_slots, bs)
+    logits_exist = m.exist_head(slots)                  # (1, n_slots, bs)
     return x̂, logits_exist, μ_z, Σ_z
 end
 
-function generate(m::SlotQueryVAE, n_samples::Int)
+function generate(m::DeepQueryDistSlotVAE, n_samples::Int)
     z_dim = size(m.prior.μ.weight, 1)
     z = randn(Float32, z_dim, 1, n_samples)
     Z = m.z_to_hidden(z)
-    slots = repeat(m.queries, 1, 1, n_samples)
-    slots = m.self_attn(slots)
-    slots = m.cross_attn(slots, Z)
+
+    # no real bag to encode here -> no real h. Approximate by reusing Z (see header note).
+    hq = m.queries_prenet(Z)
+    μ_q_flat, Σ_q_flat = m.queries_dist(hq)
+    μ_q = reshape(μ_q_flat, m.q_dim, m.n_slots, n_samples)
+    Σ_q = reshape(Σ_q_flat, m.q_dim, m.n_slots, n_samples)
+    queries = μ_q + Σ_q .* MLUtils.randn_like(μ_q)
+    slots = m.queries_to_hidden(queries)
+
+    for (sa, ca) in zip(m.self_attns, m.cross_attns)
+        slots = sa(slots)
+        slots = ca(slots, Z)
+    end
     x̂ = m.output_head(slots)
     logits_exist = m.exist_head(slots)
     return x̂, logits_exist
 end
 
-# --- Hungarian-matched reconstruction + existence loss --------------------------------
+# --- Hungarian-matched reconstruction + existence loss (identical to the other files) -
 
 _pairwise_sqeuclidean(a::AbstractMatrix{T}, b::AbstractMatrix{T}) where T<:AbstractFloat = begin
     a2 = sum(abs2, a, dims=1)
@@ -210,8 +235,9 @@ function hungarian_matching_loss(x̂::AbstractArray{T,3}, logits_exist::Abstract
 end
 
 # --- training interface: same elbo/optim_step/valid_step pattern as src/models --------
+# NOTE: no KL / regularization term on queries_dist below -- same open issue as third.jl.
 
-function elbo_with_logging(model::SlotQueryVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...) where T <: AbstractFloat
+function elbo_with_logging(model::DeepQueryDistSlotVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...) where T <: AbstractFloat
     x̂, logits_exist, μ_z, Σ_z = model(x, x_mask)
     ℒ_rec, ℒ_exist, matched_frac = hungarian_matching_loss(x̂, logits_exist, x, x_mask)
     ℒ_kld = kl_divergence(μ_z, Σ_z)
@@ -219,7 +245,7 @@ function elbo_with_logging(model::SlotQueryVAE, x::AbstractArray{T,3}, x_mask::A
     return ℒ, (ℒ=ℒ, ℒ_rec=ℒ_rec, ℒ_exist=ℒ_exist, ℒ_kld=ℒ_kld, β=β, matched_frac=matched_frac)
 end
 
-function optim_step(model::SlotQueryVAE, batch::Tuple, opt::NamedTuple; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
+function optim_step(model::DeepQueryDistSlotVAE, batch::Tuple, opt::NamedTuple; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
     x, x_mask = batch
     (loss, logs), (∇model, ∇x) = Zygote.withgradient(model, x) do m, xx
         elbo_with_logging(m, xx, x_mask; β=β, λ_exist=λ_exist, kwargs...)
@@ -228,7 +254,7 @@ function optim_step(model::SlotQueryVAE, batch::Tuple, opt::NamedTuple; β::Abst
     return model, opt, logs
 end
 
-function valid_step(model::SlotQueryVAE, dataloader; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
+function valid_step(model::DeepQueryDistSlotVAE, dataloader; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
     ℒ, ℒ_rec, ℒ_exist, ℒ_kld, matched = 0f0, 0f0, 0f0, 0f0, 0f0
     for (x, x_mask) in dataloader
         loss, logs = elbo_with_logging(model, x, x_mask; β=β, λ_exist=λ_exist, kwargs...)
@@ -248,12 +274,14 @@ args = (;
     heads = 4,
     n_slots = N_MAX,
     z_dim = 16,
+    q_dim = 16,
+    n_layers = 3,  # NEW: number of stacked self+cross-attention rounds
     β = 0.01f0,
     λ_exist = 2f0,
     epochs = 100,
 )
 
-model = SlotQueryVAE(args.embed_dim, args.hidden_dim, args.heads, args.n_slots, args.z_dim);
+model = DeepQueryDistSlotVAE(args.embed_dim, args.hidden_dim, args.heads, args.n_slots, args.z_dim, args.q_dim, args.n_layers);
 opt = Optimisers.setup(AdamW(; eta=1e-3, lambda=1e-4), model);
 
 for epoch in 1:args.epochs
@@ -289,9 +317,6 @@ x̂_dup, logits_dup, _, _ = model(x_dup, mask_dup)
 mp, mg = hungarian_match(x̂_dup, x_dup, mask_dup)
 matched_gt_for_slot = Dict(zip(mp[1], mg[1]))
 
-# print every slot, not just the matched ones -- the existence head is trained on all
-# 12 (4 "real", 8 "not real"), so this is the only way to see whether the 8 unmatched
-# slots actually learned to suppress themselves rather than hallucinating extra objects
 println("\nAll $N_MAX slots (existence = σ(logit); >0.5 means the model thinks this slot is real):")
 for slot in 1:N_MAX
     exist_prob = round(Flux.sigmoid(logits_dup[1, slot, 1]); digits=2)
