@@ -14,14 +14,15 @@ function (vae::VariationalAutoencoder)(x::AbstractArray{T}) where T <: AbstractF
     return x̂
 end
 
-function elbo_with_logging(vae::VariationalAutoencoder, x::AbstractArray{T}; β::Float32=1f0, logpdf::Function=Flux.Losses.mse) where T <: AbstractFloat
+function elbo_with_logging(vae::VariationalAutoencoder, x::AbstractArray{T}, logpdf::Function=Flux.Losses.mse; β::AbstractFloat=1f0) where T <: AbstractFloat
     μ, Σ = vae.encoder(x)
     z = μ + Σ .* MLUtils.randn_like(μ)
     x̂ = vae.decoder(z)
 
-    ℒ_rec = logpdf(x, x̂)
+    ℒ_rec = logpdf(x̂, x)
     ℒ_kld = kl_divergence(μ, Σ)
-    return ℒ_rec + β * ℒ_kld, (ℒ_rec = ℒ_rec, ℒ_kld = ℒ_kld, β = β) 
+    ℒ = ℒ_rec + β * ℒ_kld
+    return ℒ, (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_kld = ℒ_kld, β = β) 
 end
 
 function VariationalAutoencoder(in_dim::Int, z_dim::Int, out_dim::Int; hidden::Int=32, depth::Int=1, activation::Function=identity)
@@ -56,7 +57,7 @@ function optim_step(model::VariationalAutoencoder, batch::AbstractArray{Float32}
     batch = batch |> device
     # 2) compute gradients
     (loss, logs), (∇model, ∇data) = Zygote.withgradient(model, batch) do m, x
-        elbo_with_logging(m, x; β = β, logpdf=logpdf)
+        elbo_with_logging(m, x, logpdf; β = β)
     end
     # 3) update weights
     opt, model = Optimisers.update(opt, model, ∇model)
@@ -68,7 +69,7 @@ function valid_step(model::VariationalAutoencoder, dataloader::DataLoader, logpd
     ℒ, ℒ_rec, ℒ_kld = 0, 0, 0
     for batch in dataloader
         x = batch |> device
-        loss, logs = elbo_with_logging(model, x; β = β, logpdf=logpdf)
+        loss, logs = elbo_with_logging(model, x, logpdf; β = β)
         ℒ += loss
         ℒ_rec += logs.ℒ_rec
         ℒ_kld += logs.ℒ_kld
