@@ -19,9 +19,8 @@ function (m::AbstractPooling)(x::AbstractArray{T, 3}; squeeze::Bool=false) where
     # if true (d, 1, BS) -> (d, BS)
     h = (size(h, 2) == 1 && squeeze) ? dropdims(h, dims=2) : h 
 end
-
-
-struct PMA <: AbstractPooling 
+ 
+struct PMA<: AbstractPooling 
     # known as Pooling by Multihead Attention 
     # paper: Set Transformer: A Framework for Attention-based Permutation-Invariant Neural Networks
     # https://arxiv.org/pdf/1810.00825
@@ -36,8 +35,8 @@ function (m::PMA)(x::AbstractArray{T, 3}, x_mask::Mask=nothing; squeeze::Bool=fa
     h = (size(h, 2) == 1 && squeeze) ? dropdims(h, dims=2) : h 
 end
 
-function PMA(m::Int, hidden_dim::Int, heads::Int)
-    PMA(InducedSetAttentionHalfBlock(m, hidden_dim, heads))
+function PMA(m::Int, hidden_dim::Int, heads::Int; attention_fn::Function=attention)
+    PMA(InducedSetAttentionHalfBlock(m, hidden_dim, heads; attention_fn=attention_fn))
 end
 
 masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2) # TODO find if i did not figure this out anywhere

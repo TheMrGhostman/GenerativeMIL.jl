@@ -35,7 +35,7 @@ end
 Flux.@layer MultiheadAttentionBlock
 
 """
-    MultiheadAttentionBlock(hidden_dim, heads, activation=relu; attention_fn=slot_attention)
+    MultiheadAttentionBlock(hidden_dim, heads, activation=relu; attention_fn::Function=attention)
 
 Create a `MultiheadAttentionBlock` with hidden size `hidden_dim` and `heads` attention heads.
 The feed-forward branch uses two dense layers with optional `activation` in the first layer.
@@ -49,7 +49,7 @@ The feed-forward branch uses two dense layers with optional `activation` in the 
 # Returns
 - `MultiheadAttentionBlock`: initialized attention block module.
 """
-function MultiheadAttentionBlock(hidden_dim::Int, heads::Int; activation=relu, attention_fn=slot_attention)
+function MultiheadAttentionBlock(hidden_dim::Int, heads::Int; activation=relu, attention_fn::Function=attention)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
     mh = MultiheadAttention(hidden_dim, hidden_dim, heads, attention_fn)
     ff = Flux.Chain(
@@ -243,8 +243,8 @@ Construct a half ISAB block with `n_slots` inducing vectors.
 # Returns
 - `InducedSetAttentionHalfBlock`: initialized half-ISAB module.
 """
-function InducedSetAttentionHalfBlock(n_slots::Int, hidden_dim::Int, heads::Int)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention)
+function InducedSetAttentionHalfBlock(n_slots::Int, hidden_dim::Int, heads::Int; attention_fn::Function=slot_attention)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention_fn)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     return InducedSetAttentionHalfBlock(mab1, I)
 end
