@@ -2,65 +2,71 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
+
+
+
+
 ## Todos 1.8.2026
 #### saving update 
 - [x] update saving functions. 
   - [x] save config as JSON or YAML into results folder, so it is easier to load it later and run evaluation script on it. 
     - It will also make results more reproducible, because we will know exactly what config was used for training.
   - [x] save model as Flux.state and .jld2, so it is easier to load it later. This is also reason for saving config as JSON or YAML as it will be easier to reconstruct model from config and load state from .jld2 file.
-- [ ] think about .BSON 
+- [x] think about .BSON -> this would be really good but i will not use it now. 
 #### Visualization and small experiment
   - [x] make umap of arbitrary PoolModel on MNIST on E(x_i) and D(c) ... i.e. after pool encoder and after decoder (generator) before instance decoder
     - [x] try to color it by classes and see if it is separated in latent space.
     - [x] It my help understand how PoolModel works and if it is able to separate classes in latent space.
       - results are really nice, i think Neural Statistician might be nice as well. to see if "c" is actually used for anything
-  - [ ] Neural Statistician
-  - [ ] SetVAE
-    - [ ] shallow 
-    - [ ] deep (think about this more)
+  - [x] Neural Statistician
+    - [x] cd -> does not work. some classes are separete but mostly they overlay massively. that is not how latent space should look like.
+    - [x] l2 -> obviously much worse then NS-cd and even more then PoolModel.
+  - [x] SetVAE
+    - [x] shallow 
+    - [?] deep (think about this more)
+#### retrain PoolModel on core5
+- [x] poolmodel core5 
 
 ## Todos 30.7.2026
-- [ ] Evaluation
-  - [ ] mnist
+- [x] Evaluation (reconstruction) 
+  - [x] mnist
     - [x] neural statistician
     - [x] poolmodel
-    - [y] setvae
-  - [ ] airplane
-    - [ ] neural statistician
-    - [y] poolmodel
-    - [y] setvae
-  - [ ] core5
-    - [y] nerual statistician
-    - [y] poolmodel
-    - [y] setvae
+    - [x] setvae
+  - [x] airplane
+    - [x] neural statistician
+    - [x] poolmodel
+    - [x] setvae
+  - [x] core5
+    - [x] nerual statistician
+    - [x] poolmodel
+    - [x] setvae
 
 ## Todos 24.7.2026
 - [x] MNIST - PM - Sinkhorn -- can not be loaded -> needs retraining :/
-- [ ] most likely all neural statisticians too
-  - [ ] mnist
-    - [y] l2
+- [x] most likely all neural statisticians too
+  - [x] mnist
+    - [x] l2
     - [x] cd
     - [x] dcd
     - [x] sh
     - [x] mmd
-  - [ ] airplane
-    - [ ] l2
-    - [y] cd
-    - [ ] dcd
-    - [ ] sh
-    - [ ] mmd
-  - [ ] core5
-    - [ ] l2
-    - [ ] cd
-    - [ ] dcd
-    - [ ] sh
-    - [ ] mmd
+  - [] airplane
+    - [x] l2
+    - [x] cd
+    - [x] dcd
+    - [x] sh
+    - [x] mmd
+  - [x] core5
+    - [x] cd
+    - [x] l2
+    - [ ] dcd (?)
 
 ## Todos 21.7.2026
-- [ ] try to plot UMAP from top (the deepest) layer for encoder, to see if classes are separated somehow in latent space
+- [x] try to plot UMAP from top (the deepest) layer for encoder, to see if classes are separated somehow in latent space
 - [ ] try "guided" generation of samples 
   - [ ] if umap and separation works then i can use centroids of classes in latent space to generate samples from specific class, which may be interesting for MNIST and ShapeNetCore (core5)
-    - [ ] mnist
+    - [x] mnist
     - [ ] core5
 #### reconstruction evaluation copyed from 7.7.2026
 - [x] evaluation scripts
@@ -85,11 +91,11 @@
         - [x] cyclical
         - [x] sigmoidal
         - [ ] linear (?)
-  - [ ] airplane
+  - [x] airplane
     - [x] poolmodel
       - [x] dcd
     - [x] neuralstatistician
-      - [x] dcd
+      - [x] dcd (need to retrain 1.8.2026)
     - [ ] setvae
       - [ ] dcd
         - [x] cyclical (1-5 done, 6-10 in progress)
@@ -115,7 +121,7 @@
     - [x] poolmodel
       - [x] cd 
       - [x] mmd
-      - [ ] sh
+      - [x] sh
     - [x] neuralstatistician
       - [x] cd
       - [x] mmd
