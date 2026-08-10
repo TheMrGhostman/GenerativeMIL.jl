@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "be7cede3cce2ded88d159cbdcdc81e5f890d9ee5"
+project_hash = "b8b04236381da7d2076dab62157d3d249fe36f9d"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -623,7 +623,7 @@ uuid = "096a3bc2-3ced-46d0-87f4-dd12716f4bfc"
 version = "1.1.1"
 
 [[deps.GenerativeMIL]]
-deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "ChainRulesCore", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "OptimalTransport", "Optimisers", "OrderedCollections", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "UnicodePlots", "ValueHistories", "YAML", "Zygote", "cuDNN"]
+deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "ChainRulesCore", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "JLD2", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "OptimalTransport", "Optimisers", "OrderedCollections", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "UnicodePlots", "ValueHistories", "YAML", "Zygote", "cuDNN"]
 path = "."
 uuid = "f587a668-c5e7-5861-9bd6-a75883e5a803"
 version = "1.1.2"
@@ -656,6 +656,12 @@ deps = ["DataStructures", "OrderedCollections"]
 git-tree-sha1 = "e557591ce208361842641a35222814c6245b2044"
 uuid = "f9ccea15-0695-44b9-8113-df7c26ae4fa9"
 version = "2.2.3"
+
+[[deps.Hungarian]]
+deps = ["LinearAlgebra", "SparseArrays"]
+git-tree-sha1 = "4f84db415ccb0ea750b10738bfecdd55388fd1b6"
+uuid = "e91730f6-4275-51fb-a7a0-7064cfbd3b39"
+version = "0.7.0"
 
 [[deps.Hwloc_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "XML2_jll", "Xorg_libpciaccess_jll"]
