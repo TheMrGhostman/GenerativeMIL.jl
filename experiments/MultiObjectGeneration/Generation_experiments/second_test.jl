@@ -256,13 +256,13 @@ args = (;
     z_dim = 16,
     m_z = 3,       # NEW: number of latent summary tokens (was implicitly 1 in first_test.jl)
     n_layers = 3,  # NEW: number of stacked self+cross-attention rounds (was implicitly 1)
-    β = 0.1f0,
-    λ_exist = 1f0,
-    epochs = 60,
+    β = 0.01f0,
+    λ_exist = 2f0,
+    epochs = 100,
 )
 
 model = DeepSlotQueryVAE(args.embed_dim, args.hidden_dim, args.heads, args.n_slots, args.z_dim, args.m_z, args.n_layers)
-opt = Optimisers.setup(AdamW(; eta=1e-3, lambda=1e-4), model)
+opt = Optimisers.setup(AdamW(; eta=1e-3, lambda=1e-4), model);
 
 for epoch in 1:args.epochs
     logs = nothing
@@ -308,6 +308,24 @@ for slot in 1:N_MAX
     else
         println("slot $slot [unmatched, existence=$exist_prob] -> nearest-neighbor predicted class $pred_class (no ground truth to compare against)")
     end
+end
+
+σ.(logits_dup) .>= 0.5
+sum(σ.(logits_dup) .>= 0.5)
+
+# 1b) Threshold-only view: ignore Hungarian matching entirely and just take whichever
+# slots the model itself thinks are real (existence >= 0.5), then find each one's closest
+# ground-truth element directly. This is a different check than the matched view above --
+# Hungarian always forces a clean one-to-one assignment, so it can hide failure modes like
+# several "active" slots collapsing onto the same object, or the model activating a
+# different number of slots than the true cardinality (4 here).
+active_slots = findall(vec(σ.(logits_dup[1, :, 1]) .>= 0.5f0))
+println("\nThreshold-only view: $(length(active_slots))/$N_MAX slots predicted active (existence >= 0.5), vs $(length(dup_idx)) true objects")
+for slot in active_slots
+    gt_dists = [sqrt(sum(abs2, x̂_dup[:, slot, 1] .- x_dup[:, g, 1])) for g in 1:length(dup_idx)]
+    closest_gt = argmin(gt_dists)
+    closest_gt_class = ys_valid[dup_idx[closest_gt]]
+    println("slot $slot -> closest ground truth: class $closest_gt_class (gt position $closest_gt) | L2 dist $(round(gt_dists[closest_gt]; digits=3))")
 end
 
 # 2) Slot collapse check: mean pairwise distance among the n_slots outputs (unconditional)
