@@ -20,7 +20,7 @@ import GenerativeMIL: elbo_with_logging, optim_step, valid_step
 # embeddings (VAE_pretrain/train_vae_images.jl) as stand-in "objects". The hierarchy
 # (inner point-cloud decoder) is not involved here -- this only tests whether a
 # DETR-style fixed-learned-query decoder can reproduce a *distinct* set of embeddings,
-# including true duplicates, from one global code. See CLAUDE.md ("Model A").
+# including true duplicates, from one global code. See 
 # =====================================================================================
 
 const EMBED_RUN_ID = 394507 # z_dim = 8 VAE pretrain run

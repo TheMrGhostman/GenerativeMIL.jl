@@ -29,7 +29,6 @@ import GenerativeMIL: elbo_with_logging, optim_step, valid_step
 #      m_z summary tokens.
 # Struct is named DeepSlotQueryVAE (not SlotQueryVAE) so this file can be `include`d or
 # run in the same session as first_test.jl without a struct-redefinition clash.
-# See CLAUDE.md ("Model A") for the overall plan this sits under.
 # =====================================================================================
 
 const EMBED_RUN_ID = 394507 # z_dim = 8 VAE pretrain run

@@ -546,3 +546,15 @@ slot 9 -> closest ground truth: class 2 (gt position 3) | L2 dist 2.788
 slot 10 -> closest ground truth: class 7 (gt position 4) | L2 dist 1.162
 slot 12 -> closest ground truth: class 2 (gt position 3) | L2 dist 1.38
 ~~~
+
+### TODO: difference between SlotQueryVAE and shallow SetVAE? 
+- (?) look at difference between SlotQueryVAE and shallow SetVAE? 
+  - (?) SetVAE has slot attention and slot-wise latent - what is difference to SlotQueryVAE's attention
+  - (?) difference between slot-attention and PMA pooling
+- (?) look at difference between priors? 
+  - (?) learned prior querries (but fixed) vs learned mixture prior. What is theoretical difference?
+  - I know that PQ are fixed and MP are sampled. 
+  - Idea: samples from MP are iid and we do not influence sampling. learned PQ are probably strategicaly spread within space. 
+- (?) are those two models generally the same, with differences of existence prediction?
+  - when I thought about it now, it seems to be the same idea/set of ideas. But SlotQueryVAE has existence prediction on slots.  
+
