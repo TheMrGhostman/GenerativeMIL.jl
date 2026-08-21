@@ -19,7 +19,7 @@ function _nn_indices_clusters(x::AbstractArray{T,4}, y::AbstractArray{T,4}) wher
 end
 
 
-function chamfer_distance_pairwise_clusters(x::AbstractArray{T,4}, y::AbstractArray{T,4}; w1::T=one(T), w2::T=one(T); agg::Function=mean) where T<:AbstractFloat
+function chamfer_pairwise_distance(x::AbstractArray{T,4}, y::AbstractArray{T,4}; w1::T=one(T), w2::T=one(T); agg::Function=mean) where T<:AbstractFloat
     D, N, L, BS = size(x)
     _, _, M, _  = size(y)
 
