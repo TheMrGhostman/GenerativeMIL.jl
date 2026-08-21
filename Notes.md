@@ -3,6 +3,18 @@
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
 
+## Todos 20.8.2026
+- [ ] port DeepSlotQuerryVAE into GenerativeMIL
+- [x] implement gpu-ready cluster pairwise Chamfer Distance
+  - [x] do sanity check if reshapeing is the same as if i run it in nested for loops
+- [ ] download MNIST PC data into MainGPU PC
+- [ ] train HSVAE (specialized for gaussian clock)
+  - [x] implement hungarian matching with gpu pairwise evaluation for gaussian clock -> vit CPCD
+  - [x] implement forward and backward pass for HSVAE
+    - [x] it can be done via masking
+  - [ ] test shallow setvae if it is better then poolmodel? 
+    - attention mask would allowed me to compute everything at once but PoolModel is also option. 
+    - but when i use attention inside i can put it also on the outside. 
 
 
 

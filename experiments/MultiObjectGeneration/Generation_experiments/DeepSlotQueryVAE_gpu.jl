@@ -17,18 +17,19 @@ using GenerativeMIL
 import GenerativeMIL: elbo_with_logging, optim_step, valid_step
 
 # =====================================================================================
-# Combines the two ablations so far: sampled, input-conditioned queries (third.jl,
-# QueryDistSlotVAE) + a DEEPER decoder (second_test.jl, DeepSlotQueryVAE) -- n_layers
-# rounds of (self-attention among slots, cross-attention to Z) instead of just one round,
-# giving the sampled slots more iterations to negotiate/specialize before being read out.
-#
-#   h -> Dense -> SplitLayer -> (μ_q, Σ_q) [per slot] -> reparameterize -> Dense -> slots
-#   slots -> [self-attn -> cross-attn(Z)] x n_layers -> output/existence heads
-#
-# Same open issues as third.jl still apply here, unchanged by depth:
-#   - no KL / regularization term on queries_dist (Σ_q can shrink toward 0 unopposed)
-#   - generate() has no real `h` to condition on; approximated by reusing the freshly
-#     sampled `Z` as a stand-in (real train/generation mismatch, see third.jl header)
+# Same outer-set-only prototype as first_test.jl, but ablating two architecture ideas
+# discussed after that run:
+#   1) a DEEPER decoder: n_layers rounds of (self-attention among slots, cross-attention
+#      to the global code), instead of just one round -- gives slots more iterations to
+#      negotiate/specialize before being read out (this is what real DETR's 6-layer
+#      decoder is doing; a single layer is known to underperform).
+#   2) a TENSOR latent instead of a single vector: Z = {z1,...,z_mz} via PMA(m_z, ...)
+#      instead of PMA(1, ...). With m_z=1 cross-attention is degenerate (softmax over one
+#      key is always weight 1, so every slot gets an identical copy of Z); with m_z>1 it
+#      becomes real attention -- different slots can pull different combinations of the
+#      m_z summary tokens.
+# Struct is named DeepSlotQueryVAE (not SlotQueryVAE) so this file can be `include`d or
+# run in the same session as first_test.jl without a struct-redefinition clash.
 # =====================================================================================
 
 const EMBED_RUN_ID = 394507 # z_dim = 8 VAE pretrain run
@@ -46,7 +47,7 @@ valid_idx, train_idx = perm[1:n_valid_pool], perm[n_valid_pool+1:end]
 
 # -------------------------------------------------------------------------------------
 # Synthetic bag ("outer set") sampling with controlled duplicate injection -- identical
-# to the other ablations.
+# to first_test.jl.
 # -------------------------------------------------------------------------------------
 
 function sample_bag_indices(class_pool::Dict{Int,Vector{Int}};
@@ -93,39 +94,31 @@ dataloaders = (
 )
 
 # =====================================================================================
-# DeepQueryDistSlotVAE -- sampled, input-conditioned queries + a stacked decoder.
+# DeepSlotQueryVAE -- DETR-style fixed-learned-query decoder, deepened + multi-token Z.
 # =====================================================================================
 
-struct DeepQueryDistSlotVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, QP<:Flux.Dense, QD<:SplitLayer,
-        QT<:Flux.Dense, SAT<:MultiheadAttentionBlock, CAT<:MultiheadAttentionBlock, OT<:Flux.Dense, EXT<:Flux.Dense}
+struct DeepSlotQueryVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, SAT<:MultiheadAttentionBlock,
+        CAT<:MultiheadAttentionBlock, OT<:Flux.Dense, EXT<:Flux.Dense, QT<:AbstractMatrix{<:AbstractFloat}}
     encoder::E
-    prior::PT              # h -> (μ_z, Σ_z)
+    prior::PT
     z_to_hidden::ZT
-    queries_prenet::QP      # "process h by dense layer"
-    queries_dist::QD        # "then by split layer" -- outputs (μ_q, Σ_q), flattened over n_slots*q_dim
-    queries_to_hidden::QT   # "transform queries by dense layer (similar to z_to_hidden)"
     self_attns::Vector{SAT}
     cross_attns::Vector{CAT}
     output_head::OT
     exist_head::EXT
-    n_slots::Int
-    q_dim::Int
+    queries::QT
 end
 
-Flux.@layer DeepQueryDistSlotVAE
+Flux.@layer DeepSlotQueryVAE
 
-function DeepQueryDistSlotVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int, q_dim::Int, n_layers::Int; activation::Function=relu)
+function DeepSlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int, m_z::Int, n_layers::Int; activation::Function=relu)
     prepool = Flux.Dense(embed_dim, hidden_dim, activation)
-    pooling = PMA(1, hidden_dim, heads)
+    pooling = PMA(m_z, hidden_dim, heads) # m_z induced points -> Z is a set of m_z tokens, not one vector
     postpool = Flux.Dense(hidden_dim, hidden_dim, activation)
     encoder = PoolEncoder(prepool, pooling, postpool)
 
     prior = SplitLayer(hidden_dim, (z_dim, z_dim), (identity, Flux.softplus))
     z_to_hidden = Flux.Dense(z_dim, hidden_dim)
-
-    queries_prenet = Flux.Dense(hidden_dim, hidden_dim, activation)
-    queries_dist = SplitLayer(hidden_dim, (n_slots * q_dim, n_slots * q_dim), (identity, Flux.softplus))
-    queries_to_hidden = Flux.Dense(q_dim, hidden_dim)
 
     self_attns = [MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention) for _ in 1:n_layers]
     cross_attns = [MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention) for _ in 1:n_layers]
@@ -133,47 +126,34 @@ function DeepQueryDistSlotVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slo
     output_head = Flux.Dense(hidden_dim, embed_dim)
     exist_head = Flux.Dense(hidden_dim, 1)
 
-    return DeepQueryDistSlotVAE(encoder, prior, z_to_hidden, queries_prenet, queries_dist, queries_to_hidden,
-        self_attns, cross_attns, output_head, exist_head, n_slots, q_dim)
+    queries = randn(Float32, hidden_dim, n_slots)
+
+    return DeepSlotQueryVAE(encoder, prior, z_to_hidden, self_attns, cross_attns, output_head, exist_head, queries)
 end
 
-function (m::DeepQueryDistSlotVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArray{Bool},Nothing}=nothing) where T <: AbstractFloat
+function (m::DeepSlotQueryVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArray{Bool},Nothing}=nothing) where T <: AbstractFloat
     bs = size(x, ndims(x))
-    h = m.encoder(x, x_mask)                        # (hidden, 1, bs)
-    μ_z, Σ_z = m.prior(h)                             # (z_dim, 1, bs) each
+    h = m.encoder(x, x_mask)                # (hidden, m_z, bs)
+    μ_z, Σ_z = m.prior(h)                     # (z_dim, m_z, bs) each
     z = μ_z + Σ_z .* MLUtils.randn_like(μ_z)
-    Z = m.z_to_hidden(z)                              # (hidden, 1, bs)
+    Z = m.z_to_hidden(z)                      # (hidden, m_z, bs)
 
-    hq = m.queries_prenet(h)                          # (hidden, 1, bs)
-    μ_q_flat, Σ_q_flat = m.queries_dist(hq)           # (n_slots*q_dim, 1, bs) each
-    μ_q = reshape(μ_q_flat, m.q_dim, m.n_slots, bs)
-    Σ_q = reshape(Σ_q_flat, m.q_dim, m.n_slots, bs)
-    queries = μ_q + Σ_q .* MLUtils.randn_like(μ_q)    # (q_dim, n_slots, bs) -- resampled every forward pass
-    slots = m.queries_to_hidden(queries)               # (hidden, n_slots, bs)
-
+    slots = repeat(m.queries, 1, 1, bs)       # (hidden, n_slots, bs)
     for (sa, ca) in zip(m.self_attns, m.cross_attns)
         slots = sa(slots)
-        slots = ca(slots, Z)
+        slots = ca(slots, Z)                  # real (non-degenerate) attention when m_z > 1
     end
 
-    x̂ = m.output_head(slots)                           # (embed_dim, n_slots, bs)
-    logits_exist = m.exist_head(slots)                  # (1, n_slots, bs)
-    return x̂, logits_exist, μ_z, Σ_z, μ_q, Σ_q
+    x̂ = m.output_head(slots)                   # (embed_dim, n_slots, bs)
+    logits_exist = m.exist_head(slots)          # (1, n_slots, bs)
+    return x̂, logits_exist, μ_z, Σ_z
 end
 
-function generate(m::DeepQueryDistSlotVAE, n_samples::Int, device::Function=cpu)
+function generate(m::DeepSlotQueryVAE, n_samples::Int; m_z::Int)
     z_dim = size(m.prior.μ.weight, 1)
-    z = randn(Float32, z_dim, 1, n_samples) |> device # must match m's device, or z_to_hidden(z) errors on GPU
+    z = randn(Float32, z_dim, m_z, n_samples)
     Z = m.z_to_hidden(z)
-
-    # no real bag to encode here -> no real h. Approximate by reusing Z (see header note).
-    hq = m.queries_prenet(Z)
-    μ_q_flat, Σ_q_flat = m.queries_dist(hq)
-    μ_q = reshape(μ_q_flat, m.q_dim, m.n_slots, n_samples)
-    Σ_q = reshape(Σ_q_flat, m.q_dim, m.n_slots, n_samples)
-    queries = μ_q + Σ_q .* MLUtils.randn_like(μ_q)
-    slots = m.queries_to_hidden(queries)
-
+    slots = repeat(m.queries, 1, 1, n_samples)
     for (sa, ca) in zip(m.self_attns, m.cross_attns)
         slots = sa(slots)
         slots = ca(slots, Z)
@@ -183,7 +163,7 @@ function generate(m::DeepQueryDistSlotVAE, n_samples::Int, device::Function=cpu)
     return x̂, logits_exist
 end
 
-# --- Hungarian-matched reconstruction + existence loss (identical to the other files) -
+# --- Hungarian-matched reconstruction + existence loss (identical to first_test.jl) ---
 
 _pairwise_sqeuclidean(a::AbstractMatrix{T}, b::AbstractMatrix{T}) where T<:AbstractFloat = begin
     a2 = sum(abs2, a, dims=1)
@@ -191,18 +171,6 @@ _pairwise_sqeuclidean(a::AbstractMatrix{T}, b::AbstractMatrix{T}) where T<:Abstr
     max.(a2' .+ b2 .- 2 .* (a' * b), zero(T))
 end
 
-
-
-"""
-    hungarian_match(x̂, x, x_mask)
-
-Index bookkeeping only (see `hungarian_matching_loss` for the differentiable part). Runs
-entirely on the CPU -- `Hungarian.hungarian` has no GPU implementation, and there
-shouldn't be one: it's an inherently sequential, per-batch-element combinatorial solve,
-not something that vectorizes onto a GPU. `x̂`/`x`/`x_mask` are copied to the CPU *once*
-up front (`Array(...)`), not per-batch-element, so this works whether they're CuArrays or
-plain Arrays without repeated small device-to-host kernel launches inside the loop.
-"""
 function hungarian_match(x̂::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
     _, n_slots, bs = size(x̂)
     x̂_cpu, x_cpu, mask_cpu = Array(x̂), Array(x), Array(x_mask)
@@ -223,22 +191,6 @@ function hungarian_match(x̂::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask:
     return matched_pred, matched_gt
 end
 
-"""
-    hungarian_matching_loss(x̂, logits_exist, x, x_mask)
-
-GPU-safe *and* GPU-fast. `hungarian_match` (above) does the CPU-only combinatorial
-matching inside `Zygote.@ignore`. The naive way to turn that into a reconstruction loss
-is a `for b in 1:bs` Julia loop indexing `x̂`/`x` per batch element -- but on GPU that's
-`bs` separate tiny kernel launches, each with its own launch+sync overhead, which measured
-~10x *slower* than plain CPU for this workload (92ms vs 9ms/call at batch=128). Instead,
-the matched (slot, batch) and (gt_position, batch) pairs are flattened into a single pair
-of linear index vectors covering the *whole* batch (cheap, CPU-only, inside the same
-`Zygote.@ignore` block), and `x̂`/`x` are reshaped to merge their slot/batch dims so ONE
-gather + subtract + sum handles every matched pair across the whole batch in one shot
-(measured ~2.4ms/call on the same workload -- faster than CPU, not just "not slower").
-`ℒ_rec` is numerically identical to the old per-batch-loop version, just computed as one
-batched op instead of `bs` sequential ones.
-"""
 function hungarian_matching_loss(x̂::AbstractArray{T,3}, logits_exist::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
     d, n_slots, bs = size(x̂)
     _, n_max, _ = size(x)
@@ -276,15 +228,15 @@ end
 # --- training interface: same elbo/optim_step/valid_step pattern as src/models --------
 # NOTE: no KL / regularization term on queries_dist below -- same open issue as third.jl.
 
-function elbo_with_logging(model::DeepQueryDistSlotVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...) where T <: AbstractFloat
-    x̂, logits_exist, μ_z, Σ_z, μ_q, Σ_q = model(x, x_mask)
+function elbo_with_logging(model::DeepSlotQueryVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...) where T <: AbstractFloat
+    x̂, logits_exist, μ_z, Σ_z = model(x, x_mask)
     ℒ_rec, ℒ_exist, matched_frac = hungarian_matching_loss(x̂, logits_exist, x, x_mask)
-    ℒ_kld = kl_divergence(μ_z, Σ_z) + kl_divergence(μ_q, Σ_q)
+    ℒ_kld = kl_divergence(μ_z, Σ_z)
     ℒ = ℒ_rec + T(λ_exist) * ℒ_exist + T(β) * ℒ_kld
     return ℒ, (ℒ=ℒ, ℒ_rec=ℒ_rec, ℒ_exist=ℒ_exist, ℒ_kld=ℒ_kld, β=β, matched_frac=matched_frac)
 end
 
-function optim_step(model::DeepQueryDistSlotVAE, batch::Tuple, opt::NamedTuple, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
+function optim_step(model::DeepSlotQueryVAE, batch::Tuple, opt::NamedTuple, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
     x, x_mask = device.(batch)
     (loss, logs), (∇model, ∇x) = Zygote.withgradient(model, x) do m, xx
         elbo_with_logging(m, xx, x_mask; β=β, λ_exist=λ_exist, kwargs...)
@@ -293,7 +245,7 @@ function optim_step(model::DeepQueryDistSlotVAE, batch::Tuple, opt::NamedTuple, 
     return model, opt, logs
 end
 
-function valid_step(model::DeepQueryDistSlotVAE, dataloader, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
+function valid_step(model::DeepSlotQueryVAE, dataloader, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
     ℒ, ℒ_rec, ℒ_exist, ℒ_kld, matched = 0f0, 0f0, 0f0, 0f0, 0f0
     for (x, x_mask) in dataloader
         x, x_mask = device(x), device(x_mask)
@@ -314,17 +266,16 @@ args = (;
     heads = 4,
     n_slots = N_MAX,
     z_dim = 16,
-    q_dim = 16,
-    n_layers = 3,  # NEW: number of stacked self+cross-attention rounds
+    m_z = 3,       # NEW: number of latent summary tokens (was implicitly 1 in first_test.jl)
+    n_layers = 3,  # NEW: number of stacked self+cross-attention rounds (was implicitly 1)
     β = 0.05f0,
-    λ_exist = 3f0,
+    λ_exist = 1.5f0,
     epochs = 100,
 )
 
 device = CUDA.functional() ? cu : cpu # this script's whole point is GPU training; falls back to cpu if none available
 println("Training on device: ", device)
-
-model = DeepQueryDistSlotVAE(args.embed_dim, args.hidden_dim, args.heads, args.n_slots, args.z_dim, args.q_dim, args.n_layers) |> device;
+model = DeepSlotQueryVAE(args.embed_dim, args.hidden_dim, args.heads, args.n_slots, args.z_dim, args.m_z, args.n_layers) |> device;
 opt = Optimisers.setup(AdamW(; eta=1e-3, lambda=1e-4), model);
 
 for epoch in 1:args.epochs
@@ -338,11 +289,7 @@ for epoch in 1:args.epochs
 end
 
 # =====================================================================================
-# Diagnostics: can the model generate/reconstruct *distinct* objects, including true
-# duplicates, without collapsing slots onto each other?
-# Model outputs are brought back to the CPU with `cpu(...)` right after each call --
-# μs_valid/ys_valid (the nearest-neighbor reference pool) are small and stay CPU-only,
-# and mixing a CuArray with a CPU Array in the same broadcast would error anyway.
+# Diagnostics -- identical to first_test.jl, for direct comparison
 # =====================================================================================
 
 nearest_class(v::AbstractVector{Float32}, μs::AbstractMatrix{Float32}, ys::Vector{Int}) = ys[argmin(vec(sum(abs2, μs .- v, dims=1)))]
@@ -359,7 +306,7 @@ x_dup[:, 1:length(dup_idx), 1] .= μs_valid[:, dup_idx]
 mask_dup[1, 1:length(dup_idx), 1] .= true
 println("\nGround truth bag classes: ", ys_valid[dup_idx])
 
-x̂_dup, logits_dup, _, _, _, _ = model(x_dup |> device, mask_dup |> device) # model's forward now returns 6 values (x̂, logits_exist, μ_z, Σ_z, μ_q, Σ_q)
+x̂_dup, logits_dup, _, _ = model(x_dup |> device, mask_dup |> device)
 x̂_dup, logits_dup = cpu(x̂_dup), cpu(logits_dup)
 mp, mg = hungarian_match(x̂_dup, x_dup, mask_dup)
 matched_gt_for_slot = Dict(zip(mp[1], mg[1]))

@@ -33,5 +33,9 @@ include("mmd_ema_update.jl")
 export MMD_EMA_Loss, update_ema_sigma!, compute_rbf_sigma_estimate
 include("sinkhorn_loss.jl")
 export sinkhorn_divergence_loss
+include("chamfer_distance_pairwise_clusters.jl")
+export chamfer_distance_pairwise_clusters
+
+
 include("loss_factory.jl")
 export create_loss_function

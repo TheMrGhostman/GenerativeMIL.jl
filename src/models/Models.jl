@@ -41,6 +41,8 @@ export VectorGaussianQuantizerEMA, ema_update!
 export VQ_PoolAE, VGQ_PoolAE, loss_gradient, loss_ema
 export vgq_poolae_constructor_from_named_tuple, vgq_poolae_constructor_from_named_tuple
 
+include("DeepSlotQuaryVAE.jl")
+export DeepSlotQueryVAE
 
 # common exports 
 export elbo_with_logging, optim_step, valid_step, reconstruct_and_log, reconstruct

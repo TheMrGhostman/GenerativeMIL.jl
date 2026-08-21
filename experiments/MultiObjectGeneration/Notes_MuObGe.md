@@ -558,3 +558,253 @@ slot 12 -> closest ground truth: class 2 (gt position 3) | L2 dist 1.38
 - (?) are those two models generally the same, with differences of existence prediction?
   - when I thought about it now, it seems to be the same idea/set of ideas. But SlotQueryVAE has existence prediction on slots.  
 
+
+# HSVAE 
+
+
+### Speed testing CPU vs GPU on diferent sizes
+Loss is sum(chamfer_distance_clusters) / i.e. without hungarian matching
+
+#### Data size ~ 
+##### Forward: 
+~~~julia
+
+~~~
+#### Backward: 
+~~~julia
+
+~~~
+
+#### Data size ~ (3, 256, 12, 16)
+##### Forward: 
+~~~julia
+julia> @benchmark forward_and_loss($model2_cpu, $xx, $xx_mask)
+BenchmarkTools.Trial: 2 samples with 1 evaluation per sample.
+ Range (min … max):  3.009 s …   3.137 s  ┊ GC (min … max): 24.95% … 27.03%
+ Time  (median):     3.073 s              ┊ GC (median):    26.01%
+ Time  (mean ± σ):   3.073 s ± 90.838 ms  ┊ GC (mean ± σ):  26.01% ±  1.46%
+
+  █                                                       █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  3.01 s         Histogram: frequency by time        3.14 s <
+
+ Memory estimate: 1.88 GiB, allocs estimate: 1275.
+
+julia> @benchmark forward_and_loss($model2_gpu, $xxc, $xxc_mask)
+BenchmarkTools.Trial: 187 samples with 1 evaluation per sample.
+ Range (min … max):  26.111 ms …  34.753 ms  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     26.524 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   26.746 ms ± 833.662 μs  ┊ GC (mean ± σ):  6.35% ± 9.52%
+
+    ▄▆█▄█▃▃▅▂    ▁                                              
+  ▄▄█████████▅▆▄▇█▆▅▃▅▁▁▃▁▄▁▄▁▃▁▃▁▁▃▁▁▁▁▁▃▃▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃▃▄ ▃
+  26.1 ms         Histogram: frequency by time         29.4 ms <
+
+ Memory estimate: 558.56 KiB, allocs estimate: 14656.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xx, $xx_mask), $model2_cpu)
+BenchmarkTools.Trial: 2 samples with 1 evaluation per sample.
+ Range (min … max):  3.026 s …    3.624 s  ┊ GC (min … max): 24.85% … 36.64%
+ Time  (median):     3.325 s               ┊ GC (median):    31.28%
+ Time  (mean ± σ):   3.325 s ± 422.719 ms  ┊ GC (mean ± σ):  31.28% ±  8.34%
+
+  █                                                        █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  3.03 s         Histogram: frequency by time         3.62 s <
+
+ Memory estimate: 2.04 GiB, allocs estimate: 17787.
+
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xxc, $xxc_mask), $model2_gpu)
+BenchmarkTools.Trial: 68 samples with 1 evaluation per sample.
+ Range (min … max):  71.764 ms … 78.859 ms  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     73.619 ms              ┊ GC (median):    7.58%
+ Time  (mean ± σ):   74.136 ms ±  1.511 ms  ┊ GC (mean ± σ):  8.42% ± 8.54%
+
+          ▁▃▁▃█ ▃▃  ▁▃                     ▁                   
+  ▄▁▁▁▁▁▄▄█████▇██▁▄██▄▁▄▄▄▁▇▄▁▄▄▇▁▁▄▁▄▁▄▇▁█▄▄▄▁▄▁▄▁▁▁▁▄▁▁▁▁▄ ▁
+  71.8 ms         Histogram: frequency by time        77.9 ms <
+
+ Memory estimate: 44.47 MiB, allocs estimate: 58478.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 32)
+##### Forward: 
+~~~julia
+julia> @benchmark forward_and_loss($model2_cpu, $xx, $xx_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 6.136 s (25.77% GC) to evaluate,
+ with a memory estimate of 3.75 GiB, over 1563 allocations.
+
+julia> @benchmark forward_and_loss($model2_gpu, $xxc, $xxc_mask)
+BenchmarkTools.Trial: 105 samples with 1 evaluation per sample.
+ Range (min … max):  46.571 ms …  51.872 ms  ┊ GC (min … max): 7.14% … 10.89%
+ Time  (median):     47.954 ms               ┊ GC (median):    7.31%
+ Time  (mean ± σ):   48.051 ms ± 863.343 μs  ┊ GC (mean ± σ):  6.45% ±  4.78%
+
+       ▃▁▁    █▁▄▆▄█▆▄   ▁                                      
+  ▄▁▁▁▄███▇▆▇▆████████▇▇▆█▆▆▄▁▁▆▄▁▄▄▄▄▁▁▁▁▁▁▄▁▁▁▁▁▁▁▁▁▁▁▁▄▁▁▁▄ ▄
+  46.6 ms         Histogram: frequency by time         51.6 ms <
+
+ Memory estimate: 564.83 KiB, allocs estimate: 14931.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xx, $xx_mask), $model2_cpu)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 6.167 s (24.76% GC) to evaluate,
+ with a memory estimate of 4.09 GiB, over 18085 allocations.
+
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xxc, $xxc_mask), $model2_gpu)
+BenchmarkTools.Trial: 42 samples with 1 evaluation per sample.
+ Range (min … max):  117.432 ms … 123.394 ms  ┊ GC (min … max): 8.74% … 11.25%
+ Time  (median):     118.966 ms               ┊ GC (median):    9.37%
+ Time  (mean ± σ):   119.585 ms ±   1.703 ms  ┊ GC (mean ± σ):  9.40% ±  0.59%
+
+   ▁▁    ▄▁▄ ▁ ▁      ▁         █                          ▁  ▁  
+  ▆██▁▁▁▆███▆█▆█▁▆▆▁▁▁█▆▁▆▁▆▁▁▁▆█▁▁▁▆▆▁▁▁▆▁▁▆▁▆▆▁▁▁▁▁▁▁▁▁▁▁█▁▁█ ▁
+  117 ms           Histogram: frequency by time          123 ms <
+
+ Memory estimate: 86.12 MiB, allocs estimate: 60262.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 64)
+##### Forward: 
+~~~julia
+julia> @benchmark forward_and_loss($model2_cpu, $xx, $xx_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 12.869 s (20.05% GC) to evaluate,
+ with a memory estimate of 7.51 GiB, over 2165 allocations.
+
+julia> @benchmark forward_and_loss($model2_gpu, $xxc, $xxc_mask)
+BenchmarkTools.Trial: 51 samples with 1 evaluation per sample.
+ Range (min … max):  93.271 ms … 107.667 ms  ┊ GC (min … max): 2.06% … 5.04%
+ Time  (median):     99.674 ms               ┊ GC (median):    3.31%
+ Time  (mean ± σ):   99.248 ms ±   2.614 ms  ┊ GC (mean ± σ):  3.83% ± 1.52%
+
+  ▁      ▁▁                     ▄▄█▁ █▄█▄ █▄                    
+  █▁▆▁▁▁▁██▁▆▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▆▁████▆████▆██▆▆▆▁▁▆▁▁▁▆▁▁▁▁▁▁▁▆ ▁
+  93.3 ms         Histogram: frequency by time          104 ms <
+
+ Memory estimate: 575.56 KiB, allocs estimate: 15609.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xx, $xx_mask), $model2_cpu)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 12.343 s (24.44% GC) to evaluate,
+ with a memory estimate of 8.17 GiB, over 18818 allocations.
+
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xxc, $xxc_mask), $model2_gpu)
+BenchmarkTools.Trial: 7 samples with 1 evaluation per sample.
+ Range (min … max):  588.072 ms … 868.158 ms  ┊ GC (min … max): 5.39% … 4.08%
+ Time  (median):     774.590 ms               ┊ GC (median):    4.13%
+ Time  (mean ± σ):   753.030 ms ± 114.592 ms  ┊ GC (mean ± σ):  4.26% ± 1.16%
+
+  ▁ ▁                                     █           ▁ ▁     ▁  
+  █▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁█▁█▁▁▁▁▁█ ▁
+  588 ms           Histogram: frequency by time          868 ms <
+
+ Memory estimate: 169.46 MiB, allocs estimate: 64457.
+~~~
+
+
+#### Data size ~ (3, 512, 12, 1)
+##### Forward: 
+~~~julia
+julia> @benchmark forward_and_loss($model2_cpu, $xx, $xx_mask)
+BenchmarkTools.Trial: 7 samples with 1 evaluation per sample.
+ Range (min … max):  540.880 ms …    1.226 s  ┊ GC (min … max):  0.00% … 56.07%
+ Time  (median):     603.110 ms               ┊ GC (median):     9.20%
+ Time  (mean ± σ):   763.389 ms ± 280.232 ms  ┊ GC (mean ± σ):  28.32% ± 22.63%
+
+  █  ███       █                                    █         █  
+  █▁▁███▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁█ ▁
+  541 ms           Histogram: frequency by time          1.23 s <
+
+ Memory estimate: 456.04 MiB, allocs estimate: 934.
+
+julia> @benchmark forward_and_loss($model2_gpu, $xxc, $xxc_mask)
+BenchmarkTools.Trial: 395 samples with 1 evaluation per sample.
+ Range (min … max):  10.999 ms … 23.696 ms  ┊ GC (min … max): 0.00% … 38.74%
+ Time  (median):     11.835 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   12.673 ms ±  2.558 ms  ┊ GC (mean ± σ):  6.48% ± 12.25%
+
+  ▅█▆▆▅▆▅▃▃▁▁ ▁                                                
+  ███████████▆██▆▄▁▁▁▁▁▁▁▁▁▄▁▄▁▁▆▄▁▁▄▆▄▄▆▄▆▆▆▄▆▆▆▄▁▄▄▆▄▁▁▄▄▄▄ ▆
+  11 ms        Histogram: log(frequency) by time      22.5 ms <
+
+ Memory estimate: 548.42 KiB, allocs estimate: 14016.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xx, $xx_mask), $model2_cpu)
+BenchmarkTools.Trial: 6 samples with 1 evaluation per sample.
+ Range (min … max):  589.117 ms …    1.420 s  ┊ GC (min … max):  5.64% … 59.21%
+ Time  (median):     700.554 ms               ┊ GC (median):    16.54%
+ Time  (mean ± σ):   875.752 ms ± 350.938 ms  ┊ GC (mean ± σ):  33.23% ± 24.31%
+
+  ▁  █        ▁                                ▁              ▁  
+  █▁▁█▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  589 ms           Histogram: frequency by time          1.42 s <
+
+ Memory estimate: 478.48 MiB, allocs estimate: 17349.
+
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xxc, $xxc_mask), $model2_gpu)
+BenchmarkTools.Trial: 115 samples with 1 evaluation per sample.
+ Range (min … max):  34.815 ms … 95.944 ms  ┊ GC (min … max): 0.00% … 26.23%
+ Time  (median):     39.148 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   43.556 ms ± 10.484 ms  ┊ GC (mean ± σ):  4.38% ±  8.00%
+
+  ▂▁▇▃█▂                                                       
+  ██████▇█▅▄▄▅▇▁▃▃▃▄▅▃▃▃▁▁▃▃▃▃▁▁▁▁▄▃▃▃▃▄▁▃▃▃▁▁▃▁▁▁▁▁▁▁▁▁▁▃▁▁▃ ▃
+  34.8 ms         Histogram: frequency by time        78.1 ms <
+
+ Memory estimate: 8.03 MiB, allocs estimate: 57269.
+~~~
+
+
+
+#### Data size ~ (3, 512, 12, 8)
+##### Forward: 
+~~~julia
+julia> @benchmark forward_and_loss($model2_cpu, $xx, $xx_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 6.030 s (25.97% GC) to evaluate,
+ with a memory estimate of 3.56 GiB, over 1124 allocations.
+
+julia> @benchmark forward_and_loss($model2_gpu, $xxc, $xxc_mask)
+BenchmarkTools.Trial: 109 samples with 1 evaluation per sample.
+ Range (min … max):  44.517 ms … 51.843 ms  ┊ GC (min … max): 7.11% … 0.00%
+ Time  (median):     45.385 ms              ┊ GC (median):    6.98%
+ Time  (mean ± σ):   45.967 ms ±  1.550 ms  ┊ GC (mean ± σ):  5.98% ± 3.97%
+
+      █▃▆▁▂ ▁▁                                                 
+  ▇▄▇▆████████▃▆▇▆▄▃▄▃▇▃▁▃▁▁▁▁▁▁▁▁▁▁▃▁▁▃▁▁▁▁▁▁▃▁▁▃▃▁▃▁▃▃▃▁▃▃▃ ▃
+  44.5 ms         Histogram: frequency by time        50.6 ms <
+
+ Memory estimate: 561.09 KiB, allocs estimate: 14818.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xx, $xx_mask), $model2_cpu)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 5.999 s (23.15% GC) to evaluate,
+ with a memory estimate of 3.73 GiB, over 17650 allocations.
+
+julia> @benchmark Zygote.gradient(m -> forward_and_loss(m, $xxc, $xxc_mask), $model2_gpu)
+BenchmarkTools.Trial: 54 samples with 1 evaluation per sample.
+ Range (min … max):  90.572 ms … 100.359 ms  ┊ GC (min … max): 7.39% … 13.75%
+ Time  (median):     93.492 ms               ┊ GC (median):    7.62%
+ Time  (mean ± σ):   93.846 ms ±   2.253 ms  ┊ GC (mean ± σ):  6.85% ±  5.33%
+
+    ▃ ▃     █▃█  ▃ ▃ ▃ ▃▃▃         ▃  ▃ ▃
+  ▇▇█▇█▇▁▇▇▇███▇▁█▇█▇█▇███▇▁▇▇▁▇▇▇▇█▁▁█▁█▁▁▁▁▇▇▁▁▇▁▁▁▁▇▁▁▁▁▁▁▇ ▁
+  90.6 ms         Histogram: frequency by time         99.5 ms <
+
+ Memory estimate: 44.47 MiB, allocs estimate: 58785.
+~~~
+
