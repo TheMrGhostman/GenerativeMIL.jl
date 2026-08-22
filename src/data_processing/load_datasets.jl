@@ -160,6 +160,79 @@ function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbo
 
 end
 
+function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, validation::Bool=true, normalize::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...) 
+    
+    dict_loaded = Serialization.deserialize(_mnist_balanced_path())
+    xs = dict_loaded["features"]
+    ys = dict_loaded["targets"]
+    @assert npoints <= size(xs, 2) "Number of requested points ($npoints) is greater than dataset cardinality ($(size(xs, 2)))."
+
+    # Optional preprocessing hook.
+    if normalize
+        xs = normalize_point_cloud(xs)
+    end
+
+    xs = sample_fixed_n_from_matrix(xs, npoints)
+    class_pool = Dict(c => findall(==(c), ys) for c in unique(ys))
+
+    #Random.seed!(seed) # Ensure reproducibility for any sampling in the dataset loading process.
+
+    rng = MersenneTwister(seed)
+    cs = rand(rng, collect(keys(class_pool)), max_digits, n_samples);
+    ns = rand(rng, min_digits:max_digits, n_samples);
+
+    x_data = zeros(Float32, size(xs, 1), npoints, max_digits, n_samples);
+    x_mask = falses(1, 1, max_digits, n_samples);
+    labels = Vector{Vector{Int}}(undef, n_samples);
+
+    Random.seed!(seed) # Ensure reproducibility for any sampling in the dataset loading process.
+    for i in 1:n_samples
+        n = ns[i]
+        for j in 1:n
+            #@show cs[j, i]
+            c = cs[j, i]
+            x_data[:, :, j, i] .= xs[:, :, rand(class_pool[c])]
+            x_mask[1, 1, j, i] = true
+        end
+        labels[i] = cs[1:n, i]
+    end
+
+    # Train/valid/test split from deterministic shuffled indices.
+    rng_split = MersenneTwister(seed)
+    perm = randperm(rng_split, length(labels))
+    n_train_test = round(Int, 0.8 * length(labels))
+    train_val_idx = perm[1:n_train_test]
+    test_idx = perm[n_train_test+1:end]
+
+    if validation
+        n_train = round(Int, (1 - ratio) * length(train_val_idx))
+        train_idx = train_val_idx[1:n_train]
+        val_idx = train_val_idx[n_train+1:end]
+    else
+        train_idx = train_val_idx
+        val_idx = Int[]
+    end
+
+    y_train = ys[train_idx]
+    y_test = ys[test_idx]
+
+    Random.seed!(seed) # Ensure reproducibility for any sampling in the dataset loading process.
+    
+    train_data = x_data[:, :, :, train_idx]
+    train_mask = x_mask[:, :, :, train_idx]
+
+    valid_data = validation ?  x_data[:, :, :, val_idx] : nothing
+    valid_mask = validation ? x_mask[:, :, :, val_idx] : nothing
+
+    test_data = x_data[:, :, :, test_idx]
+    test_mask = x_mask[:, :, :, test_idx]
+
+    if validation
+        return (train_data, train_mask), (valid_data, valid_mask), (test_data, test_mask)
+    end
+    return (train_data, train_mask), (test_data, test_mask)
+end
+
 
 """
     load_shapenet_class(classname::String, npoints::Int=2048; normalize=false, 

@@ -92,7 +92,7 @@ Returns:
 - `exist_target::AbstractArray{T,3}`: binary existence target `(1, M, BS)`, `1` at every matched
   `m`, `0` elsewhere (unmatched/padding slots).
 """
-function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) where T<:AbstractFloat
+function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
     M, _, BS = size(C)
     C_cpu, mask_cpu = Array(C), Array(l_mask)
     #ci_m = CartesianIndex{2}[]   # (m, bs) — index into a (..., M, BS) tensor
@@ -100,7 +100,7 @@ function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) w
     c_ml = CartesianIndex{3}[]  # (m, l, bs) — index into a (..., M, L, BS) tensor
     exist_target = zeros_like(C, (1, M, BS))  # (1, M, BS) - 
     for b in 1:BS
-        l_idx = findall(vec(mask_cpu[1, 1, :, b]))
+        l_idx = findall(vec(mask_cpu[1, :, b]))
         isempty(l_idx) && continue
 
         Cb = C_cpu[:, l_idx, b]                       # (M, n_valid_l) — masked columns just aren't there
