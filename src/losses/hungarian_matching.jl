@@ -3,6 +3,20 @@
 # set elements by minimum-cost bipartite assignment, then computes a reconstruction loss
 # over matched pairs plus a binary existence loss over all slots.
 
+"""
+`_pairwise_sqeuclidean(a::AbstractMatrix{T}, b::AbstractMatrix{T}) where T<:AbstractFloat`
+
+Pairwise squared Euclidean distance matrix between the columns of two matrices, via the
+`‖a‖²+‖b‖²-2a·b` expansion (one matmul, no explicit loop over columns).
+
+Arguments (positional):
+- `a`: first set of column vectors `(d, n)`.
+- `b`: second set of column vectors `(d, m)`.
+
+Returns:
+- `(n, m)` matrix of squared distances, clamped to `≥0` to guard against negative values from
+  floating-point cancellation.
+"""
 _pairwise_sqeuclidean(a::AbstractMatrix{T}, b::AbstractMatrix{T}) where T<:AbstractFloat = begin
     a2 = sum(abs2, a, dims=1)  # (1, n)
     b2 = sum(abs2, b, dims=1)  # (1, m)
@@ -10,15 +24,23 @@ _pairwise_sqeuclidean(a::AbstractMatrix{T}, b::AbstractMatrix{T}) where T<:Abstr
 end
 
 """
-    hungarian_match(x̂, x, x_mask)
+`hungarian_match(x̂::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat`
 
-For each batch element, solve the linear assignment problem between predicted slots `x̂`
-`(d, n_slots, bs)` and masked ground-truth set elements `x` `(d, n_max, bs)` (valid
-entries marked by `x_mask` `(1, n_max, bs)`). Cost is squared Euclidean distance.
+For each batch element, solve the linear assignment problem between predicted slots `x̂` and
+masked, variable-cardinality ground-truth set elements `x`. Cost is squared Euclidean distance.
+Masked-out ground-truth entries are dropped from the cost matrix before assignment (never
+zeroed/`Inf`-filled), so they can never be selected as a match. Index bookkeeping only, not meant
+to be differentiated through directly -- wrap calls in `Zygote.@ignore`.
 
-Returns per-batch vectors of matched predicted-slot indices and matched ground-truth
-indices. Index bookkeeping only, not meant to be differentiated through directly -- wrap
-calls in `ChainRulesCore.ignore_derivatives`.
+Arguments (positional):
+- `x̂`: predicted slots `(d, n_slots, bs)`.
+- `x`: ground-truth set elements `(d, n_max, bs)`.
+- `x_mask`: validity mask `(1, n_max, bs)` for the ground-truth entries.
+
+Returns:
+- `matched_pred::Vector{Vector{Int}}`: per-batch-element matched predicted-slot indices.
+- `matched_gt::Vector{Vector{Int}}`: per-batch-element matched ground-truth indices, same
+  order/length as `matched_pred`.
 """
 function hungarian_match(x̂::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
     _, n_slots, bs = size(x̂)
@@ -48,6 +70,28 @@ function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) w
     return hungarian_match(C, new_mask)
 end
 
+"""
+`hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) where T<:AbstractFloat`
+
+Solve the linear assignment problem per batch element from a precomputed cost matrix and return
+both the matched pairs and the slot-existence target in one pass. Masked-out `l` columns are
+dropped from the cost matrix before assignment (never zeroed/`Inf`-filled), so they can never be
+selected as a match. The matched `(m, l, bs)` triples are returned as a single `CartesianIndex{3}`
+array, so `C[c_ml]` gathers the matched costs directly and reconstruction loss reduces to
+`mean(C[c_ml])` with no further per-batch indexing. Index bookkeeping only, not meant to be
+differentiated through -- wrap the call in `Zygote.@ignore`.
+
+Arguments (positional):
+- `C`: cost matrix `(M, L, BS)` -- `M` predicted slots, `L` ground-truth clusters, `BS` batch size
+  (e.g. from `chamfer_pairwise_distance`).
+- `l_mask`: validity mask `(1, 1, L, BS)` for the `L` ground-truth clusters.
+
+Returns:
+- `c_ml::Vector{CartesianIndex{3}}`: matched `(m, l, bs)` triples, one per matched pair across the
+  whole batch -- indexes directly into `C` or into any `(..., M, L, BS)`-shaped tensor.
+- `exist_target::AbstractArray{T,3}`: binary existence target `(1, M, BS)`, `1` at every matched
+  `m`, `0` elsewhere (unmatched/padding slots).
+"""
 function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) where T<:AbstractFloat
     M, _, BS = size(C)
     C_cpu, mask_cpu = Array(C), Array(l_mask)
@@ -73,65 +117,74 @@ end
 
 
 """
-    hungarian_matching_loss(x̂, logits_exist, x, x_mask)
+`hungarian_matching_loss(x̂::AbstractArray{T,3}, logits_exist::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat`
 
 Matched-pair reconstruction (mean squared error over matched slots) + existence (binary
 cross-entropy over all slots) loss for a fixed-cardinality slot decoder, aligned to a
-variable-cardinality masked ground-truth set via Hungarian matching.
+variable-cardinality masked ground-truth set via Hungarian matching. `hungarian_match` does the
+CPU-only combinatorial matching inside `Zygote.@ignore`; the reconstruction term is then a plain
+`for b in 1:bs` loop gathering matched slots per batch element (kept this way -- not the fused
+single-gather version -- for compatibility with other experiments that depend on this exact code
+path).
 
-Returns `(ℒ_rec, ℒ_exist, matched_frac)`.
-"""
-"""
-    hungarian_matching_loss(x̂, logits_exist, x, x_mask)
+Arguments (positional):
+- `x̂`: predicted slots `(d, n_slots, bs)`.
+- `logits_exist`: existence logits `(1, n_slots, bs)`.
+- `x`: ground-truth set elements `(d, n_max, bs)`.
+- `x_mask`: validity mask `(1, n_max, bs)` for the ground-truth entries.
 
-GPU-safe *and* GPU-fast. `hungarian_match` (above) does the CPU-only combinatorial
-matching inside `Zygote.@ignore`. The naive way to turn that into a reconstruction loss
-is a `for b in 1:bs` Julia loop indexing `x̂`/`x` per batch element -- but on GPU that's
-`bs` separate tiny kernel launches, each with its own launch+sync overhead, which measured
-~10x *slower* than plain CPU for this workload (92ms vs 9ms/call at batch=128). Instead,
-the matched (slot, batch) and (gt_position, batch) pairs are flattened into a single pair
-of linear index vectors covering the *whole* batch (cheap, CPU-only, inside the same
-`Zygote.@ignore` block), and `x̂`/`x` are reshaped to merge their slot/batch dims so ONE
-gather + subtract + sum handles every matched pair across the whole batch in one shot
-(measured ~2.4ms/call on the same workload -- faster than CPU, not just "not slower").
-`ℒ_rec` is numerically identical to the old per-batch-loop version, just computed as one
-batched op instead of `bs` sequential ones.
+Returns:
+- `ℒ_rec`: mean squared error over matched pairs.
+- `ℒ_exist`: binary cross-entropy existence loss over all slots.
+- `matched_frac`: fraction of `n_slots * bs` slots that were matched.
 """
 function hungarian_matching_loss(x̂::AbstractArray{T,3}, logits_exist::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
-    d, n_slots, bs = size(x̂)
-    _, n_max, _ = size(x)
-    on_gpu = x̂ isa CUDA.CuArray
-
-    pred_flat, gt_flat, exist_target = Zygote.@ignore begin
+    _, n_slots, bs = size(x̂)
+    matched_pred, matched_gt, exist_target = Zygote.@ignore begin
         mp, mg = hungarian_match(x̂, x, x_mask)
         t = zeros(T, 1, n_slots, bs)
-        pf, gf = Int[], Int[]
         for b in 1:bs
             t[1, mp[b], b] .= one(T)
-            append!(pf, mp[b] .+ (b - 1) * n_slots) # (slot, b) -> linear index into merged (n_slots*bs)
-            append!(gf, mg[b] .+ (b - 1) * n_max)   # (gt_pos, b) -> linear index into merged (n_max*bs)
         end
-        t = on_gpu ? CUDA.cu(t) : t   # match exist_target's device to x̂/logits_exist
-        pf = on_gpu ? CUDA.cu(pf) : pf
-        gf = on_gpu ? CUDA.cu(gf) : gf
-        pf, gf, t
+        mp, mg, t
     end
 
-    n_matched = length(pred_flat)
-    if n_matched > 0
-        x̂_flat = reshape(x̂, d, n_slots * bs) # view, no copy -- x̂/x stay on their original device
-        x_flat = reshape(x, d, n_max * bs)
-        diff = x̂_flat[:, pred_flat] .- x_flat[:, gt_flat] # ONE gather for every matched pair in the batch
-        ℒ_rec = sum(abs2, diff) / n_matched
-    else
-        ℒ_rec = zero(T)
+    rec_sum = zero(T)
+    n_matched = 0
+    for b in 1:bs
+        pi, gi = matched_pred[b], matched_gt[b]
+        isempty(pi) && continue
+        rec_sum = rec_sum + sum(abs2, x̂[:, pi, b] .- x[:, gi, b])
+        n_matched += length(pi)
     end
+    ℒ_rec = n_matched > 0 ? rec_sum / n_matched : zero(T)
     ℒ_exist = Flux.Losses.logitbinarycrossentropy(logits_exist, exist_target; agg=Flux.mean)
     matched_frac = T(n_matched) / T(n_slots * bs)
     return ℒ_rec, ℒ_exist, matched_frac
 end
 
 
+"""
+`hungarian_matching_loss(x̂::AbstractArray{T,4}, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, logits_exist::AbstractArray{T,3}, distance::Function=chamfer_pairwise_distance) where T<:AbstractFloat`
+
+Outer/cluster-level counterpart of `hungarian_matching_loss` for 3D tensors: matches predicted
+clusters `x̂` to a variable-cardinality, masked set of ground-truth clusters `x` (each cluster
+itself a point set) via Hungarian assignment on a `distance`-based cost matrix, e.g.
+`chamfer_pairwise_distance`, then computes matched-pair reconstruction + existence loss.
+
+Arguments (positional):
+- `x̂`: predicted clusters `(D, N, M, BS)`.
+- `x`: ground-truth clusters `(D, N, L, BS)`.
+- `x_mask`: validity mask `(1, 1, L, BS)` for the `L` ground-truth clusters.
+- `logits_exist`: existence logits `(1, M, BS)`.
+- `distance`: pairwise cluster-distance function used to build the `(M, L, BS)` cost matrix
+  (default `chamfer_pairwise_distance`).
+
+Returns:
+- `ℒ_rec`: mean cost over matched cluster pairs (gathered directly from the cost matrix via
+  `C[c_ml]`, see `hungarian_match`).
+- `ℒ_exist`: binary cross-entropy existence loss over all `M` predicted slots.
+"""
 function hungarian_matching_loss(x̂::AbstractArray{T,4}, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, logits_exist::AbstractArray{T,3}, distance::Function = chamfer_pairwise_distance) where T<:AbstractFloat
     _, _, M, BS = size(x̂)
 
@@ -142,5 +195,5 @@ function hungarian_matching_loss(x̂::AbstractArray{T,4}, x::AbstractArray{T,4},
     ℒ_rec = n_matched > 0 ? mean(C[matched_indices]) : zero(T)
     ℒ_exist = Flux.Losses.logitbinarycrossentropy(logits_exist, exist_target; agg=mean) * T(M) # sum over all slots, not mean 
     #matched_frac = T(n_matched) / T(M * BS)
-    return ℒ_rec, ℒ_exist#, matched_frac
+    return ℒ_rec, ℒ_exist
 end

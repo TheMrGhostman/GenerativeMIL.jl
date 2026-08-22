@@ -35,6 +35,9 @@ include("sinkhorn_loss.jl")
 export sinkhorn_divergence_loss
 include("chamfer_pairwise_distance.jl")
 export chamfer_pairwise_distance
+include("hungarian_matching.jl")
+export hungarian_matching_loss, hungarian_match
+
 
 
 include("loss_factory.jl")
