@@ -27,6 +27,8 @@ function load_dataset(name::String, args...; kwargs...)
         return load_shapenet_class(args...; kwargs...)
     elseif name == "shapenet_multiple_classes"
         return load_shapenet_multiple_classes(args...; kwargs...)
+    elseif name == "mnist_clock"
+        return load_mnist_clock(args...; kwargs...)
     else
         error("Unknown dataset: $name")
     end
@@ -160,8 +162,117 @@ function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbo
 
 end
 
-function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, validation::Bool=true, normalize::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...) 
-    
+"""
+`sample_one_bag(rng, class_pool::Dict, classes::AbstractVector, xs::AbstractArray{T,3}, npoints::Int, min_digits::Int, max_digits::Int) where T`
+
+Draw a single random "bag": a variable-cardinality set of digit point clouds packed into a
+fixed-size `(D, npoints, max_digits)` slot tensor. Cardinality and class composition (including
+duplicates -- classes are drawn independently per slot, with replacement) come fresh from `rng`;
+points for each drawn digit instance are freshly subsampled from `xs`'s native resolution, one
+instance at a time. Padding slots (beyond the drawn cardinality) are left as zero, marked invalid
+in `mask`, and get the sentinel label `-1`.
+
+Arguments (positional):
+- `rng`: random number generator.
+- `class_pool`: `Dict` mapping class label -> instance indices into `xs`.
+- `classes`: available class labels, e.g. `collect(keys(class_pool))`.
+- `xs`: full-resolution point-cloud pool `(D, N_full, n_instances)` -- NOT pre-subsampled, so
+  every draw gets its own fresh `npoints`-point subsample.
+- `npoints`: number of points to keep per digit after subsampling.
+- `min_digits`, `max_digits`: inclusive range for the bag cardinality.
+
+Returns:
+- `data::Array{Float32,3}`: `(D, npoints, max_digits)`, zero in padding slots.
+- `mask::BitArray{3}`: `(1, 1, max_digits)`, `true` in valid slots.
+- `labels::Vector{Int}`: `(max_digits,)`, class label in valid slots, `-1` in padding slots.
+"""
+function sample_one_bag(rng, class_pool::Dict, classes::AbstractVector, xs::AbstractArray{T,3}, npoints::Int, min_digits::Int, max_digits::Int) where T
+    D = size(xs, 1)
+    data = zeros(Float32, D, npoints, max_digits)
+    mask = falses(1, 1, max_digits)
+    labels = fill(-1, max_digits)
+
+    n = rand(rng, min_digits:max_digits)
+    for j in 1:n
+        c = rand(rng, classes)
+        inst = rand(rng, class_pool[c])
+        pt_idx = sample(rng, axes(xs, 2), npoints, replace=false)
+        data[:, :, j] .= xs[:, pt_idx, inst]
+        mask[1, 1, j] = true
+        labels[j] = c
+    end
+    return data, mask, labels
+end
+
+"""
+`_build_bags(rng, class_pool::Dict, classes::AbstractVector, xs::AbstractArray{T,3}, npoints::Int, min_digits::Int, max_digits::Int, n_samples::Int) where T`
+
+Eagerly build `n_samples` bags via repeated calls to [`sample_one_bag`](@ref), stacked into batch
+tensors. Used for the fixed/pre-sampled (non-`sample_on_fly`) path, and always for
+validation/test regardless of `sample_on_fly`.
+
+Returns:
+- `data::Array{Float32,4}`: `(D, npoints, max_digits, n_samples)`.
+- `mask::BitArray{4}`: `(1, 1, max_digits, n_samples)`.
+- `labels::Array{Int,2}`: `(max_digits, n_samples)`.
+"""
+function _build_bags(rng, class_pool::Dict, classes::AbstractVector, xs::AbstractArray{T,3}, npoints::Int, min_digits::Int, max_digits::Int, n_samples::Int) where T
+    D = size(xs, 1)
+    data = zeros(Float32, D, npoints, max_digits, n_samples)
+    mask = falses(1, 1, max_digits, n_samples)
+    labels = fill(-1, max_digits, n_samples)
+    for i in 1:n_samples
+        d, m, l = sample_one_bag(rng, class_pool, classes, xs, npoints, min_digits, max_digits)
+        data[:, :, :, i] .= d
+        mask[:, :, :, i] .= m
+        labels[:, i] .= l
+    end
+    return data, mask, labels
+end
+
+"""
+`load_mnist_clock(npoints=512; n_samples=60000, min_digits=2, max_digits=12, validation=true, normalize=false, sample_on_fly=false, ratio=0.2, seed=666, kwargs...)`
+
+Build a "bag of MNIST digits" dataset: each sample is a variable-cardinality outer set of
+`min_digits`..`max_digits` individual MNIST point-cloud digits (with class duplicates occurring
+naturally, each a distinct instance), packed into a fixed `(D, npoints, max_digits)` slot tensor
+with a validity mask -- directly compatible with `chamfer_pairwise_distance`/`hungarian_match`/
+`hungarian_matching_loss`'s `(D,N,L,BS)`/`(1,1,L,BS)` convention. Train/validation/test are split
+by underlying digit *instance* before any bag is built (mirrors [`load_mnist`](@ref)), so no
+individual digit image can appear in more than one split.
+
+Arguments (positional):
+- `npoints`: number of points requested per digit after sampling.
+
+Arguments (keyword):
+- `n_samples`: number of bags for the training split; also used for validation/test.
+- `min_digits`, `max_digits`: inclusive range for bag cardinality (`max_digits` is the fixed slot
+  count `L`).
+- `validation`: if `true`, returns train/val/test; otherwise train/test.
+- `normalize`: apply point-cloud normalization before splitting.
+- `sample_on_fly`: if `true`, training bags are drawn fresh (via `MLUtils.mapobs`) every time
+  they're accessed instead of being fixed at load time -- both bag composition and per-digit point
+  subsampling vary from access to access. Validation/test are always fixed/pre-sampled.
+- `ratio`: validation ratio from the train/validation instance pool.
+- `seed`: random seed for the instance split and the fixed (non-on-the-fly) sampling paths.
+- `kwargs...`: reserved for API compatibility.
+
+Returns:
+- If `validation=true`: `(train_data, valid_data, test_data)`; if `validation=false`:
+  `(train_data, test_data)`.
+- `valid_data`/`test_data` (and `train_data` when `sample_on_fly=false`) are
+  `(data, mask, labels)` triples as documented in [`_build_bags`](@ref).
+- `train_data` when `sample_on_fly=true` is instead a `MLUtils.mapobs`-wrapped lazy collection of
+  `n_samples` observations, each a fresh `(data, mask, labels)` triple as documented in
+  [`sample_one_bag`](@ref) -- since composition varies per access, `n_samples` here means "steps
+  per epoch", not "size of a fixed corpus".
+
+Notes:
+- `labels` are not needed by the reconstruction/matching loss -- they're carried through purely so
+  bags can be colored/labeled for plots and diagnostics later.
+"""
+function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, validation::Bool=true, normalize::Bool=false, sample_on_fly::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
+
     dict_loaded = Serialization.deserialize(_mnist_balanced_path())
     xs = dict_loaded["features"]
     ys = dict_loaded["targets"]
@@ -172,35 +283,11 @@ function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, 
         xs = normalize_point_cloud(xs)
     end
 
-    xs = sample_fixed_n_from_matrix(xs, npoints)
-    class_pool = Dict(c => findall(==(c), ys) for c in unique(ys))
-
-    #Random.seed!(seed) # Ensure reproducibility for any sampling in the dataset loading process.
-
-    rng = MersenneTwister(seed)
-    cs = rand(rng, collect(keys(class_pool)), max_digits, n_samples);
-    ns = rand(rng, min_digits:max_digits, n_samples);
-
-    x_data = zeros(Float32, size(xs, 1), npoints, max_digits, n_samples);
-    x_mask = falses(1, 1, max_digits, n_samples);
-    labels = Vector{Vector{Int}}(undef, n_samples);
-
-    Random.seed!(seed) # Ensure reproducibility for any sampling in the dataset loading process.
-    for i in 1:n_samples
-        n = ns[i]
-        for j in 1:n
-            #@show cs[j, i]
-            c = cs[j, i]
-            x_data[:, :, j, i] .= xs[:, :, rand(class_pool[c])]
-            x_mask[1, 1, j, i] = true
-        end
-        labels[i] = cs[1:n, i]
-    end
-
-    # Train/valid/test split from deterministic shuffled indices.
+    # Train/valid/test split from deterministic shuffled indices, BEFORE any bag is built --
+    # so no individual digit instance can appear in more than one split (mirrors load_mnist).
     rng_split = MersenneTwister(seed)
-    perm = randperm(rng_split, length(labels))
-    n_train_test = round(Int, 0.8 * length(labels))
+    perm = randperm(rng_split, length(ys))
+    n_train_test = round(Int, 0.8 * length(ys))
     train_val_idx = perm[1:n_train_test]
     test_idx = perm[n_train_test+1:end]
 
@@ -213,24 +300,32 @@ function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, 
         val_idx = Int[]
     end
 
-    y_train = ys[train_idx]
-    y_test = ys[test_idx]
+    xs_train, ys_train = xs[:, :, train_idx], ys[train_idx]
+    class_pool_train = Dict(c => findall(==(c), ys_train) for c in unique(ys_train))
+    classes_train = collect(keys(class_pool_train))
 
-    Random.seed!(seed) # Ensure reproducibility for any sampling in the dataset loading process.
-    
-    train_data = x_data[:, :, :, train_idx]
-    train_mask = x_mask[:, :, :, train_idx]
+    # Training branch can be static/reproducible or sampled fresh on every access.
+    train_data = if sample_on_fly
+        mapobs(_ -> sample_one_bag(Random.default_rng(), class_pool_train, classes_train, xs_train, npoints, min_digits, max_digits), 1:n_samples)
+    else
+        _build_bags(MersenneTwister(seed), class_pool_train, classes_train, xs_train, npoints, min_digits, max_digits, n_samples)
+    end
 
-    valid_data = validation ?  x_data[:, :, :, val_idx] : nothing
-    valid_mask = validation ? x_mask[:, :, :, val_idx] : nothing
-
-    test_data = x_data[:, :, :, test_idx]
-    test_mask = x_mask[:, :, :, test_idx]
+    # Validation and test are always fixed/pre-sampled, for reproducible evaluation.
+    xs_test, ys_test = xs[:, :, test_idx], ys[test_idx]
+    class_pool_test = Dict(c => findall(==(c), ys_test) for c in unique(ys_test))
+    classes_test = collect(keys(class_pool_test))
+    test_data = _build_bags(MersenneTwister(seed + 2), class_pool_test, classes_test, xs_test, npoints, min_digits, max_digits, n_samples)
 
     if validation
-        return (train_data, train_mask), (valid_data, valid_mask), (test_data, test_mask)
+        xs_val, ys_val = xs[:, :, val_idx], ys[val_idx]
+        class_pool_val = Dict(c => findall(==(c), ys_val) for c in unique(ys_val))
+        classes_val = collect(keys(class_pool_val))
+        val_data = _build_bags(MersenneTwister(seed + 1), class_pool_val, classes_val, xs_val, npoints, min_digits, max_digits, n_samples)
+        return train_data, val_data, test_data
     end
-    return (train_data, train_mask), (test_data, test_mask)
+
+    return train_data, test_data
 end
 
 
@@ -578,7 +673,8 @@ Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
 - `data_cfg`: dictionary or struct-like config. Typical keys include:
     - `dataset`, `npoints`, `validation`, `ratio`, `seed`,
     - and dataset-specific options such as
-        `cardinality_count`, `sample_on_fly`, `normalize`, `balanced_classes`, `type`.
+        `cardinality_count`, `sample_on_fly`, `normalize`, `balanced_classes`, `type`,
+        and (for `dataset="mnist_clock"`) `n_samples`, `min_digits`, `max_digits`.
 - `batch_size`: dataloader batch size.
 - `train_collate_fn`: optional train collate function.
 - `valid_collate_fn`: optional validation collate function.
@@ -591,9 +687,13 @@ Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
     - `test` is a `DataLoader`.
 
 # Notes
-- If `sample_on_fly && cardinality_count == :natural`, default
+- If `sample_on_fly && dataset == "mnist_clock"`, default `bag_collate_fn` is used for training
+    unless a custom collate function is provided (see `load_mnist_clock`).
+- Else if `sample_on_fly && cardinality_count == :natural`, default
     `on_fly_collate_fn` is used for training unless a custom collate function is
     provided.
+- `x_only=true` is not meaningful for `dataset="mnist_clock"` (the mask isn't optional metadata
+    the way a label is) -- leave it `false` (the default) for that dataset.
 """
 function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, train_collate_fn=nothing, valid_collate_fn=nothing, test_collate_fn=nothing, verbose::Bool=false)
     dataset_name = String(_cfgget(data_cfg, :dataset, "mnist"))
@@ -610,6 +710,11 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
     # Support special positional args for some datasets (e.g. ModelNet10 expects a `type` positional arg)
     type_name = _cfgget(data_cfg, :type, "all")
 
+    # mnist_clock-specific (bag-of-digits) options -- ignored via kwargs... by every other loader.
+    n_samples = _cfgget(data_cfg, :n_samples, 60000)
+    min_digits = _cfgget(data_cfg, :min_digits, 2)
+    max_digits = _cfgget(data_cfg, :max_digits, 12)
+
     data = load_dataset(
         dataset_name,
         npoints;
@@ -622,10 +727,22 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
         seed=seed,
         type=type_name,
         upper_bound_n=upper_bound_n,
+        n_samples=n_samples,
+        min_digits=min_digits,
+        max_digits=max_digits,
         verbose=verbose,
     )
 
-    if x_only
+    if x_only && dataset_name == "mnist_clock"
+        # mask isn't optional metadata here (unlike a label) -- x_only means "drop labels",
+        # not "drop the mask too", so this keeps (data, mask) rather than data alone.
+        # data[1] (train) is a mapobs-wrapped lazy object when sample_on_fly, so data[1][1]/[2]
+        # would mean "observation 1"/"observation 2", not "first/second field" -- needs its own
+        # lazy (data,mask) wrap in that case. valid/test are always eager, so plain indexing is fine.
+        train_data = sample_on_fly ? mapobs(t -> (t[1], t[2]), data[1]) : (data[1][1], data[1][2])
+        valid_data = validation ? (data[2][1], data[2][2]) : nothing
+        test_data = validation ? (data[3][1], data[3][2]) : (data[2][1], data[2][2])
+    elseif x_only
         train_data = data[1][1]
         valid_data = validation ? data[2][1] : nothing
         test_data = validation ? data[3][1] : data[2][1]
@@ -633,10 +750,11 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
         train_data = data[1]
         valid_data = validation ? data[2] : nothing
         test_data = validation ? data[3] : data[2]
-
     end
 
-    if sample_on_fly && cardinality_count == :natural
+    if sample_on_fly && dataset_name == "mnist_clock"
+        train_collate_fn = isnothing(train_collate_fn) ? bag_collate_fn : train_collate_fn
+    elseif sample_on_fly && cardinality_count == :natural
         train_collate_fn = isnothing(train_collate_fn) ? on_fly_collate_fn : train_collate_fn
     end
 

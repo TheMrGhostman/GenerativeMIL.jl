@@ -4,11 +4,23 @@
 
 
 ## Todos 21.8.2026
+- [ ] use CuIterator for training
 - [ ] Improve memory and speed on GPUs of Hungarian matching and pairwise chamfer distance. 
     - we can work only with cartesian indexes and intermediate PDM to compute hungarian matching, 
     - then when matching is found we can only compute with indexes we need for matching. we can save a lot of memory for gradients approximately HALF of it. 
     - Might be useful even for HTD distance
-
+- [ ] HVAE training 
+  - [x] data
+    - [x] dataset
+    - [x] dataloader
+  - [ ] training script
+  - [ ] HSVAE
+    - [x] struct
+    - [x] forward pass
+    - [ ] constructor
+    - [x] elbo with logging
+    - [x] optim step
+    - [ ] valid step
 
 ## Todos 20.8.2026
 - [ ] sliced wasserstain impelementation
@@ -18,14 +30,14 @@
 - [x] port DeepSlotQuerryVAE into GenerativeMIL
 - [x] implement gpu-ready cluster pairwise Chamfer Distance
   - [x] do sanity check if reshapeing is the same as if i run it in nested for loops
-- [ ] download MNIST PC data into MainGPU PC
-- [ ] train HSVAE (specialized for gaussian clock)
+- [x] download MNIST PC data into MainGPU PC
+- [x] train HSVAE (specialized for gaussian clock) - shape tests worked
   - [x] implement hungarian matching with gpu pairwise evaluation for gaussian clock -> vit CPCD
     - [x] implement hungarian part
     - [x] sanity checks
   - [x] implement forward and backward pass for HSVAE
     - [x] it can be done via masking
-  - [ ] test shallow setvae if it is better then poolmodel? 
+  - [x] test shallow setvae if it is better then poolmodel? 
     - attention mask would allowed me to compute everything at once but PoolModel is also option. 
     - but when i use attention inside i can put it also on the outside. 
 

@@ -256,4 +256,62 @@ function on_fly_collate_fn(batch::Vector{Tuple{X, Y}}) where {X <: AbstractArray
     return (x, y)
 end
 
+"""
+    bag_collate_fn(batch)
+
+Collate function for on-the-fly sampled "bag of point clouds" batches (see
+`load_mnist_clock`/`sample_one_bag`), where each observation is itself already a full
+`(data, mask, labels)` triple for one bag rather than a single `(x, y)` pair.
+
+# Arguments
+- `batch`: vector of tuples `(data, mask, labels)` where `data` has shape `(D, N, L)`, `mask`
+  has shape `(1, 1, L)`, and `labels` has shape `(L,)`.
+
+# Returns
+- Tuple `(x, mask, labels)` where:
+    - `x` has shape `(D, N, L, BS)`,
+    - `mask` has shape `(1, 1, L, BS)`,
+    - `labels` has shape `(L, BS)`.
+"""
+function bag_collate_fn(batch::Vector{Tuple{X, M, L}}) where {X <: AbstractArray{<:AbstractFloat, 3}, M <: AbstractArray{Bool, 3}, L <: AbstractVector{Int}}
+    data1, mask1, labels1 = batch[1]
+    BS = length(batch)
+    x = Array{eltype(data1)}(undef, size(data1)..., BS)
+    mask = Array{Bool}(undef, size(mask1)..., BS)
+    labels = Array{eltype(labels1)}(undef, length(labels1), BS)
+    @inbounds for (i, (data, m, l)) in pairs(batch)
+        copyto!(@view(x[:, :, :, i]), data)
+        copyto!(@view(mask[:, :, :, i]), m)
+        copyto!(@view(labels[:, i]), l)
+    end
+    return (x, mask, labels)
+end
+
+"""
+    bag_collate_fn(batch)
+
+Label-free variant of [`bag_collate_fn`](@ref) for `x_only=true`: each observation is a
+`(data, mask)` pair (no labels) -- used so downstream consumers (older 2-arg models,
+`CuIterator`) never see, and never move to GPU, labels that are only needed for plotting.
+
+# Arguments
+- `batch`: vector of tuples `(data, mask)` where `data` has shape `(D, N, L)` and `mask` has
+  shape `(1, 1, L)`.
+
+# Returns
+- Tuple `(x, mask)` where `x` has shape `(D, N, L, BS)` and `mask` has shape `(1, 1, L, BS)`.
+"""
+function bag_collate_fn(batch::Vector{Tuple{X, M}}) where {X <: AbstractArray{<:AbstractFloat, 3}, M <: AbstractArray{Bool, 3}}
+    data1, mask1 = batch[1]
+    BS = length(batch)
+    x = Array{eltype(data1)}(undef, size(data1)..., BS)
+    mask = Array{Bool}(undef, size(mask1)..., BS)
+    @inbounds for (i, (data, m)) in pairs(batch)
+        copyto!(@view(x[:, :, :, i]), data)
+        copyto!(@view(mask[:, :, :, i]), m)
+    end
+    return (x, mask)
+end
+
+
 

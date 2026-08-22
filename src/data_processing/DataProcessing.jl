@@ -14,8 +14,9 @@ _shapenet_class_15K_path(classname::AbstractString) = datadir("datasets/shapenet
 #export build_point_cloud_from_grayscale_image
 
 include("data_utils.jl")
-export normalize_point_cloud, on_fly_collate_fn
+export normalize_point_cloud, on_fly_collate_fn, bag_collate_fn
 export sample_fixed_n_from_matrix, sample_fixed_n_unsqueeze, sample_fixed_n, _stack_point_clouds
 
 include("load_datasets.jl")
-export load_modelnet10, load_mnist, load_shapenet_class, load_shapenet_multiple_classes, create_dataloaders
+export load_modelnet10, load_mnist, load_mnist_clock, load_shapenet_class, load_shapenet_multiple_classes, create_dataloaders
+export sample_one_bag
