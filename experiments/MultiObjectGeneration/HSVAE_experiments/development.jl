@@ -43,8 +43,25 @@ X, Y, mask = batch;
 
 Xr = reshape(X, 3, 8, 4*2)
 
+## make data
+function make_cpu_gpu_batch(D, N, L, M, BS)
+    X, Y, mask = build_test_batch(D, N, L, M, BS)
+    X_gpu = cu(X)
+    Y_gpu = cu(Y)
+    mask_gpu = cu(mask)
+    return (X, Y, mask), (X_gpu, Y_gpu, mask_gpu)
+end
+
+function make_cpu_gpu_batch_for_model(D, N, L, BS)
+    X, _, mask = build_test_batch(D, N, L, 1, BS)
+    X_gpu = cu(X)
+    mask_gpu = cu(mask)
+    return (X, mask), (X_gpu, mask_gpu)
+end
 
 
+
+## testing
 
 prepool = Flux.Dense(3, 16, relu)
 pooling = PMA(1, 16, 4; attention_fn = slot_attention) # m_z induced points -> Z is a set of m_z tokens, not one vector
@@ -454,16 +471,44 @@ xxc_mask = cu(xx_mask);
 @benchmark Zygote.gradient(m -> forward_and_loss(m, $xx, $xx_mask), $model2_cpu)
 @benchmark Zygote.gradient(m -> forward_and_loss(m, $xxc, $xxc_mask), $model2_gpu)
 
+## test
+model2_cpu = build_hierarchical_slot_query_vae(3, 12, 2);
+model2_gpu = cu(model2_cpu);
+batch = build_test_batch(3, 512, 12, 1, 8);
+xx, __, xx_mask = batch;
+xxc = cu(xx);
+xxc_mask = cu(xx_mask);
+@info size(xx), size(xx_mask), size(xxc), size(xxc_mask)
+
+forward_and_loss(model, X, mask) = begin
+    y, logits_exist, μ_z, Σ_z = model(X, mask)
+    loss = sum(chamfer_pairwise_distance(X, y))
+    return loss
+end
+
+forward_and_loss2(model, X, mask, idxs) = begin
+    y, logits_exist, μ_z, Σ_z = model(X, mask)
+    loss = sum(chamfer_pairwise_distance(X, y)[idxs])
+    return loss
+end
+
+idxs = [CartesianIndex.(i,i,j) for i in 1:12 for j in 1:8]
+tmp = forward_and_loss2(model2_cpu, xx, xx_mask, idxs)
+
+@benchmark forward_and_loss2($model2_gpu, $xxc, $xxc_mask, $idxs)
+@benchmark forward_and_loss($model2_gpu, $xxc, $xxc_mask)
+
+
 
 ## Sanity checks here
 batch = build_test_batch(3, 8, 4, 5, 2);
 x, y, x_mask = batch;
 
-pdm = chamfer_distance_clusters_A(x, y);
+pdm = chamfer_pairwise_distance(x, y);
 size(pdm) # (L, M, BS)
 
 function sanity_check_chamfer_distance_clusters(x, y)
-    pdm = chamfer_distance_clusters_A(x, y)
+    pdm = chamfer_pairwise_distance(x, y)
     bool_decision = zeros_like(pdm, Bool);
     D, N, L, BS = size(x)
     _, _, M, _  = size(y)
@@ -481,6 +526,278 @@ function sanity_check_chamfer_distance_clusters(x, y)
 end
 
 sc = sanity_check_chamfer_distance_clusters(x, y)
+sc |> all
 @info "sanity check for chamfer_distance_clusters: $(sc |> all) -->  $(mean(sc)*100)% of the pairs match"
 
+
+## hungarian matching implementation
+_pairwise_sqeuclidean(a::AbstractMatrix{T}, b::AbstractMatrix{T}) where T<:AbstractFloat = begin
+    a2 = sum(abs2, a, dims=1)
+    b2 = sum(abs2, b, dims=1)
+    max.(a2' .+ b2 .- 2 .* (a' * b), zero(T))
+end
+
+
+function hungarian_match(x̂::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
+    _, n_slots, bs = size(x̂)
+    matched_pred = Vector{Vector{Int}}(undef, bs)
+    matched_gt = Vector{Vector{Int}}(undef, bs)
+    for b in 1:bs
+        gt_idx = findall(vec(x_mask[1, :, b]))
+        if isempty(gt_idx)
+            matched_pred[b], matched_gt[b] = Int[], Int[]
+            continue
+        end
+        C = _pairwise_sqeuclidean(x̂[:, :, b], x[:, gt_idx, b]) # (n_slots, n_gt)
+        assignment, _ = Hungarian.hungarian(C)
+        pred_idx = findall(!=(0), assignment)
+        matched_pred[b] = pred_idx
+        matched_gt[b] = gt_idx[assignment[pred_idx]]
+    end
+    return matched_pred, matched_gt
+end
+
+
+
+## testing hungarian matching implementation / development
+batch = build_test_batch(1, 8, 6, 5, 1);
+x, y, x_mask = batch;
+xc = cu(x);
+xc_mask = cu(x_mask);
+
+C = chamfer_pairwise_distance(y, x) # (M, L, BS)
+#C_gpu = cu(C)
+C .* x_mask[1, :, :, 1] # mask out invalid rows | mask ~ (1, 1, L, BS)
+
+x[1, :, :, 1] # valid points in cluster 1
+y[1, :, :, 1] # valid points in cluster 1
+
+## reverse engineering |> porting new 4D data into 3D data for hungarian matching and compare distancs
+function pairwise_ch(y::AbstractArray{T,3}, x::AbstractArray{T,3}) where T<:AbstractFloat
+    D, N, M = size(y)
+    _, N2, L = size(x)
+    out = zeros(T, M, L)
+    for l in 1:L
+        for m in 1:M
+            x1 = x[:, :, l]
+            y1 = y[:, :, m]
+            #@assert chamfer_distance(x1, y1) ≈ pdm[l, m, b]
+            out[m, l] = chamfer_distance(y1, x1)
+        end
+    end
+    return out
+end
+
+function hungarian_match_test(x̂::AbstractArray{T,4}, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}) where T<:AbstractFloat
+    _, n,  n_slots, bs = size(x̂)
+    matched_pred = Vector{Vector{Int}}(undef, bs)
+    matched_gt = Vector{Vector{Int}}(undef, bs)
+    for b in 1:bs
+        gt_idx = findall(vec(x_mask[1, 1, :, b]))
+        if isempty(gt_idx)
+            matched_pred[b], matched_gt[b] = Int[], Int[]
+            continue
+        end
+        C = pairwise_ch(x̂[:, :, :, b], x[:, :, gt_idx, b]) # (n_slots, n_gt)
+        #display(C)
+        assignment, _ = Hungarian.hungarian(C)
+        pred_idx = findall(!=(0), assignment)
+        matched_pred[b] = pred_idx
+        matched_gt[b] = gt_idx[assignment[pred_idx]]
+    end
+    return matched_pred, matched_gt
+end
+
+
+batch = build_test_batch(3, 1, 6, 5, 1);
+x, y, x_mask = batch;
+
+C = chamfer_pairwise_distance(y, x) # (M, L, BS)
+C .* x_mask[1, :, :, 1] # mask out invalid rows | mask ~ (1, 1, L, BS)
+
+xd = dropdims(x, dims=2)
+yd = dropdims(y, dims=2)
+
+pairwise_ch(y[:,:,:,1], x[:,:,:,1]) ≈  chamfer_pairwise_distance(y, x)[:,:,1]
+#mean(abs2, pairwise_ch(y[:,:,:,1], x[:,:,:,1]) .- chamfer_pairwise_distance(y, x)[:,:,1])
+chamfer_pairwise_distance(y, x)[:,:,1]
+
+hungarian_match_test(y, x, x_mask)
+
+
+## matrix based implementation of hungarian matching
+"""
+`hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) where T<:AbstractFloat`
+
+Solve the linear assignment problem per batch element and return the matched pairs as
+`CartesianIndex` arrays, so the result indexes directly into `(..., M, BS)`- and
+`(..., L, BS)`-shaped tensors (e.g. `x̂[:, :, ci_m]`, `x[:, :, ci_l]`) without any further
+per-batch bookkeeping. Masked-out `l` columns are dropped from the cost matrix before assignment
+(never zeroed/`Inf`-filled), so they can never be selected as a match. Index bookkeeping only —
+not meant to be differentiated through, wrap the call in `Zygote.@ignore`.
+
+Arguments (positional):
+- `C`: cost matrix `(M, L, BS)` — `M` predicted slots, `L` ground-truth clusters, `BS` batch size
+  (e.g. from `chamfer_pairwise_distance`).
+- `l_mask`: validity mask `(1, 1, L, BS)` for the `L` ground-truth clusters.
+
+Returns:
+- `ci_m::Vector{CartesianIndex{2}}`: matched `(m, bs)` pairs, one per matched pair across the
+  whole batch.
+- `ci_l::Vector{CartesianIndex{2}}`: matched `(l, bs)` pairs, same order/length as `ci_m`.
+"""
+function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) where T<:AbstractFloat
+    M, _, BS = size(C)
+    C_cpu, mask_cpu = Array(C), Array(l_mask)
+    #ci_m = CartesianIndex{2}[]   # (m, bs) — index into a (..., M, BS) tensor
+    #ci_l = CartesianIndex{2}[]   # (l, bs) — index into a (..., L, BS) tensor
+    c_ml = CartesianIndex{3}[]  # (m, l, bs) — index into a (..., M, L, BS) tensor
+    exist_target = zeros_like(C, (1, M, BS))  # (1, M, BS) - 
+    for b in 1:BS
+        l_idx = findall(vec(mask_cpu[1, 1, :, b]))
+        isempty(l_idx) && continue
+
+        Cb = C_cpu[:, l_idx, b]                       # (M, n_valid_l) — masked columns just aren't there
+        assignment, _ = Hungarian.hungarian(Cb)
+        matched = filter(c -> c[2] != 0, CartesianIndex.(1:M, assignment))   # (m, position-in-l_idx)
+
+        #append!(ci_m, CartesianIndex.(getindex.(matched, 1), b))
+        #append!(ci_l, CartesianIndex.(l_idx[getindex.(matched, 2)], b))
+        append!(c_ml, CartesianIndex.(getindex.(matched, 1), l_idx[getindex.(matched, 2)], b))
+        exist_target[1, getindex.(matched, 1), b] .= one(T)
+    end
+    return c_ml, exist_target
+end
+
+hungarian_match(chamfer_pairwise_distance(y, x), x_mask) == hungarian_match_test(y, x, x_mask)
+
+
+hungarian_match(chamfer_pairwise_distance(y, x), x_mask)
+hungarian_match_test(y, x, x_mask)
+
+## now moveon hungarian matching loss function for nested vae
+
+batch = build_test_batch(3, 4, 6, 5, 2);
+x, y, x_mask = batch;
+
+
+C = chamfer_pairwise_distance(y, x) # (M, L, BS)
+idxs, exist_target = hungarian_match(C, x_mask)
+
+t = zeros(Float32, 1, 6, 1)
+t[1, mp[1], 1] .= one(Float32)
+t
+
+mp, mg = hungarian_match(C, x_mask)
+
+
+function hungarian_matching_loss(x̂::AbstractArray{T,4}, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, logits_exist::AbstractArray{T,3}, distance::Function = chamfer_pairwise_distance) where T<:AbstractFloat
+    _, _, M, BS = size(x̂)
+
+    C = distance(x̂, x) # (M, L, BS)
+    matched_indices, exist_target = Zygote.@ignore hungarian_match(C, x_mask)
+    n_matched = length(matched_indices)
+
+    ℒ_rec = n_matched > 0 ? mean(C[matched_indices]) : zero(T)
+    ℒ_exist = Flux.Losses.logitbinarycrossentropy(logits_exist, exist_target; agg=mean) * T(M) # sum over all slots, not mean 
+    #matched_frac = T(n_matched) / T(M * BS)
+    return ℒ_rec, ℒ_exist#, matched_frac
+end
+
+rnd_pred = randn(Float32, 1, 5, 2)
+hungarian_matching_loss(y, x, x_mask, rnd_pred)
+hungarian_matching_loss(y, x, x_mask, rnd_pred, (x,y) -> chamfer_pairwise_distance(x,y; agg=sum))
+
+
+## gpu testing 
+N, M, L, BS = 256, 10, 12, 8
+batch = build_test_batch(3, N, L, M, BS);
+x, y, x_mask = batch;
+xc = cu(x);
+yc = cu(y);
+xc_mask = cu(x_mask);
+rnd_pred = randn_like(x, (1, M, BS));
+rnd_pred_gpu = cu(rnd_pred);
+
+hungarian_matching_loss(y, x, x_mask, rnd_pred)
+
+hungarian_matching_loss(yc, xc, xc_mask, rnd_pred_gpu)
+
+@benchmark hungarian_matching_loss($y, $x, $x_mask, $rnd_pred)
+@benchmark hungarian_matching_loss($yc, $xc, $xc_mask, $rnd_pred_gpu)
+
+## gpu testing of backward of model
+(x, y, x_mask), (xc, yc, xc_mask) = make_cpu_gpu_batch(3, 256, 12, 1, 8);
+
+model_cpu = build_hierarchical_slot_query_vae(3, 12, 2);
+model_gpu = cu(model_cpu);
+
+
+function model_elbo(model, x, x_mask)
+    ŷ, logits_exist, μ_z, Σ_z = model(x, x_mask)
+    ℒ_rec, ℒ_exist = hungarian_matching_loss(ŷ, x, x_mask, logits_exist)
+    ℒ_kl = mean(GenerativeMIL.kl_divergence(μ_z, Σ_z))
+    return ℒ_rec + ℒ_exist + ℒ_kl
+end
+
+@benchmark model_elbo($model_cpu, $x, $x_mask)
+@benchmark model_elbo($model_gpu, $xc, $xc_mask)
+
+compute_grad_cpu() = Zygote.gradient(m -> model_elbo(m, x, x_mask), model_cpu)
+compute_grad_gpu() = CUDA.@sync Zygote.gradient(m -> model_elbo(m, xc, xc_mask), model_gpu)
+
+compute_grad_cpu();
+compute_grad_gpu();
+
+@benchmark compute_grad_cpu()
+@benchmark compute_grad_gpu()
+
+## gpu testing of backward of model
+(x, y, x_mask), (xc, yc, xc_mask) = make_cpu_gpu_batch(3, 512, 12, 1, 8);
+
+@benchmark model_elbo($model_cpu, $x, $x_mask)
+@benchmark model_elbo($model_gpu, $xc, $xc_mask)
+
+@benchmark compute_grad_cpu()
+@benchmark compute_grad_gpu()
+
+## gpu testing of backward of model
+(x, y, x_mask), (xc, yc, xc_mask) = make_cpu_gpu_batch(3, 512, 12, 1, 32);
+
+@benchmark model_elbo($model_cpu, $x, $x_mask)
+@benchmark model_elbo($model_gpu, $xc, $xc_mask)
+
+@benchmark compute_grad_cpu()
+@benchmark compute_grad_gpu()
+
+## gpu testing of backward of model
+(x, y, x_mask), (xc, yc, xc_mask) = make_cpu_gpu_batch(3, 256, 12, 1, 48);
+
+@benchmark model_elbo($model_cpu, $x, $x_mask)
+@benchmark model_elbo($model_gpu, $xc, $xc_mask)
+
+@benchmark compute_grad_cpu()
+@benchmark compute_grad_gpu()
+
+
+
+
+
+## gpu testing of backward of model
+(x, x_mask), (xc, xc_mask) = make_cpu_gpu_batch_for_model(3, 256, 12, 8);
+
+@benchmark model_elbo($model_cpu, $x, $x_mask)
+@benchmark model_elbo($model_gpu, $xc, $xc_mask)
+
+@benchmark compute_grad_cpu()
+@benchmark compute_grad_gpu() 
+## gpu testing of backward of model
+(x, x_mask), (xc, xc_mask) = make_cpu_gpu_batch_for_model(3, 256, 12, 64);
+
+@benchmark model_elbo($model_cpu, $x, $x_mask)
+@benchmark model_elbo($model_gpu, $xc, $xc_mask)
+
+@benchmark compute_grad_cpu()
+@benchmark compute_grad_gpu()
+@benchmark compute_grad_gpu() seconds=60
 
