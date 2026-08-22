@@ -459,11 +459,11 @@ xxc_mask = cu(xx_mask);
 batch = build_test_batch(3, 8, 4, 5, 2);
 x, y, x_mask = batch;
 
-pdm = chamfer_distance_clusters(x, y);
+pdm = chamfer_distance_clusters_A(x, y);
 size(pdm) # (L, M, BS)
 
 function sanity_check_chamfer_distance_clusters(x, y)
-    pdm = chamfer_distance_clusters(x, y)
+    pdm = chamfer_distance_clusters_A(x, y)
     bool_decision = zeros_like(pdm, Bool);
     D, N, L, BS = size(x)
     _, _, M, _  = size(y)
