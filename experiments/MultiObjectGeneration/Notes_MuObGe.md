@@ -562,7 +562,7 @@ slot 12 -> closest ground truth: class 2 (gt position 3) | L2 dist 1.38
 # HSVAE 
 
 
-### Speed testing CPU vs GPU on diferent sizes
+### Speed testing of Chamfer_pairwise_distance on CPU vs GPU on different sizes
 Loss is sum(chamfer_distance_clusters) / i.e. without hungarian matching
 
 #### Data size ~ 
@@ -808,3 +808,670 @@ BenchmarkTools.Trial: 54 samples with 1 evaluation per sample.
  Memory estimate: 44.47 MiB, allocs estimate: 58785.
 ~~~
 
+### Speed teseting of Hungarian_matching_loss on CPU vs GPU
+
+#### Data size ~ (3, 256, 12, 8)
+~~~julia
+julia> @benchmark hungarian_matching_loss($y, $x, $x_mask, $rnd_pred)
+BenchmarkTools.Trial: 4 samples with 1 evaluation per sample.
+ Range (min … max):  984.508 ms …    1.771 s  ┊ GC (min … max):  8.38% … 48.77%
+ Time  (median):        1.539 s               ┊ GC (median):    42.21%
+ Time  (mean ± σ):      1.458 s ± 363.808 ms  ┊ GC (mean ± σ):  38.49% ± 18.98%
+
+  █                            █                          █   █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁█ ▁
+  985 ms           Histogram: frequency by time          1.77 s <
+
+ Memory estimate: 770.86 MiB, allocs estimate: 801.
+
+julia> @benchmark hungarian_matching_loss($yc, $xc, $xc_mask, $rnd_pred_gpu)
+BenchmarkTools.Trial: 508 samples with 1 evaluation per sample.
+ Range (min … max):  9.634 ms …  10.941 ms  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     9.809 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   9.843 ms ± 169.381 μs  ┊ GC (mean ± σ):  1.69% ± 3.93%
+
+       ▃▅▇▅▇█▄▇▅▁                                              
+  ▂▃▃▇▅██████████▆▄▅▅▃▃▁▂▃▁▁▃▃▂▁▂▁▂▁▁▂▁▂▁▁▁▁▁▂▂▁▁▂▂▁▁▃▁▂▃▂▂▂▂ ▃
+  9.63 ms         Histogram: frequency by time        10.6 ms <
+
+ Memory estimate: 149.02 KiB, allocs estimate: 3361.
+julia> 
+~~~
+
+
+
+
+### Speed teseting of Hungarian_matching_loss with model on CPU vs GPU
+
+#### Data size ~ (3, 256, 12, 8)
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 4 samples with 1 evaluation per sample.
+ Range (min … max):  1.305 s …    2.313 s  ┊ GC (min … max):  9.40% … 50.81%
+ Time  (median):     1.748 s               ┊ GC (median):    35.95%
+ Time  (mean ± σ):   1.779 s ± 413.461 ms  ┊ GC (mean ± σ):  35.91% ± 17.24%
+
+  █                       █ █                              █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  1.3 s          Histogram: frequency by time         2.31 s <
+
+ Memory estimate: 961.12 MiB, allocs estimate: 1681.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 282 samples with 1 evaluation per sample.
+ Range (min … max):  17.066 ms …  22.543 ms  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     17.630 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   17.760 ms ± 516.107 μs  ┊ GC (mean ± σ):  4.38% ± 8.88%
+
+        ▁▂▂▂▁█▂ ▂▄  ▂                                           
+  ▃▁▄▁▃▆█████████████▃▇▇▄▅▄▆▇▄▃▄▄▄▃▃▃▃▁▄▃▄▃▁▃▁▃▃▃▁▁▃▃▁▃▁▃▁▁▃▁▃ ▃
+  17.1 ms         Histogram: frequency by time         19.3 ms <
+
+ Memory estimate: 639.89 KiB, allocs estimate: 15928.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 3 samples with 1 evaluation per sample.
+ Range (min … max):  1.727 s …    2.277 s  ┊ GC (min … max): 33.99% … 49.90%
+ Time  (median):     1.766 s               ┊ GC (median):    35.61%
+ Time  (mean ± σ):   1.923 s ± 307.017 ms  ┊ GC (mean ± σ):  40.76% ±  8.75%
+
+  █   █                                                    █  
+  █▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  1.73 s         Histogram: frequency by time         2.28 s <
+
+ Memory estimate: 1.02 GiB, allocs estimate: 18925.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 88 samples with 1 evaluation per sample.
+ Range (min … max):  51.547 ms … 66.582 ms  ┊ GC (min … max): 0.00% … 19.43%
+ Time  (median):     56.164 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   57.188 ms ±  3.861 ms  ┊ GC (mean ± σ):  4.27% ±  7.87%
+
+     ▃ ▁        ▃▁█▄▆▁                                         
+  ▄▆▆█▆█▄▁▄▁▄▁▁▁██████▆▇▆▆▁▆▁▁▄▁▆▄▁▁▄▁▄▁▁▄▄▄▄▄▆▆▆▇▁▁▁▁▁▁▁▁▄▁▆ ▁
+  51.5 ms         Histogram: frequency by time        66.5 ms <
+
+ Memory estimate: 23.82 MiB, allocs estimate: 62023.
+~~~
+
+#### Data size ~  (3, 512, 12, 8)
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 6.255 s (31.26% GC) to evaluate,
+ with a memory estimate of 3.56 GiB, over 1688 allocations.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 105 samples with 1 evaluation per sample.
+ Range (min … max):  46.099 ms … 54.616 ms  ┊ GC (min … max): 3.46% … 0.00%
+ Time  (median):     47.397 ms              ┊ GC (median):    5.27%
+ Time  (mean ± σ):   47.994 ms ±  1.755 ms  ┊ GC (mean ± σ):  4.26% ± 2.97%
+
+    ▂ ▆▅█▂ ▃ ▃                                                 
+  █▇█▇████▇████▇▄▅▅▅▄█▁▅▁▇▅▄▅▁▄▁▁▄▁▄▁▁▁▁▁▅▄▁▁▄▄▄▁▄▁▄▁▁▁▁▁▁▁▁▄ ▄
+  46.1 ms         Histogram: frequency by time        53.9 ms <
+
+ Memory estimate: 649.12 KiB, allocs estimate: 16311.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 7.026 s (35.74% GC) to evaluate,
+ with a memory estimate of 3.73 GiB, over 18961 allocations.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 53 samples with 1 evaluation per sample.
+ Range (min … max):  92.462 ms … 101.273 ms  ┊ GC (min … max): 10.76% … 0.00%
+ Time  (median):     94.347 ms               ┊ GC (median):     6.28%
+ Time  (mean ± σ):   94.747 ms ±   1.799 ms  ┊ GC (mean ± σ):   5.81% ± 4.41%
+
+       █       ▂  ▂    ▂  ▂▂         ▂                          
+  ▅▅█▅▅██▅▅▁▅▅██████▁▅▁█▁███▁▁▁▁▁▅▁▁▁█▁▅▁▁▁▅▁▁▁▁▁▅▁▁▅▁▁▁▁▁▁▁▁▅ ▁
+  92.5 ms         Histogram: frequency by time         99.5 ms <
+
+ Memory estimate: 44.64 MiB, allocs estimate: 62559.
+~~~
+
+#### Data size ~ (3, 512, 12, 32)
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 21.947 s (17.56% GC) to evaluate,
+ with a memory estimate of 14.25 GiB, over 3663 allocations.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 3 samples with 1 evaluation per sample.
+ Range (min … max):  1.014 s … 6.775 s  ┊ GC (min … max): 1.19% … 0.17%
+ Time  (median):     1.061 s            ┊ GC (median):    1.14%
+ Time  (mean ± σ):   2.950 s ± 3.313 s  ┊ GC (mean ± σ):  0.41% ± 0.59%
+
+  █                                                     ▁  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  1.01 s        Histogram: frequency by time       6.78 s <
+
+ Memory estimate: 848.55 KiB, allocs estimate: 20253.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 22.962 s (14.62% GC) to evaluate,
+ with a memory estimate of 14.90 GiB, over 20957 allocations.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 3 samples with 1 evaluation per sample.
+ Range (min … max):  2.431 s …   2.589 s  ┊ GC (min … max): 0.90% … 0.71%
+ Time  (median):     2.478 s              ┊ GC (median):    0.88%
+ Time  (mean ± σ):   2.499 s ± 80.989 ms  ┊ GC (mean ± σ):  0.83% ± 0.11%
+
+  █               █                                       █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  2.43 s         Histogram: frequency by time        2.59 s <
+
+ Memory estimate: 169.76 MiB, allocs estimate: 68330.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 48)
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 8.738 s (24.55% GC) to evaluate,
+ with a memory estimate of 5.63 GiB, over 5066 allocations.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 3 samples with 1 evaluation per sample.
+ Range (min … max):  1.754 s …    2.142 s  ┊ GC (min … max): 0.00% … 0.29%
+ Time  (median):     2.006 s               ┊ GC (median):    0.29%
+ Time  (mean ± σ):   1.967 s ± 196.907 ms  ┊ GC (mean ± σ):  0.20% ± 0.17%
+
+  █                                    █                   █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  1.75 s         Histogram: frequency by time         2.14 s <
+
+ Memory estimate: 1000.68 KiB, allocs estimate: 22334.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 9.955 s (29.25% GC) to evaluate,
+ with a memory estimate of 6.13 GiB, over 22476 allocations.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 3 samples with 1 evaluation per sample.
+ Range (min … max):  805.053 ms …    2.573 s  ┊ GC (min … max): 1.14% … 0.53%
+ Time  (median):        2.219 s               ┊ GC (median):    0.41%
+ Time  (mean ± σ):      1.866 s ± 935.369 ms  ┊ GC (mean ± σ):  0.41% ± 0.57%
+
+  █                                               █           █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  805 ms           Histogram: frequency by time          2.57 s <
+
+ Memory estimate: 128.29 MiB, allocs estimate: 70678.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 64)
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 11.519 s (20.55% GC) to evaluate,
+ with a memory estimate of 7.51 GiB, over 6409 allocations.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 4 samples with 1 evaluation per sample.
+ Range (min … max):  781.209 ms … 2.755 s  ┊ GC (min … max): 0.00% … 0.12%
+ Time  (median):        1.828 s            ┊ GC (median):    0.21%
+ Time  (mean ± σ):      1.798 s ± 1.078 s  ┊ GC (mean ± σ):  0.18% ± 0.25%
+
+  █    █                                                  ██  
+  █▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁██ ▁
+  781 ms         Histogram: frequency by time         2.75 s <
+
+ Memory estimate: 1.08 MiB, allocs estimate: 23705.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 12.502 s (25.70% GC) to evaluate,
+ with a memory estimate of 8.17 GiB, over 23824 allocations.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 6 samples with 1 evaluation per sample.
+ Range (min … max):  746.331 ms …    1.014 s  ┊ GC (min … max): 1.27% … 0.00%
+ Time  (median):     800.587 ms               ┊ GC (median):    1.12%
+ Time  (mean ± σ):   848.053 ms ± 117.266 ms  ┊ GC (mean ± σ):  1.03% ± 0.96%
+
+  █           █                                       ▁       ▁  
+  █▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁█ ▁
+  746 ms           Histogram: frequency by time          1.01 s <
+
+ Memory estimate: 170.08 MiB, allocs estimate: 73532.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 1) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 23 samples with 1 evaluation per sample.
+ Range (min … max):  135.245 ms … 540.885 ms  ┊ GC (min … max):  0.00% … 74.95%
+ Time  (median):     149.658 ms               ┊ GC (median):     6.81%
+ Time  (mean ± σ):   219.562 ms ± 142.841 ms  ┊ GC (mean ± σ):  37.08% ± 26.43%
+
+  █▆▃                                                            
+  ███▁▁▁▁▁▄▇▁▁▁▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▁▄▁▁▄▄ ▁
+  135 ms           Histogram: frequency by time          541 ms <
+
+ Memory estimate: 120.17 MiB, allocs estimate: 1024.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 471 samples with 1 evaluation per sample.
+ Range (min … max):   9.168 ms … 101.544 ms  ┊ GC (min … max): 0.00% … 71.80%
+ Time  (median):      9.675 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   10.764 ms ±   6.034 ms  ┊ GC (mean ± σ):  3.97% ±  5.56%
+
+  ██▅▂▁                                                         
+  █████▅▅▁▅▁▁▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▁▄▁▅▅▆ ▆
+  9.17 ms       Histogram: log(frequency) by time        36 ms <
+
+ Memory estimate: 579.53 KiB, allocs estimate: 14713.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 21 samples with 1 evaluation per sample.
+ Range (min … max):  147.418 ms … 705.834 ms  ┊ GC (min … max):  0.00% … 79.11%
+ Time  (median):     164.424 ms               ┊ GC (median):     6.83%
+ Time  (mean ± σ):   238.749 ms ± 178.563 ms  ┊ GC (mean ± σ):  36.92% ± 26.71%
+
+  ▆█                                                             
+  ███▁▁▁▁▁▁▄▁▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▁▁▁▁▁▄▁▁▁▄ ▁
+  147 ms           Histogram: frequency by time          706 ms <
+
+ Memory estimate: 132.58 MiB, allocs estimate: 18160.
+
+julia> @benchmark compute_grad_gpu() 
+BenchmarkTools.Trial: 125 samples with 1 evaluation per sample.
+ Range (min … max):  32.745 ms … 129.640 ms  ┊ GC (min … max): 0.00% … 26.01%
+ Time  (median):     37.435 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   40.068 ms ±  14.068 ms  ┊ GC (mean ± σ):  1.97% ±  4.01%
+
+  ▇ ██                                                          
+  █▃██▅▆▆▂▄▂▃▁▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▂ ▂
+  32.7 ms         Histogram: frequency by time          126 ms <
+
+ Memory estimate: 5.54 MiB, allocs estimate: 60235.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 2) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 13 samples with 1 evaluation per sample.
+ Range (min … max):  266.194 ms … 821.895 ms  ┊ GC (min … max):  0.00% … 65.39%
+ Time  (median):     296.854 ms               ┊ GC (median):     8.22%
+ Time  (mean ± σ):   387.134 ms ± 189.438 ms  ┊ GC (mean ± σ):  29.57% ± 22.56%
+
+    ██      ▃                                                    
+  ▇▇██▁▁▁▁▁▁█▁▇▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▇▁▁▇ ▁
+  266 ms           Histogram: frequency by time          822 ms <
+
+ Memory estimate: 240.31 MiB, allocs estimate: 1103.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 451 samples with 1 evaluation per sample.
+ Range (min … max):   9.716 ms … 28.175 ms  ┊ GC (min … max): 0.00% … 34.93%
+ Time  (median):     10.283 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   11.107 ms ±  3.241 ms  ┊ GC (mean ± σ):  3.71% ±  7.01%
+
+  ▇██▅▄▁                                                       
+  ██████▇█▅▅▁▁▄▁▁▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▁▄▅▅▄▁▅▅▇▄▁▄▁▁▅ ▇
+  9.72 ms      Histogram: log(frequency) by time      25.8 ms <
+
+ Memory estimate: 586.28 KiB, allocs estimate: 14823.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 13 samples with 1 evaluation per sample.
+ Range (min … max):  282.601 ms … 901.775 ms  ┊ GC (min … max):  0.00% … 68.67%
+ Time  (median):     300.741 ms               ┊ GC (median):     6.18%
+ Time  (mean ± σ):   388.124 ms ± 209.610 ms  ┊ GC (mean ± σ):  26.55% ± 24.41%
+
+  ▅█                                                             
+  ██▅▁▁▁▁▁▁▁▅▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▅▁▁▁▁▁▁▁▁▅ ▁
+  283 ms           Histogram: frequency by time          902 ms <
+
+ Memory estimate: 263.31 MiB, allocs estimate: 18234.
+
+julia> @benchmark compute_grad_gpu() 
+BenchmarkTools.Trial: 118 samples with 1 evaluation per sample.
+ Range (min … max):  36.077 ms … 100.359 ms  ┊ GC (min … max): 0.00% … 20.16%
+ Time  (median):     39.467 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   42.680 ms ±  11.698 ms  ┊ GC (mean ± σ):  2.76% ±  5.43%
+
+  ▃█ ▇▇                                                         
+  ██▇███▆▃▆▅▃▃▄▁▃▁▁▁▁▁▁▁▁▁▁▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃▁▃▁▃▁▃ ▃
+  36.1 ms         Histogram: frequency by time         87.1 ms <
+
+ Memory estimate: 8.15 MiB, allocs estimate: 60437.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 4) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 6 samples with 1 evaluation per sample.
+ Range (min … max):  561.901 ms …    1.220 s  ┊ GC (min … max):  3.61% … 55.97%
+ Time  (median):     886.622 ms               ┊ GC (median):    37.13%
+ Time  (mean ± σ):   886.017 ms ± 316.415 ms  ┊ GC (mean ± σ):  37.71% ± 25.19%
+
+  ██       █                                        █      █  █  
+  ██▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁█▁▁█ ▁
+  562 ms           Histogram: frequency by time          1.22 s <
+
+ Memory estimate: 480.58 MiB, allocs estimate: 1327.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 363 samples with 1 evaluation per sample.
+ Range (min … max):  12.100 ms … 23.145 ms  ┊ GC (min … max): 0.00% … 28.84%
+ Time  (median):     13.156 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   13.775 ms ±  1.867 ms  ┊ GC (mean ± σ):  4.52% ±  9.56%
+
+    ▂▄▇▆█▇█▂ ▂                                                 
+  ▄▇████████▇█▆▆▂▄▃▁▂▃▂▃▃▂▁▂▂▂▁▁▁▂▂▁▁▂▄▁▄▄▃▃▃▂▃▃▂▂▁▃▁▃▂▂▂▁▁▂▂ ▃
+  12.1 ms         Histogram: frequency by time        20.2 ms <
+
+ Memory estimate: 604.46 KiB, allocs estimate: 15290.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 6 samples with 1 evaluation per sample.
+ Range (min … max):  657.365 ms …    1.211 s  ┊ GC (min … max):  4.87% … 53.01%
+ Time  (median):     931.049 ms               ┊ GC (median):    36.21%
+ Time  (mean ± σ):   930.447 ms ± 247.197 ms  ┊ GC (mean ± σ):  36.11% ± 20.10%
+
+  █     █   █                                      █  █       █  
+  █▁▁▁▁▁█▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁█▁▁▁▁▁▁▁█ ▁
+  657 ms           Histogram: frequency by time          1.21 s <
+
+ Memory estimate: 524.75 MiB, allocs estimate: 18567.
+
+julia> @benchmark compute_grad_gpu() 
+BenchmarkTools.Trial: 105 samples with 1 evaluation per sample.
+ Range (min … max):  41.520 ms … 85.811 ms  ┊ GC (min … max): 0.00% … 28.95%
+ Time  (median):     44.968 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   47.988 ms ±  8.782 ms  ┊ GC (mean ± σ):  3.44% ±  6.60%
+
+  ▅█ ▂▁▇▄ ▁                                                    
+  ███████▆█▃▄▅▁▃▃▁▁▁▄▄▁▁▁▁▁▁▁▁▃▁▁▁▁▁▁▁▅▃▁▃▁▁▁▁▄▅▁▁▁▁▁▁▁▁▁▁▁▁▃ ▃
+  41.5 ms         Histogram: frequency by time          79 ms <
+
+ Memory estimate: 13.38 MiB, allocs estimate: 61319.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 8) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 4 samples with 1 evaluation per sample.
+ Range (min … max):  1.248 s …    1.717 s  ┊ GC (min … max): 10.32% … 36.47%
+ Time  (median):     1.687 s               ┊ GC (median):    35.57%
+ Time  (mean ± σ):   1.584 s ± 225.187 ms  ┊ GC (mean ± σ):  30.84% ± 12.79%
+
+  █                                                   █  █ █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁█▁█ ▁
+  1.25 s         Histogram: frequency by time         1.72 s <
+
+ Memory estimate: 961.11 MiB, allocs estimate: 1671.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 282 samples with 1 evaluation per sample.
+ Range (min … max):  17.174 ms …  20.438 ms  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     17.552 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   17.730 ms ± 501.870 μs  ┊ GC (mean ± σ):  3.50% ± 7.16%
+
+        ▄▃█▂▂▁▁                                                 
+  ▅▆▃██████████▅▅▆▅▃▄▄▄▃▃▃▁▃▄▂▂▂▄▃▂▂▃▃▃▃▃▂▂▁▂▃▂▁▂▁▃▁▃▂▁▁▁▁▂▁▁▂ ▃
+  17.2 ms         Histogram: frequency by time         19.4 ms <
+
+ Memory estimate: 640.20 KiB, allocs estimate: 15868.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 3 samples with 1 evaluation per sample.
+ Range (min … max):  1.776 s …   1.834 s  ┊ GC (min … max): 33.23% … 35.43%
+ Time  (median):     1.782 s              ┊ GC (median):    35.16%
+ Time  (mean ± σ):   1.797 s ± 31.557 ms  ┊ GC (mean ± σ):  34.61% ±  1.20%
+
+  █     █                                                 █  
+  █▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  1.78 s         Histogram: frequency by time        1.83 s <
+
+ Memory estimate: 1.02 GiB, allocs estimate: 18932.
+
+julia> @benchmark compute_grad_gpu() 
+BenchmarkTools.Trial: 79 samples with 1 evaluation per sample.
+ Range (min … max):  57.497 ms … 99.350 ms  ┊ GC (min … max): 0.00% … 15.88%
+ Time  (median):     61.312 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   63.844 ms ±  7.294 ms  ┊ GC (mean ± σ):  3.51% ±  6.35%
+
+  ▃▂█▂ ▅    ▂                                                  
+  ████▇██▅▁██▄▄▄▄▅▇█▁▄▄▄▇▁▄▄▅▁▁▁▁▁▁▁▄▁▁▁▄▁▁▁▁▄▁▁▁▁▁▁▁▁▁▁▄▁▁▁▄ ▁
+  57.5 ms         Histogram: frequency by time        87.7 ms <
+
+ Memory estimate: 23.82 MiB, allocs estimate: 61937.
+~~~
+
+
+#### Data size ~ (3, 256, 12, 16) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 2 samples with 1 evaluation per sample.
+ Range (min … max):  3.501 s …   3.545 s  ┊ GC (min … max): 37.70% … 37.98%
+ Time  (median):     3.523 s              ┊ GC (median):    37.84%
+ Time  (mean ± σ):   3.523 s ± 30.881 ms  ┊ GC (mean ± σ):  37.84% ±  0.19%
+
+  █                                                       █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  3.5 s          Histogram: frequency by time        3.54 s <
+
+ Memory estimate: 1.88 GiB, allocs estimate: 2362.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 172 samples with 1 evaluation per sample.
+ Range (min … max):  27.408 ms … 38.840 ms  ┊ GC (min … max): 0.00% … 11.79%
+ Time  (median):     28.586 ms              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   29.219 ms ±  1.779 ms  ┊ GC (mean ± σ):  4.26% ±  6.30%
+
+    █▂▃▂▄ ▂                                                    
+  ▄▆█████▆█▄▃▆▅▆▃▆▆▅▄▃▃▆▁▃▁▄▄▄▃▄▃▁▁▁▃▃▃▁▁▁▃▃▃▁▁▁▁▃▁▁▁▁▃▁▁▁▁▁▃ ▃
+  27.4 ms         Histogram: frequency by time        35.6 ms <
+
+ Memory estimate: 706.15 KiB, allocs estimate: 17024.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 2 samples with 1 evaluation per sample.
+ Range (min … max):  3.145 s …    3.567 s  ┊ GC (min … max): 26.82% … 36.02%
+ Time  (median):     3.356 s               ┊ GC (median):    31.71%
+ Time  (mean ± σ):   3.356 s ± 298.894 ms  ┊ GC (mean ± σ):  31.71% ±  6.51%
+
+  █                                                        █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  3.14 s         Histogram: frequency by time         3.57 s <
+
+ Memory estimate: 2.04 GiB, allocs estimate: 19637.
+
+julia> @benchmark compute_grad_gpu() 
+BenchmarkTools.Trial: 64 samples with 1 evaluation per sample.
+ Range (min … max):  74.939 ms … 102.054 ms  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     77.144 ms               ┊ GC (median):    4.54%
+ Time  (mean ± σ):   79.234 ms ±   5.316 ms  ┊ GC (mean ± σ):  5.01% ± 5.14%
+
+     █ ▅    ▂                                                   
+  ▇▇████▇▇▄▄█▄▄▄▄▄▁▇▅▁▄▄▄▁▁▇▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▁▁▄▁▄▁▁▄ ▁
+  74.9 ms         Histogram: frequency by time           95 ms <
+
+ Memory estimate: 44.70 MiB, allocs estimate: 62838.
+~~~
+
+#### Data size ~ (3, 256, 12, 32) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 6.356 s (31.35% GC) to evaluate,
+ with a memory estimate of 3.75 GiB, over 3700 allocations.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 102 samples with 1 evaluation per sample.
+ Range (min … max):  47.635 ms … 54.018 ms  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     48.837 ms              ┊ GC (median):    4.17%
+ Time  (mean ± σ):   49.066 ms ±  1.217 ms  ┊ GC (mean ± σ):  3.92% ± 2.65%
+
+    ▂▆ ▂ █ ▄ ▆▂█▆▄   ▄                                         
+  ██████████▆██████▆▆██▄▁▄▁▄▄▆▄▆▁▁▁▁▁▁▁▁▁▄▁▁▄▁▁▄▁▁▁▁▄▁▁▁▁▄▁▁▄ ▄
+  47.6 ms         Histogram: frequency by time        53.4 ms <
+
+ Memory estimate: 843.61 KiB, allocs estimate: 19201.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 6.426 s (29.30% GC) to evaluate,
+ with a memory estimate of 4.09 GiB, over 20977 allocations.
+
+julia> @benchmark compute_grad_gpu() 
+BenchmarkTools.Trial: 40 samples with 1 evaluation per sample.
+ Range (min … max):  121.265 ms … 142.957 ms  ┊ GC (min … max): 5.63% … 5.23%
+ Time  (median):     125.479 ms               ┊ GC (median):    5.78%
+ Time  (mean ± σ):   127.409 ms ±   5.687 ms  ┊ GC (mean ± σ):  6.19% ± 1.63%
+
+  ▁▁  ▄█ ▁▄  ▁▁ ▁         ▁     ▁                                
+  ██▁▁██▆██▆▁██▆█▁▆▆▁▁▁▁▆▆█▁▆▁▁▁█▆▁▁▁▁▁▁▁▁▆▁▁▁▁▁▁▆▁▁▁▆▁▁▁▁▁▁▆▁▆ ▁
+  121 ms           Histogram: frequency by time          143 ms <
+
+ Memory estimate: 86.49 MiB, allocs estimate: 66391.
+~~~
+
+#### Data size ~ (3, 256, 12, 48) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 8.806 s (25.22% GC) to evaluate,
+ with a memory estimate of 5.63 GiB, over 5124 allocations.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 71 samples with 1 evaluation per sample.
+ Range (min … max):  69.787 ms …  73.717 ms  ┊ GC (min … max): 1.75% … 3.11%
+ Time  (median):     71.001 ms               ┊ GC (median):    2.07%
+ Time  (mean ± σ):   71.171 ms ± 777.181 μs  ┊ GC (mean ± σ):  2.27% ± 0.60%
+
+       ▄▁      ▄▁▄ █▁█▁▁▄ ▄ ▁ ▁▁  ▄▁ ▄     ▁  ▄   ▁             
+  ▆▁▁▆▆██▁▁▆▆▁▆███▆██████▁█▆█▆██▁▆██▆█▆▁▁▁▁█▁▁█▁▆▆█▆▁▁▁▁▁▁▁▁▁▆ ▁
+  69.8 ms         Histogram: frequency by time         73.1 ms <
+
+ Memory estimate: 1005.49 KiB, allocs estimate: 21818.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 9.241 s (25.59% GC) to evaluate,
+ with a memory estimate of 6.13 GiB, over 22546 allocations.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 20 samples with 1 evaluation per sample.
+ Range (min … max):  238.351 ms … 270.128 ms  ┊ GC (min … max): 5.15% … 5.30%
+ Time  (median):     248.655 ms               ┊ GC (median):    5.09%
+ Time  (mean ± σ):   251.680 ms ±   9.919 ms  ┊ GC (mean ± σ):  5.43% ± 0.75%
+
+  ▁   ▁▁  ▁▁  ▁█ █       ▁ ▁ ▁   ▁       ▁   ▁      ▁▁       ▁▁  
+  █▁▁▁██▁▁██▁▁██▁█▁▁▁▁▁▁▁█▁█▁█▁▁▁█▁▁▁▁▁▁▁█▁▁▁█▁▁▁▁▁▁██▁▁▁▁▁▁▁██ ▁
+  238 ms           Histogram: frequency by time          270 ms <
+
+ Memory estimate: 128.30 MiB, allocs estimate: 70286.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 18 samples with 1 evaluation per sample.
+ Range (min … max):  171.233 ms …    1.183 s  ┊ GC (min … max): 7.12% … 3.54%
+ Time  (median):     179.694 ms               ┊ GC (median):    7.52%
+ Time  (mean ± σ):   293.134 ms ± 259.763 ms  ┊ GC (mean ± σ):  6.28% ± 1.58%
+
+  █                                                              
+  █▃▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃▁▁▁▁▃▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃ ▁
+  171 ms           Histogram: frequency by time          1.18 s <
+~~~
+
+
+#### Data size ~ (3, 256, 12, 64) -> starting from empty gpu
+##### Forward: 
+~~~julia
+julia> @benchmark model_elbo($model_cpu, $x, $x_mask)
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 11.563 s (24.80% GC) to evaluate,
+ with a memory estimate of 7.51 GiB, over 6379 allocations.
+
+julia> @benchmark model_elbo($model_gpu, $xc, $xc_mask)
+BenchmarkTools.Trial: 53 samples with 1 evaluation per sample.
+ Range (min … max):  90.803 ms … 100.796 ms  ┊ GC (min … max): 5.21% … 8.60%
+ Time  (median):     93.858 ms               ┊ GC (median):    3.98%
+ Time  (mean ± σ):   94.851 ms ±   2.717 ms  ┊ GC (mean ± σ):  3.94% ± 1.83%
+
+      ▃▃   ▃▃▃▃ ██▃   ▃             █   ▃    ▃ ▃      ▃         
+  ▇▁▇▁██▁▇▇████▇███▇▇▇█▇▁▁▁▁▇▁▁▇▁▇▁▁█▁▁▇█▇▇▁▁█▇█▁▁▇▁▁▇█▁▁▁▁▁▁▇ ▁
+  90.8 ms         Histogram: frequency by time          101 ms <
+
+ Memory estimate: 1.07 MiB, allocs estimate: 23649.
+~~~
+#### Backward: 
+~~~julia
+julia> @benchmark compute_grad_cpu()
+BenchmarkTools.Trial: 1 sample with 1 evaluation per sample.
+ Single result which took 12.140 s (25.06% GC) to evaluate,
+ with a memory estimate of 8.17 GiB, over 23787 allocations.
+
+julia> @benchmark compute_grad_gpu()
+BenchmarkTools.Trial: 7 samples with 1 evaluation per sample.
+ Range (min … max):  596.866 ms …    1.623 s  ┊ GC (min … max): 3.11% … 1.14%
+ Time  (median):     741.045 ms               ┊ GC (median):    2.66%
+ Time  (mean ± σ):   894.640 ms ± 366.015 ms  ┊ GC (mean ± σ):  2.34% ± 0.96%
+
+  █   █  ███                      █                           █  
+  █▁▁▁█▁▁███▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  597 ms           Histogram: frequency by time          1.62 s <
+
+ Memory estimate: 170.08 MiB, allocs estimate: 74460.
+~~~
+
+
+#### Data size ~ 
+##### Forward: 
+~~~julia
+
+~~~
+#### Backward: 
+~~~julia
+
+~~~

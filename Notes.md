@@ -3,13 +3,26 @@
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
 
+## Todos 21.8.2026
+- [ ] Improve memory and speed on GPUs of Hungarian matching and pairwise chamfer distance. 
+    - we can work only with cartesian indexes and intermediate PDM to compute hungarian matching, 
+    - then when matching is found we can only compute with indexes we need for matching. we can save a lot of memory for gradients approximately HALF of it. 
+    - Might be useful even for HTD distance
+
+
 ## Todos 20.8.2026
-- [ ] port DeepSlotQuerryVAE into GenerativeMIL
+- [ ] sliced wasserstain impelementation
+  - [ ] implement
+  - [ ] sanity check
+
+- [x] port DeepSlotQuerryVAE into GenerativeMIL
 - [x] implement gpu-ready cluster pairwise Chamfer Distance
   - [x] do sanity check if reshapeing is the same as if i run it in nested for loops
 - [ ] download MNIST PC data into MainGPU PC
 - [ ] train HSVAE (specialized for gaussian clock)
   - [x] implement hungarian matching with gpu pairwise evaluation for gaussian clock -> vit CPCD
+    - [x] implement hungarian part
+    - [x] sanity checks
   - [x] implement forward and backward pass for HSVAE
     - [x] it can be done via masking
   - [ ] test shallow setvae if it is better then poolmodel? 
