@@ -9,7 +9,7 @@
     - we can work only with cartesian indexes and intermediate PDM to compute hungarian matching, 
     - then when matching is found we can only compute with indexes we need for matching. we can save a lot of memory for gradients approximately HALF of it. 
     - Might be useful even for HTD distance
-- [ ] HVAE training 
+- [x] HVAE training 
   - [x] data
     - [x] dataset
     - [x] dataloader
@@ -24,6 +24,7 @@
   - [ ] testing
     - [x] test loading of data
     - [x] test loss function 
+    - [x] test traininig function
     - [x] test all model functions
       - [x] forward
       - [x] constructor

@@ -83,6 +83,9 @@ function main()
     # Vytvoř β_scheduler z konfigurace
     beta_scheduler_cfg = get(train_cfg, :beta_annealer, get(train_cfg, :beta, 1f0))
     beta_scheduler = create_beta_scheduler(beta_scheduler_cfg)
+    
+    λ_exist = get(train_cfg, :lambda_exist, 1f0) # new 
+    
     lr_scheduler_cfg = get(train_cfg, :lr_scheduler, nothing)
     lr_scheduler = create_lr_scheduler(lr_scheduler_cfg, lr, get(train_cfg, :epochs, 1000))
 
@@ -118,6 +121,7 @@ function main()
         optimiser;
         loss_function = loss_function,
         β_scheduler = beta_scheduler,
+        λ_exist = λ_exist,
         lr_scheduler = lr_scheduler,
         train_kwargs...
     );
@@ -139,6 +143,7 @@ function main()
         loss_cfg = loss_cfg,
         train_kwargs = train_kwargs,
         beta_scheduler_cfg = beta_scheduler_cfg,
+        λ_exist = λ_exist,
         lr_scheduler_cfg = lr_scheduler_cfg,
         train_time = train_time,
     ))
