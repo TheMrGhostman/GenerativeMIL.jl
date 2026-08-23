@@ -61,7 +61,7 @@ train:
   early_stopping: true
   patience: 100000
   grad_skip: false
-  save_val_predictions: true
+  save_val_predictions: false
   val_prediction_count: 16
   val_prediction_interval_epochs: 10
   val_prediction_dirname: "val_predictionsdata"
