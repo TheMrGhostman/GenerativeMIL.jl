@@ -95,7 +95,7 @@ function valid_step(model::HierarchicalSlotQueryVAE, dataloader::DataLoader, log
     end
 
     n = length(dataloader)
-    logs = (; ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥₖₗ = ℒₖₗ/n, ℒᵥ_exist = ℒ_exist/n)
+    logs = (; ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥ_exist = ℒ_exist/n, ℒᵥₖₗ = ℒₖₗ/n,)
     return logs, ℒ/n
 end
 
