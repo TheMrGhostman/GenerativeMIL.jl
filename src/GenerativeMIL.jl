@@ -35,6 +35,8 @@ using Distances
 using NearestNeighbors 
 # for sinkhorn distance
 using ChainRulesCore, OptimalTransport
+# for hungarian matching loss
+using Hungarian
 
 dict2nt(x) = (; (Symbol(k) => v for (k,v) in x)...)
 

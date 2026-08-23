@@ -13,14 +13,23 @@
   - [x] data
     - [x] dataset
     - [x] dataloader
-  - [ ] training script
-  - [ ] HSVAE
+  - [x] training script
+  - [x] HSVAE
     - [x] struct
     - [x] forward pass
-    - [ ] constructor
+    - [x] constructor
     - [x] elbo with logging
     - [x] optim step
-    - [ ] valid step
+    - [x] valid step
+  - [ ] testing
+    - [x] test loading of data
+    - [x] test loss function 
+    - [x] test all model functions
+      - [x] forward
+      - [x] constructor
+      - [x] elbo with logging
+      - [x] opt step
+      - [x] valid step
 
 ## Todos 20.8.2026
 - [ ] sliced wasserstain impelementation

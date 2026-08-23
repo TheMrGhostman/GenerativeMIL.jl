@@ -74,3 +74,6 @@ function chamfer_pairwise_distance(x::AbstractArray{T,4}, y::AbstractArray{T,4};
 
     return w1 .* dist_A_to_B .+ w2 .* dist_B_to_A   # (L, M, BS)
 end
+
+sum_chamfer_pairwise_distance(x::AbstractArray{T,4}, y::AbstractArray{T,4}; w1::T=one(T), w2::T=one(T)) where T<:AbstractFloat =
+    chamfer_pairwise_distance(x, y; w1=w1, w2=w2, agg=sum)

@@ -44,5 +44,8 @@ export vgq_poolae_constructor_from_named_tuple, vgq_poolae_constructor_from_name
 include("DeepSlotQuaryVAE.jl")
 export DeepSlotQueryVAE
 
+include("HierarchicalSlotQueryVAE.jl")
+export HierarchicalSlotQueryVAE
+
 # common exports 
 export elbo_with_logging, optim_step, valid_step, reconstruct_and_log, reconstruct

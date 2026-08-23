@@ -13,9 +13,9 @@ end
 
 Flux.@layer DeepSlotQueryVAE
 
-function DeepSlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int, m_z::Int, n_layers::Int; activation::Function=relu)
+function DeepSlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int, m_z::Int, n_layers::Int; pma_attention_fn::Function=attention, activation::Function=relu)
     prepool = Flux.Dense(embed_dim, hidden_dim, activation)
-    pooling = PMA(m_z, hidden_dim, heads) # m_z induced points -> Z is a set of m_z tokens, not one vector
+    pooling = PMA(m_z, hidden_dim, heads; attention_fn=pma_attention_fn) # m_z induced points -> Z is a set of m_z tokens, not one vector
     postpool = Flux.Dense(hidden_dim, hidden_dim, activation)
     encoder = PoolEncoder(prepool, pooling, postpool)
 

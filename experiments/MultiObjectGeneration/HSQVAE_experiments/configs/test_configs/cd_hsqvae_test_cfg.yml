@@ -1,0 +1,70 @@
+data:
+  dataset: "mnist_clock"
+  npoints: 256
+  n_samples: 1000
+  min_digits: 2
+  max_digits: 12
+  cardinality_count: "balanced"
+  sample_on_fly: false
+  normalize: true
+  ratio: 0.2
+
+model:
+  model_type: "hsqvae"
+  e_hdim: 64
+  e_pma_heads: 4
+  e_pre_depth: 2
+  e_post_depth: 2
+  e_pma_attention_fn: "slot_attention"
+  dsq_emb_dim: 64
+  dsq_hdim: 64
+  dsq_pre_depth: 2
+  dsq_indices: 1
+  dsq_heads: 4
+  dsq_post_depth: 2
+  dsq_pma_attention_fn: "slot_attention"
+  dsq_zdim: 32 # latent dimension of the slot query latent variable
+  dsq_n_slots: 12
+  dsq_n_attn_layers: 2
+  d_mha_layers: 2
+  d_heads: 4
+  o_hdim: 64
+  o_depth: 2
+  activation: "gelu"
+  output_activation: "identity"
+
+train:
+  loss_function:
+    type: "chamfer_pairwise_distance"
+    w1: 1
+    w2: 1
+    agg: "sum"
+  lr: 0.0003
+  weight_decay: 0.0001
+  lr_scheduler: null
+  epochs: 2
+  batch_size: 128
+  beta: 1.0
+  beta_annealer:
+    type: "cyclical_sigmoidal"
+    beta_warmup: 1.0e-5
+    max_value: 1.0
+    warmup_epochs: 150
+    rise_epochs: 200
+    hold_epochs: 50
+    cycles: 4
+    slope_factor: 0.06
+  use_gpu: true
+  valid_check_interval: 1000
+  validation_check_after_epoch: true
+  checkpoint_interval_epochs: 10
+  early_stopping: true
+  patience: 100000
+  grad_skip: false
+  save_val_predictions: true
+  val_prediction_count: 16
+  val_prediction_interval_epochs: 10
+  val_prediction_dirname: "val_predictionsdata"
+  seed: 1
+  verbose: true
+  model_dir: "cd_hsqvae_c001"
