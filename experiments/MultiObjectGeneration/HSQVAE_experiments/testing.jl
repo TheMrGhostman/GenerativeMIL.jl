@@ -192,3 +192,4 @@ lines!(axes, A, β[1] * A.^2 .+ β[2] * A, label="GPU-backward quadratic fit", c
 fig
 
 # -> most likely piecewise linear, with a change in slope at around batch=32
+

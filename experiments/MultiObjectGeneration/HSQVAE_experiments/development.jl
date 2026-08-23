@@ -801,3 +801,31 @@ compute_grad_gpu();
 @benchmark compute_grad_gpu()
 @benchmark compute_grad_gpu() seconds=60
 
+
+## dataset
+
+function make_bag_sampler(xs::AbstractArray, ys::AbstractVector; npoints::Int, min_digits::Int, max_digits::Int)
+    class_pool = Dict(c => findall(==(c), ys) for c in unique(ys))
+    classes = collect(keys(class_pool))
+
+    return function sample_batch(rng, bs::Int)
+        D = size(xs, 1)
+        x_data = zeros(Float32, D, npoints, max_digits, bs)
+        x_mask = falses(1, 1, max_digits, bs)
+        for i in 1:bs
+            n = rand(rng, min_digits:max_digits)
+            for j in 1:n
+                c = rand(rng, classes)
+                inst = rand(rng, class_pool[c])
+                pt_idx = sample(rng, axes(xs, 2), npoints, replace=false)  # fresh points every draw
+                x_data[:, :, j, i] .= xs[:, pt_idx, inst]
+                x_mask[1, 1, j, i] = true
+            end
+        end
+        return x_data, x_mask
+    end
+end
+
+# once, at setup:
+train_sampler = make_bag_sampler(xs[:, :, train_inst_idx], ys[train_inst_idx]; npoints, min_digits, max_digits)
+valid_sampler = make_bag_sampler(xs[:, :, valid_inst_idx], ys[valid_inst_idx]; npoints, min_digits, max_digits)
