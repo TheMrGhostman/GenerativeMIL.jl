@@ -44,7 +44,7 @@ Notes:
   snapshot creation is skipped with a warning.
 """
 function _save_validation_prediction_snapshot(
-    model::AbstractGenModel,
+    model,
     valid_loader::DataLoader,
     device::Function,
     out_dir::String,
@@ -127,7 +127,7 @@ Returns:
 - `(model=model, opt=opt, history=history)`.
 """
 function train_model!(
-    model::AbstractGenModel, 
+    model, 
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}},
     optimiser::Optimisers.AbstractRule, 
     loss_function::Union{Function, MMD_EMA_Loss}=chamfer_distance,
@@ -188,7 +188,7 @@ Notes:
     reconstructions are serialized to disk.
 """
 function train_model!(
-    model::AbstractGenModel, 
+    model, 
     dataloaders::NamedTuple{(:train, :valid), <:Tuple{DataLoader, DataLoader}}, 
     optimiser::Optimisers.AbstractRule; ## KWARGS FROM HERE
     loss_function::Union{Function, MMD_EMA_Loss}=chamfer_distance, 
@@ -273,7 +273,8 @@ function train_model!(
                 if mod(it, valid_check_interval) == 0 
                     stop_training = validation_check(
                         model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, idx;
-                        tr_log=logs, verbose=validation_verbose, epoch_info=(epoch, epochs), iter_info=(it, max_iters)
+                        tr_log=logs, verbose=validation_verbose, epoch_info=(epoch, epochs), iter_info=(it, max_iters),
+                        kwargs...
                     )
                     if stop_training; break; end
                 end
@@ -316,7 +317,7 @@ function train_model!(
             if validation_check_after_epoch && !did_validate_at_epoch_end_idx
                 stop_training = validation_check(
                     model, dataloaders.valid, loss_function, β, device, history, json_logger, early_stop, epoch * max_iters;
-                    verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters)
+                    verbose=verbose, epoch_info=(epoch, epochs), iter_info=(0, max_iters), kwargs...
                 )
                 if stop_training; break; end
             end
@@ -367,7 +368,7 @@ Returns:
 - `Bool`: `true` when training should stop, otherwise `false`.
 """
 function validation_check(
-    model::AbstractGenModel, 
+    model, 
     dataloader::DataLoader, 
     loss_function::Union{Function, MMD_EMA_Loss},
     β::Union{Vector{T}, T}, 
