@@ -41,7 +41,7 @@ function (m::HierarchicalSlotQueryVAE)(x::AbstractArray{T,4}, x_mask::AbstractAr
     dₓ, n, l, bs = size(x)
     x_reshaped = reshape(x, dₓ, n, l*bs) # (dₓ, n, l*bs)
 
-    h = m.encoder(x_reshaped) #TODO: correct masking and add mask here
+    h = m.encoder(x_reshaped) #NOTE: I do not have to add mask here! since l became part of batch size, attention or pooling will ignore it as both are interested in first 2 dimensions. 
     h = multiplicative_masking(reshape(h, :, 1, l, bs), x_mask) # 1 is because m_z of PMA is 1 for this version of encoder
     h = dropdims(h, dims=2) # (hidden, l, bs)
     h_mask = isnothing(x_mask) ? nothing : dropdims(x_mask, dims=2) # (1, l, bs)
