@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "055bc04c63d23269f2019a43a247a6206e44a38f"
+project_hash = "a186040afceb5448869aa2d7119e0ba8389bcbd9"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "0a81a018463de6c3f4f2c9360121c562e5add9e4"
@@ -360,9 +360,9 @@ version = "0.8.5"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
-git-tree-sha1 = "962834c22b66e32aa10f7611c08c8ca4e20749a9"
+git-tree-sha1 = "970758a3d591a2a5c2a907c53f2e2f8c1b1d3537"
 uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
-version = "0.7.8"
+version = "0.7.9"
 
 [[deps.CodecZstd]]
 deps = ["TranscodingStreams", "Zstd_jll"]
@@ -907,7 +907,7 @@ uuid = "a0844989-3bd2-4988-8bea-c9407ab0941b"
 version = "1.1.0"
 
 [[deps.GenerativeMIL]]
-deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "ChainRulesCore", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "JLD2", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "OptimalTransport", "Optimisers", "OrderedCollections", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "UnicodePlots", "ValueHistories", "YAML", "Zygote", "cuDNN"]
+deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "ChainRulesCore", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "Hungarian", "JLD2", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "OptimalTransport", "Optimisers", "OrderedCollections", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "UnicodePlots", "ValueHistories", "YAML", "Zygote", "cuDNN"]
 path = "../.."
 uuid = "f587a668-c5e7-5861-9bd6-a75883e5a803"
 version = "1.1.2"
@@ -1004,6 +1004,12 @@ deps = ["DataStructures", "OrderedCollections"]
 git-tree-sha1 = "e557591ce208361842641a35222814c6245b2044"
 uuid = "f9ccea15-0695-44b9-8113-df7c26ae4fa9"
 version = "2.2.3"
+
+[[deps.Hungarian]]
+deps = ["LinearAlgebra", "SparseArrays"]
+git-tree-sha1 = "4f84db415ccb0ea750b10738bfecdd55388fd1b6"
+uuid = "e91730f6-4275-51fb-a7a0-7064cfbd3b39"
+version = "0.7.0"
 
 [[deps.Hwloc_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "XML2_jll", "Xorg_libpciaccess_jll"]
@@ -1334,9 +1340,9 @@ version = "1.4.0"
 
 [[deps.LazyArrays]]
 deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "MacroTools", "SparseArrays"]
-git-tree-sha1 = "88b2f61a8c911168f891b21ac450a580d058741c"
+git-tree-sha1 = "139050e54e3a565fe457c92f5c1b7a213701a5e7"
 uuid = "5078a376-72f3-5289-bfd5-ec5146d43c02"
-version = "2.11.0"
+version = "2.12.0"
 
     [deps.LazyArrays.extensions]
     LazyArraysBandedMatricesExt = "BandedMatrices"
@@ -1593,9 +1599,9 @@ version = "1.11.0"
 
 [[deps.MathOptInterface]]
 deps = ["CodecBzip2", "CodecZlib", "ForwardDiff", "JSON", "LinearAlgebra", "MutableArithmetics", "NaNMath", "OrderedCollections", "PrecompileTools", "Printf", "SparseArrays", "SpecialFunctions", "Test"]
-git-tree-sha1 = "f1ccd9ffcb8577e207deb9aaebeb3f961de70380"
+git-tree-sha1 = "d10ba577e0b5a0481fab01dfd31fb20af3326954"
 uuid = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
-version = "1.52.0"
+version = "1.53.0"
 
     [deps.MathOptInterface.extensions]
     MathOptInterfaceBenchmarkToolsExt = "BenchmarkTools"
