@@ -12,6 +12,8 @@ using Flux
 using CUDA
 using JLD2, JSON3
 using MLUtils
+using Zygote
+using Statistics
 
 dict2nt(x) = (; (Symbol(k) => v for (k, v) in x)...)
 

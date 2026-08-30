@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "a186040afceb5448869aa2d7119e0ba8389bcbd9"
+project_hash = "1218f50bdd4fa369fb070150ab850a1849f9df18"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "0a81a018463de6c3f4f2c9360121c562e5add9e4"
@@ -2291,9 +2291,9 @@ version = "1.8.0"
 
 [[deps.StatsBase]]
 deps = ["AliasTables", "DataAPI", "DataStructures", "IrrationalConstants", "LinearAlgebra", "LogExpFunctions", "Missings", "Printf", "Random", "SortingAlgorithms", "SparseArrays", "Statistics", "StatsAPI"]
-git-tree-sha1 = "e4d7a1a0edc20af42689ea6f4f3587a2175d50ee"
+git-tree-sha1 = "adb9da019510162e67a4493fc235c23203d8b09e"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-version = "0.34.12"
+version = "0.34.13"
 
 [[deps.StatsFuns]]
 deps = ["HypergeometricFunctions", "IrrationalConstants", "LogExpFunctions", "Reexport", "Rmath", "SpecialFunctions"]
@@ -2665,9 +2665,9 @@ version = "0.3.2+0"
 
 [[deps.aws_c_http_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "aws_c_compression_jll", "aws_c_io_jll"]
-git-tree-sha1 = "e358d5a001ef7afbd4f8c5225322512819cda2f2"
+git-tree-sha1 = "3fb8685778068de502c72fec5dd8075e037cee15"
 uuid = "3254fc65-9028-534d-aa9d-d76d128babc6"
-version = "0.10.13+0"
+version = "0.10.15+0"
 
 [[deps.aws_c_io_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "aws_c_cal_jll", "aws_c_common_jll", "s2n_tls_jll"]
