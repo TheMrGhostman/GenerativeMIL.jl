@@ -89,6 +89,51 @@ function (m::NaiveSetModel)(x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}
 end
 
 
+function hungarian_match(C::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, x̂_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
+    M, _, BS = size(C)
+    C_cpu, x_mask_cpu, x̂_mask_cpu = Array(C), Array(x_mask), Array(x̂_mask)
+    #ci_m = CartesianIndex{2}[]   # (m, bs) — index into a (..., M, BS) tensor
+    #ci_l = CartesianIndex{2}[]   # (l, bs) — index into a (..., L, BS) tensor
+    c_ml = CartesianIndex{3}[]  # (m, l, bs) — index into a (..., M, L, BS) tensor
+    for b in 1:BS
+        x_idx = findall(vec(x_mask_cpu[1, :, b]))
+        x̂_idx = findall(vec(x̂_mask_cpu[1, :, b]))
+        isempty(x_idx) && continue
+        isempty(x̂_idx) && continue
+
+        Cb = C_cpu[x̂_idx, x_idx, b]                       # (M, n_valid_l) — masked columns just aren't there
+        assignment, _ = Hungarian.hungarian(Cb)
+        matched = filter(c -> c[2] != 0, CartesianIndex.(1:M, assignment)) #TODO: check this   # (m, position-in-l_idx)
+
+        #append!(ci_m, CartesianIndex.(getindex.(matched, 1), b))
+        #append!(ci_l, CartesianIndex.(l_idx[getindex.(matched, 2)], b))
+        append!(c_ml, CartesianIndex.(getindex.(matched, 1), x_idx[getindex.(matched, 2)], b)) #TODO: check this
+    end
+    return c_ml
+end
+
+function elbo_with_logging(model::NaiveSetModel, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function=pairwise_logitcrossentropy; β=1f0, λ_exist=1f0) where T <: AbstractFloat
+
+    dₓ, n, bs = size(x)
+    x̂, μ_z, Σ_z = model(x, x_mask)
+
+    # KL divergence
+    ℒₖₗ = kl_divergence(μ_z, Σ_z) |> mean
+
+    # reconstruction loss
+    C = logpdf(x̂, x) # (N, N, BS)
+    matched_indices, _ = Zygote.@ignore hungarian_match(C, x_mask, x_mask)
+    
+    #ℒ_rec = mean(C)
+    n_matched = length(matched_indices)
+    ℒ_rec = n_matched > 0 ? mean(C[matched_indices]) : zero(T)
+
+    ℒ = ℒ_rec + β * ℒₖₗ
+    logs = (ℒ = ℒ, ℒ_rec=ℒ_rec, ℒₖₗ=ℒₖₗ)
+    return ℒ, logs
+end
+
+
 # x̂, x: (D, N) → (N, N) with CE[i,j] = crossentropy(x̂[:,i], x[:,j])
 # x̂, x: (D, N, BS) → (N, N, BS), batched per bag (no cross-bag pairs)
 pairwise_logitcrossentropy(x̂::AbstractMatrix, x::AbstractMatrix) = -logsoftmax(x̂; dims=1)' * x
