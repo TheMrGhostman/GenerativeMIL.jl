@@ -1,32 +1,3 @@
-struct CrossAttentionDecoder{CA<:Vector{<:MultiheadAttentionBlock}}
-    cross_attns::CA
-end
-
-Flux.@layer CrossAttentionDecoder
-
-function (m::CrossAttentionDecoder)(x::AbstractArray{T}, z::AbstractArray{T}) where T <: AbstractFloat
-    for ca in m.cross_attns
-        x = ca(x, z)
-    end
-    return x
-end
-
-struct TransformerDecoder{SA<:Vector{<:MultiheadAttentionBlock}, CA<:Vector{<:MultiheadAttentionBlock}}
-    self_attns::SA
-    cross_attns::CA
-end
-
-Flux.@layer TransformerDecoder
-
-function (m::TransformerDecoder)(x::AbstractArray{T}, z::AbstractArray{T}) where T <: AbstractFloat
-    for (sa, ca) in zip(m.self_attns, m.cross_attns)
-        x = sa(x)
-        x = ca(x, z)
-    end
-    return x
-end
-
-
 struct HierarchicalSlotQueryVAE{E<:PoolEncoder, DSQ<:DeepSlotQueryVAE, D, O} <: AbstractGenModel
     encoder::E
     deep_slot_query::DSQ
@@ -128,13 +99,14 @@ function HierarchicalSlotQueryVAE(;
     # second (inner) stage decoder, deep slot query decoder
     dsq_self_attns  = [MultiheadAttentionBlock(dsq_hdim, dsq_heads; attention_fn=attention) for _ in 1:dsq_n_attn_layers]
     dsq_cross_attns = [MultiheadAttentionBlock(dsq_hdim, dsq_heads; attention_fn=attention) for _ in 1:dsq_n_attn_layers]
+    dsq_decoder = TransformerDecoder(dsq_self_attns, dsq_cross_attns)
 
     dsq_output_head = Flux.Dense(dsq_hdim, dsq_emb_dim)
     dsq_exist_head  = Flux.Dense(dsq_hdim, 1)
 
     dsq_queries = randn(Float32, dsq_hdim, dsq_n_slots)
 
-    dsq = DeepSlotQueryVAE(dsq_encoder, dsq_prior, dsq_z_to_hidden, dsq_self_attns, dsq_cross_attns, dsq_output_head, dsq_exist_head, dsq_queries)
+    dsq = DeepSlotQueryVAE(dsq_encoder, dsq_prior, dsq_z_to_hidden, dsq_decoder, dsq_output_head, dsq_exist_head, dsq_queries)
 
     decoder = CrossAttentionDecoder(
         [MultiheadAttentionBlock(dsq_emb_dim, d_heads; activation=activation, attention_fn=attention) for _ in 1:d_mha_layers]

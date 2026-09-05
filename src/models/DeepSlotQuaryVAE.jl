@@ -1,11 +1,10 @@
 
-struct DeepSlotQueryVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, SAT<:MultiheadAttentionBlock,
-        CAT<:MultiheadAttentionBlock, OT<:Flux.Dense, EXT<:Flux.Dense, QT<:AbstractMatrix{<:AbstractFloat}}
+struct DeepSlotQueryVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, DT<:TransformerDecoder,
+        OT<:Flux.Dense, EXT<:Flux.Dense, QT<:AbstractMatrix{<:AbstractFloat}}
     encoder::E
     prior::PT
     z_to_hidden::ZT
-    self_attns::Vector{SAT}
-    cross_attns::Vector{CAT}
+    decoder::DT
     output_head::OT
     exist_head::EXT
     queries::QT
@@ -24,13 +23,14 @@ function DeepSlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::
 
     self_attns = [MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention) for _ in 1:n_layers]
     cross_attns = [MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention) for _ in 1:n_layers]
+    decoder = TransformerDecoder(self_attns, cross_attns)
 
     output_head = Flux.Dense(hidden_dim, embed_dim)
     exist_head = Flux.Dense(hidden_dim, 1)
 
     queries = randn(Float32, hidden_dim, n_slots)
 
-    return DeepSlotQueryVAE(encoder, prior, z_to_hidden, self_attns, cross_attns, output_head, exist_head, queries)
+    return DeepSlotQueryVAE(encoder, prior, z_to_hidden, decoder, output_head, exist_head, queries)
 end
 
 function (m::DeepSlotQueryVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArray{Bool},Nothing}=nothing) where T <: AbstractFloat
@@ -41,10 +41,7 @@ function (m::DeepSlotQueryVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArra
     Z = m.z_to_hidden(z)                      # (hidden, m_z, bs)
 
     slots = repeat(m.queries, 1, 1, bs)       # (hidden, n_slots, bs)
-    for (sa, ca) in zip(m.self_attns, m.cross_attns)
-        slots = sa(slots)
-        slots = ca(slots, Z)                  # real (non-degenerate) attention when m_z > 1
-    end
+    slots = m.decoder(slots, Z)               # real (non-degenerate) cross-attention when m_z > 1
 
     x̂ = m.output_head(slots)                   # (embed_dim, n_slots, bs)
     logits_exist = m.exist_head(slots)          # (1, n_slots, bs)
@@ -56,10 +53,7 @@ function generate(m::DeepSlotQueryVAE, n_samples::Int; m_z::Int)
     z = randn(Float32, z_dim, m_z, n_samples)
     Z = m.z_to_hidden(z)
     slots = repeat(m.queries, 1, 1, n_samples)
-    for (sa, ca) in zip(m.self_attns, m.cross_attns)
-        slots = sa(slots)
-        slots = ca(slots, Z)
-    end
+    slots = m.decoder(slots, Z)
     x̂ = m.output_head(slots)
     logits_exist = m.exist_head(slots)
     return x̂, logits_exist

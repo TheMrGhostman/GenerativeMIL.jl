@@ -27,6 +27,9 @@ include("pooling_layers.jl")
 export AbstractPooling
 export AttentionPooling, PMA, PoolEncoder
 
+include("transformer_decoders.jl")
+export CrossAttentionDecoder, TransformerDecoder
+
 include("show_methods.jl")
 
 

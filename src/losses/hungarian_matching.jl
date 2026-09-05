@@ -62,12 +62,34 @@ function hungarian_match(x̂::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask:
     return matched_pred, matched_gt
 end
 
+"""
+`hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) where T<:AbstractFloat`
+
+Shape adapter: drops the singleton per-cluster dim from a `(1, 1, L, BS)` mask and forwards to
+`hungarian_match(C, l_mask::AbstractArray{Bool,3})`.
+"""
 function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}) where T<:AbstractFloat
     if size(l_mask, 1) != 1 || size(l_mask, 2) != 1
         throw(ArgumentError("l_mask must have shape (1, 1, L, BS)"))
     end
     new_mask = dropdims(l_mask, dims=2) # (1, L, BS)
     return hungarian_match(C, new_mask)
+end
+
+"""
+`hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}, m_mask::AbstractArray{Bool,4}) where T<:AbstractFloat`
+
+Shape adapter: drops the singleton per-cluster dim from both `(1, 1, L, BS)` and `(1, 1, M, BS)`
+masks and forwards to `hungarian_match(C, x_mask::AbstractArray{Bool,3}, x̂_mask::AbstractArray{Bool,3})`
+(the dual-masked, both-sides-variable-cardinality version).
+"""
+function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,4}, m_mask::AbstractArray{Bool,4}) where T<:AbstractFloat
+    if size(l_mask, 1) != 1 || size(l_mask, 2) != 1
+        throw(ArgumentError("l_mask must have shape (1, 1, L, BS)"))
+    end
+    new_l_mask = dropdims(l_mask, dims=2) # (1, L, BS)
+    new_m_mask = dropdims(m_mask, dims=2) # (1, M, BS)
+    return hungarian_match(C, new_l_mask, new_m_mask)
 end
 
 """
@@ -115,78 +137,93 @@ function hungarian_match(C::AbstractArray{T,3}, l_mask::AbstractArray{Bool,3}) w
     return c_ml, exist_target
 end
 
-
 """
-`hungarian_matching_loss(x̂::AbstractArray{T,3}, logits_exist::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat`
+`hungarian_match(C::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, x̂_mask::AbstractArray{Bool,3}) where T<:AbstractFloat`
 
-Matched-pair reconstruction (mean squared error over matched slots) + existence (binary
-cross-entropy over all slots) loss for a fixed-cardinality slot decoder, aligned to a
-variable-cardinality masked ground-truth set via Hungarian matching. `hungarian_match` does the
-CPU-only combinatorial matching inside `Zygote.@ignore`; the reconstruction term is then a plain
-`for b in 1:bs` loop gathering matched slots per batch element (kept this way -- not the fused
-single-gather version -- for compatibility with other experiments that depend on this exact code
-path).
+Solve the linear assignment problem per batch element from a precomputed cost matrix when *both*
+sides are variable-cardinality and masked (unlike `hungarian_match(C, l_mask)`, which only masks
+the `L` ground-truth side and assumes a fixed `M` predicted slots). Masked-out rows (`x̂`) and
+columns (`x`) are dropped from the cost matrix before assignment (never zeroed/`Inf`-filled), so
+they can never be selected as a match. The matched `(m, l, bs)` triples are returned as a single
+`CartesianIndex{3}` array, so `C[c_ml]` gathers the matched costs directly and reconstruction loss
+reduces to `mean(C[c_ml])` with no further per-batch indexing. No existence target is produced here
+-- with both sides masked there's no fixed-`M` slot layout to score existence against. Index
+bookkeeping only, not meant to be differentiated through -- wrap the call in `Zygote.@ignore`.
+
+Unlike `hungarian_match(C, l_mask)`, `x̂_mask` here is *known structural padding* (e.g. fewer
+predicted elements exist than `M` at this level), not something the model needs to learn -- so
+`exist_target` doesn't teach "does this slot exist" (already given), it teaches which of the
+*structurally valid* slots actually got matched to a real ground-truth element vs. are excess/
+orphaned predictions (the same DETR-style suppression signal as `hungarian_match(C, l_mask)`,
+restricted to the valid subset). Padding positions (`x̂_mask == false`) are left at `0` in
+`exist_target` but carry no training signal of their own -- mask `logits_exist`/`exist_target` by
+`x̂_mask` before computing the BCE loss so padding positions aren't scored.
 
 Arguments (positional):
-- `x̂`: predicted slots `(d, n_slots, bs)`.
-- `logits_exist`: existence logits `(1, n_slots, bs)`.
-- `x`: ground-truth set elements `(d, n_max, bs)`.
-- `x_mask`: validity mask `(1, n_max, bs)` for the ground-truth entries.
+- `C`: cost matrix `(M, L, BS)` -- `M` predicted elements, `L` ground-truth elements, `BS` batch
+  size (e.g. from `chamfer_pairwise_distance`).
+- `x_mask`: validity mask `(1, L, BS)` for the `L` ground-truth elements (columns of `C`).
+- `x̂_mask`: validity mask `(1, M, BS)` for the `M` predicted elements (rows of `C`) -- structural
+  padding, known in advance (unlike the existence the `exist_target` return trains for).
 
 Returns:
-- `ℒ_rec`: mean squared error over matched pairs.
-- `ℒ_exist`: binary cross-entropy existence loss over all slots.
-- `matched_frac`: fraction of `n_slots * bs` slots that were matched.
+- `c_ml::Vector{CartesianIndex{3}}`: matched `(m, l, bs)` triples, one per matched pair across the
+  whole batch -- indexes directly into `C` or into any `(..., M, L, BS)`-shaped tensor.
+- `exist_target::AbstractArray{T,3}`: binary existence target `(1, M, BS)`, `1` at every matched
+  `m`, `0` elsewhere (unmatched valid slots and padding slots alike -- mask by `x̂_mask` before use).
 """
-function hungarian_matching_loss(x̂::AbstractArray{T,3}, logits_exist::AbstractArray{T,3}, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
-    _, n_slots, bs = size(x̂)
-    matched_pred, matched_gt, exist_target = Zygote.@ignore begin
-        mp, mg = hungarian_match(x̂, x, x_mask)
-        t = zeros(T, 1, n_slots, bs)
-        for b in 1:bs
-            t[1, mp[b], b] .= one(T)
-        end
-        mp, mg, t
-    end
+function hungarian_match(C::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, x̂_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
+    M, _, BS = size(C)
+    C_cpu, x_mask_cpu, x̂_mask_cpu = Array(C), Array(x_mask), Array(x̂_mask)
+    c_ml = CartesianIndex{3}[]  # (m, l, bs) — index into a (..., M, L, BS) tensor
+    exist_target = zeros_like(C, (1, M, BS))  # (1, M, BS) — mask by x̂_mask before use
+    for b in 1:BS
+        x_idx = findall(vec(x_mask_cpu[1, :, b]))
+        x̂_idx = findall(vec(x̂_mask_cpu[1, :, b]))
+        isempty(x_idx) && continue
+        isempty(x̂_idx) && continue
 
-    rec_sum = zero(T)
-    n_matched = 0
-    for b in 1:bs
-        pi, gi = matched_pred[b], matched_gt[b]
-        isempty(pi) && continue
-        rec_sum = rec_sum + sum(abs2, x̂[:, pi, b] .- x[:, gi, b])
-        n_matched += length(pi)
+        Cb = C_cpu[x̂_idx, x_idx, b]                       # (n_valid_m, n_valid_l) — masked rows/cols just aren't there
+        assignment, _ = Hungarian.hungarian(Cb)
+        # assignment has length n_valid_m (= length(x̂_idx)), not M; entries are positions within x_idx, or 0 if unmatched
+        matched = filter(c -> c[2] != 0, CartesianIndex.(1:length(x̂_idx), assignment))   # (position-in-x̂_idx, position-in-x_idx)
+
+        append!(c_ml, CartesianIndex.(x̂_idx[getindex.(matched, 1)], x_idx[getindex.(matched, 2)], b))
+        exist_target[1, x̂_idx[getindex.(matched, 1)], b] .= one(T)
     end
-    ℒ_rec = n_matched > 0 ? rec_sum / n_matched : zero(T)
-    ℒ_exist = Flux.Losses.logitbinarycrossentropy(logits_exist, exist_target; agg=Flux.mean)
-    matched_frac = T(n_matched) / T(n_slots * bs)
-    return ℒ_rec, ℒ_exist, matched_frac
+    return c_ml, exist_target
 end
 
 
 """
-`hungarian_matching_loss(x̂::AbstractArray{T,4}, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, logits_exist::AbstractArray{T,3}, distance::Function=chamfer_pairwise_distance) where T<:AbstractFloat`
+`hungarian_matching_loss(x̂::AbstractArray{T,N}, x::AbstractArray{T,N}, x_mask::AbstractArray{Bool,N}, logits_exist::AbstractArray{T,3}, distance::Function=chamfer_pairwise_distance) where {T<:AbstractFloat, N}`
 
-Outer/cluster-level counterpart of `hungarian_matching_loss` for 3D tensors: matches predicted
-clusters `x̂` to a variable-cardinality, masked set of ground-truth clusters `x` (each cluster
-itself a point set) via Hungarian assignment on a `distance`-based cost matrix, e.g.
-`chamfer_pairwise_distance`, then computes matched-pair reconstruction + existence loss.
+Generalized (3D or 4D) counterpart of `hungarian_matching_loss` that plugs in an arbitrary
+`distance` function instead of a fixed metric: matches predicted elements `x̂` to a
+variable-cardinality, masked set of ground-truth elements `x` via Hungarian assignment on a
+`distance`-based cost matrix, then computes matched-pair reconstruction + existence loss. Works at
+the cluster level (`N=4`, each "element" itself a point set, e.g. with `distance=chamfer_pairwise_distance`)
+or at the plain point level (`N=3`, e.g. with a batched pairwise-distance function such as
+`_pairwise_sqdist_batched`); any other `N` raises an `ArgumentError`.
 
 Arguments (positional):
-- `x̂`: predicted clusters `(D, N, M, BS)`.
-- `x`: ground-truth clusters `(D, N, L, BS)`.
-- `x_mask`: validity mask `(1, 1, L, BS)` for the `L` ground-truth clusters.
+- `x̂`: predicted elements -- clusters `(D, N, M, BS)` if `N=4`, plain points `(D, M, BS)` if `N=3`.
+- `x`: ground-truth elements -- clusters `(D, N, L, BS)` if `N=4`, plain points `(D, L, BS)` if `N=3`.
+- `x_mask`: validity mask for the `L` ground-truth elements -- `(1, 1, L, BS)` if `N=4`,
+  `(1, L, BS)` if `N=3` (matches the shape `hungarian_match` dispatches on).
 - `logits_exist`: existence logits `(1, M, BS)`.
-- `distance`: pairwise cluster-distance function used to build the `(M, L, BS)` cost matrix
-  (default `chamfer_pairwise_distance`).
+- `distance`: pairwise-distance function used to build the `(M, L, BS)` cost matrix (default
+  `chamfer_pairwise_distance`, which only supports `N=4`; pass a 3D-compatible function, e.g.
+  `_pairwise_sqdist_batched`, when calling with `N=3` inputs).
 
 Returns:
-- `ℒ_rec`: mean cost over matched cluster pairs (gathered directly from the cost matrix via
-  `C[c_ml]`, see `hungarian_match`).
+- `ℒ_rec`: mean cost over matched pairs (gathered directly from the cost matrix via `C[c_ml]`,
+  see `hungarian_match`).
 - `ℒ_exist`: binary cross-entropy existence loss over all `M` predicted slots.
 """
-function hungarian_matching_loss(x̂::AbstractArray{T,4}, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, logits_exist::AbstractArray{T,3}, distance::Function = chamfer_pairwise_distance) where T<:AbstractFloat
-    _, _, M, BS = size(x̂)
+function hungarian_matching_loss(x̂::AbstractArray{T,N}, x::AbstractArray{T,N}, x_mask::AbstractArray{Bool,N}, logits_exist::AbstractArray{T,3}, distance::Function = chamfer_pairwise_distance) where {T<:AbstractFloat, N}
+    N in (3, 4) || throw(ArgumentError("hungarian_matching_loss only supports 3D or 4D arrays, got $(N)D"))
+    M = size(x̂, N - 1) # number of predicted slots
 
     C = distance(x̂, x) # (M, L, BS)
     matched_indices, exist_target = Zygote.@ignore hungarian_match(C, x_mask)
