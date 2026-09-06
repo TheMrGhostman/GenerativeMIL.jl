@@ -117,21 +117,25 @@ function HierarchicalSlotQueryVAE(;
     return HierarchicalSlotQueryVAE(encoder, dsq, decoder, output)
 end
 
-function build_hierarchical_slot_query_vae(D, M, BS)
-    # D: data dimension
-    # N: number of points per bag
-    # L: number of bags
-    # M: number of slots
-    # BS: batch size
 
-    prepool = Flux.Dense(D, 16, relu)
-    pooling = PMA(1, 16, 4; attention_fn = slot_attention) # m_z induced points -> Z is a set of m_z tokens, not one vector
-    postpool = Flux.Dense(16, 16, relu)
-    encoder = PoolEncoder(prepool, pooling, postpool)
+"""
+`migrate_dsq_state(dsq_state::NamedTuple)`
 
-    deep_slot_query = DeepSlotQueryVAE(16, 64, 4, M, 16, 2, 2)
-
-    decoder = MultiheadAttentionBlock(16, 4; activation=relu, attention_fn=attention)
-    output = Flux.Dense(16, D)
-
+Old (pre-refactor) `deep_slot_query` state had `self_attns`/`cross_attns` as flat sibling
+keys. The current `DeepSlotQueryVAE` nests them under a single `decoder` (`TransformerDecoder`)
+field instead. Re-nests an old state into the new shape; a no-op if the state is already in the
+new shape (already has a `decoder` key).
+"""
+function migrate_dsq_state(dsq_state::NamedTuple)
+    haskey(dsq_state, :decoder) && return dsq_state
+    return (
+        encoder = dsq_state.encoder,
+        prior = dsq_state.prior,
+        z_to_hidden = dsq_state.z_to_hidden,
+        decoder = (self_attns = dsq_state.self_attns, cross_attns = dsq_state.cross_attns),
+        output_head = dsq_state.output_head,
+        exist_head = dsq_state.exist_head,
+        queries = dsq_state.queries,
+    )
 end
+

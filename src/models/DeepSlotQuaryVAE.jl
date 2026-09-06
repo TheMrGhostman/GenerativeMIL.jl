@@ -59,30 +59,30 @@ function generate(m::DeepSlotQueryVAE, n_samples::Int; m_z::Int)
     return x̂, logits_exist
 end
 
-function elbo_with_logging(model::DeepSlotQueryVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...) where T <: AbstractFloat
+function elbo_with_logging(model::DeepSlotQueryVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, logpdf::Function=pairwise_logitcrossentropy; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...) where T <: AbstractFloat
     x̂, logits_exist, μ_z, Σ_z = model(x, x_mask)
-    ℒ_rec, ℒ_exist, matched_frac = hungarian_matching_loss(x̂, logits_exist, x, x_mask) # FIXME / TODO: add hungarian matching loss into GenerativeMIL.jl and make it a separate function, so that it can be used in other models as well
+    ℒ_rec, ℒ_exist = hungarian_matching_loss(x̂, x, x_mask, logits_exist, logpdf;) # FIXME / TODO: add hungarian matching loss into GenerativeMIL.jl and make it a separate function, so that it can be used in other models as well
     ℒ_kld = kl_divergence(μ_z, Σ_z)
     ℒ = ℒ_rec + T(λ_exist) * ℒ_exist + T(β) * ℒ_kld
-    return ℒ, (ℒ=ℒ, ℒ_rec=ℒ_rec, ℒ_exist=ℒ_exist, ℒ_kld=ℒ_kld, β=β, matched_frac=matched_frac)
+    return ℒ, (ℒ=ℒ, ℒ_rec=ℒ_rec, ℒ_exist=ℒ_exist, ℒ_kld=ℒ_kld, β=β)
 end
 
-function optim_step(model::DeepSlotQueryVAE, batch::Tuple, opt::NamedTuple, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
+function optim_step(model::DeepSlotQueryVAE, batch::Tuple, opt::NamedTuple, logpdf, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
     x, x_mask = device.(batch)
     (loss, logs), (∇model, ∇x) = Zygote.withgradient(model, x) do m, xx
-        elbo_with_logging(m, xx, x_mask; β=β, λ_exist=λ_exist, kwargs...)
+        elbo_with_logging(m, xx, x_mask, logpdf; β=β, λ_exist=λ_exist, kwargs...)
     end
     opt, model = Optimisers.update(opt, model, ∇model)
     return model, opt, logs
 end
 
-function valid_step(model::DeepSlotQueryVAE, dataloader, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
+function valid_step(model::DeepSlotQueryVAE, dataloader::DataLoader, logpdf; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, device::Function=cpu, kwargs...)
     ℒ, ℒ_rec, ℒ_exist, ℒ_kld, matched = 0f0, 0f0, 0f0, 0f0, 0f0
     for (x, x_mask) in dataloader
         x, x_mask = device(x), device(x_mask)
-        loss, logs = elbo_with_logging(model, x, x_mask; β=β, λ_exist=λ_exist, kwargs...)
-        ℒ += loss; ℒ_rec += logs.ℒ_rec; ℒ_exist += logs.ℒ_exist; ℒ_kld += logs.ℒ_kld; matched += logs.matched_frac
+        loss, logs = elbo_with_logging(model, x, x_mask, logpdf; β=β, λ_exist=λ_exist, kwargs...)
+        ℒ += loss; ℒ_rec += logs.ℒ_rec; ℒ_exist += logs.ℒ_exist; ℒ_kld += logs.ℒ_kld;
     end
     n = length(dataloader)
-    return (ℒᵥ=ℒ/n, ℒᵥ_rec=ℒ_rec/n, ℒᵥ_exist=ℒ_exist/n, ℒᵥ_kld=ℒ_kld/n, matched_fracᵥ=matched/n), ℒ/n
+    return (ℒᵥ=ℒ/n, ℒᵥ_rec=ℒ_rec/n, ℒᵥ_exist=ℒ_exist/n, ℒᵥ_kld=ℒ_kld/n), ℒ/n
 end

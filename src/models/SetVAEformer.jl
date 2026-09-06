@@ -21,15 +21,15 @@ function (m::PercieverIO)(x::AbstractArray{<:Real, 3}, x_mask::Mask=nothing)
 end
 
 
-struct CrossAttentionDecoder <: AbstractTransformerDecoder
+struct PerceiverCrossAttentionDecoder <: AbstractTransformerDecoder
     PreMAB::Union{Flux.Dense, Flux.Chain}
     MABs# Vector{MultiheadAttentionBlock}
     PostMAB::Union{Flux.Dense, Flux.Chain}
 end
 
-Flux.@layer CrossAttentionDecoder
+Flux.@layer PerceiverCrossAttentionDecoder
 
-function (m::CrossAttentionDecoder)(x::AbstractArray{T, 3}, kv::AbstractArray{T, 3}) where T <:Real
+function (m::PerceiverCrossAttentionDecoder)(x::AbstractArray{T, 3}, kv::AbstractArray{T, 3}) where T <:Real
     # x ∈ ℝ^{d,d} ~ (d, n, bs)  ... Random samples from prior / Query
     # kv ∈ ℝ^{m,d} ~ (d, m, bs) ... Key and Value for Cross Attention  
     # operations are O(n ⋅ m ⋅ d) where m << n ... not quadratic with n as SA O(n² ⋅ d)
