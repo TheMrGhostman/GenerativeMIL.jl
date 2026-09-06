@@ -1475,3 +1475,78 @@ BenchmarkTools.Trial: 7 samples with 1 evaluation per sample.
 ~~~julia
 
 ~~~
+
+
+
+# Discrete-bags Generation on Categorical data 
+
+## NaiveSetModel (v1 baseline)
+- it works quite well, exact matching rate is good and mean_element_accuracy is close to 100%
+- mean_element_accuracy is very high, but question is if the cardinality prediction would not tank this. 
+- here we use ground truth cardinality, so model only focus on reconstruction. When cardinality prediciton is added results will most likely change. 
+- Options for upgrade: 
+  - [ ] add cardinality predictor at the end 
+  - [ ] add and train cardinality predictor but during training use ground truth cardinalities
+
+~~~julia
+Epoch 100 | train: (ℒ = 0.4553554f0, ℒ_rec = 0.32021052f0, ℒₖₗ = 13.514487f0) | valid: (ℒᵥ = 0.4697719f0, ℒᵥ_rec = 0.3347653f0, ℒᵥₖₗ = 13.500663f0)
+-- reconstruction check: [1, 7, 1, 2] --
+  input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7])
+    sample 1: [1, 2, 7, 2]  ✗
+    sample 2: [1, 2, 7, 1]  ✓
+    sample 3: [1, 1, 2, 7]  ✓
+    sample 4: [1, 1, 7, 2]  ✓
+    sample 5: [7, 2, 1, 1]  ✓
+  exact_match_rate=0.85  mean_element_accuracy=0.9625
+-- reconstruction check: [1, 2, 3, 4, 5, 6, 7, 8] --
+  input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8])
+    sample 1: [4, 8, 6, 2, 5, 7, 8, 3]  ✗
+    sample 2: [7, 1, 5, 3, 2, 8, 6, 4]  ✓
+    sample 3: [8, 4, 3, 6, 5, 4, 2, 1]  ✗
+    sample 4: [3, 6, 2, 4, 5, 8, 7, 1]  ✓
+    sample 5: [4, 7, 3, 2, 8, 6, 5, 1]  ✓
+  exact_match_rate=0.55  mean_element_accuracy=0.94375
+-- reconstruction check: [9, 9, 5, 2, 9, 3, 6, 5] --
+  input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9])
+    sample 1: [9, 3, 9, 6, 5, 9, 2, 5]  ✓
+    sample 2: [5, 3, 6, 5, 2, 9, 9, 9]  ✓
+    sample 3: [2, 5, 3, 9, 6, 9, 9, 5]  ✓
+    sample 4: [5, 9, 3, 9, 5, 9, 5, 5]  ✗
+    sample 5: [5, 2, 2, 9, 6, 9, 5, 9]  ✗
+  exact_match_rate=0.5  mean_element_accuracy=0.91875s
+~~~
+
+
+
+## DSQVAE Categorical 
+- λ_exist = 2f0 is important. but still the biggest problem is cardinality.
+- mean_element_accuracy is pretty much 100%, meaning i get all elements reconstructed correctly including duplicities, BUT mean_predicted_cardinality is not that great which is reason that exact_match_rate is very low (close to 0 most of the times)
+
+~~~julia
+Epoch 100 | train: (ℒ = 6.4969907f0, ℒ_rec = 0.08386141f0, ℒ_exist = 3.018949f0, ℒ_kld = 37.523148f0, β = 0.01f0) | valid: (ℒᵥ = 6.2949567f0, ℒᵥ_rec = 0.07423262f0, ℒᵥ_exist = 2.9235165f0, ℒᵥ_kld = 37.369175f0)
+-- reconstruction check: [1, 7, 1, 2] --
+  input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7], n=4)
+    sample 1: [2, 1, 1, 7]  ✓
+    sample 2: [2, 1, 1, 7, 1]  ✗
+    sample 3: [2, 1, 1, 7]  ✓
+    sample 4: [2, 1, 1, 7, 1]  ✗
+    sample 5: [2, 1, 1, 7, 1]  ✗
+  exact_match_rate=0.35  mean_element_accuracy=1.0  mean_predicted_cardinality=4.65
+-- reconstruction check: [1, 2, 3, 4, 5, 6, 7, 8] --
+  input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8], n=8)
+    sample 1: [6, 8, 2, 8, 2, 1, 3, 7, 1, 5, 4, 3]  ✗
+    sample 2: [6, 2, 8, 2, 1, 4, 7, 1, 5, 4, 3]  ✗
+    sample 3: [6, 2, 8, 1, 4, 7, 1, 5, 4, 3]  ✗
+    sample 4: [6, 2, 8, 1, 3, 7, 1, 5, 4, 3]  ✗
+    sample 5: [6, 8, 2, 8, 2, 1, 4, 7, 5, 4, 3]  ✗
+  exact_match_rate=0.0  mean_element_accuracy=1.0  mean_predicted_cardinality=11.15
+-- reconstruction check: [9, 9, 5, 2, 9, 3, 6, 5] --
+  input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9], n=8)
+    sample 1: [6, 9, 2, 9, 9, 5, 5, 3]  ✓
+    sample 2: [6, 9, 2, 9, 9, 5, 5, 3]  ✓
+    sample 3: [6, 2, 9, 9, 5, 5, 3]  ✗
+    sample 4: [6, 2, 9, 9, 5, 5, 3]  ✗
+    sample 5: [6, 2, 9, 9, 5, 5, 3]  ✗
+  exact_match_rate=0.45  mean_element_accuracy=0.93125  mean_predicted_cardinality=7.45
+~~~
+

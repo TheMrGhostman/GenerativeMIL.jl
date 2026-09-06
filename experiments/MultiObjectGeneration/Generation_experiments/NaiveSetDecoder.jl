@@ -93,35 +93,14 @@ end
 
 function (m::NaiveSetModel)(x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
     dₓ, n, bs = size(x)                         # (dₓ, n, bs)
-    h = m.encoder(x)                            # (dₕ, m_z, bs)
+    h = m.encoder(x, x_mask)                    # (dₕ, m_z, bs) — mask padding out of the pooling attention
     μ_z, Σ_z = m.z_prior(h)                     # (d_z, m_z, bs)
     z = μ_z + Σ_z .* MLUtils.randn_like(μ_z)    # (d_z, m_z, bs)
     h = m.z_to_hidden(z)                        # (dₕ, m_z, bs)
     q = MLUtils.randn_like(h, (size(h, 1), n, bs))             # (dₕ, n, bs)
-    x̂ = m.decoder(q, h)                         # (dₕ, n, bs)
+    x̂ = m.decoder(q, h, x_mask)                 # (dₕ, n, bs) — masked self/cross-attention over query slots
     x̂ = m.output_head(x̂)                        # (dₓ, n, bs)
     return x̂, μ_z, Σ_z
-end
-
-
-function hungarian_match(C::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, x̂_mask::AbstractArray{Bool,3}) where T<:AbstractFloat
-    _, _, BS = size(C)
-    C_cpu, x_mask_cpu, x̂_mask_cpu = Array(C), Array(x_mask), Array(x̂_mask)
-    c_ml = CartesianIndex{3}[]  # (m, l, bs) — index into a (..., M, L, BS) tensor
-    for b in 1:BS
-        x_idx = findall(vec(x_mask_cpu[1, :, b]))
-        x̂_idx = findall(vec(x̂_mask_cpu[1, :, b]))
-        isempty(x_idx) && continue
-        isempty(x̂_idx) && continue
-
-        Cb = C_cpu[x̂_idx, x_idx, b]                       # (n_valid_m, n_valid_l) — masked rows/cols just aren't there
-        assignment, _ = Hungarian.hungarian(Cb)
-        # assignment has length n_valid_m (= length(x̂_idx)), not M; entries are positions within x_idx, or 0 if unmatched
-        matched = filter(c -> c[2] != 0, CartesianIndex.(1:length(x̂_idx), assignment))   # (position-in-x̂_idx, position-in-x_idx)
-
-        append!(c_ml, CartesianIndex.(x̂_idx[getindex.(matched, 1)], x_idx[getindex.(matched, 2)], b))
-    end
-    return c_ml
 end
 
 
@@ -133,7 +112,7 @@ function elbo_with_logging(model::NaiveSetModel, x::AbstractArray{T, 3}, x_mask:
     ℒₖₗ = GenerativeMIL.kl_divergence(μ_z, Σ_z) |> mean
     # reconstruction loss
     C = logpdf(x̂, x) # (N, N, BS)
-    matched_indices = Zygote.@ignore hungarian_match(C, x_mask, x_mask)
+    matched_indices, _ = Zygote.@ignore hungarian_match(C, x_mask, x_mask)
     n_matched = length(matched_indices)
     ℒ_rec = n_matched > 0 ? mean(C[matched_indices]) : zero(T)
     # total objective
@@ -224,7 +203,7 @@ end
 
 const TEST_CASE_1 = [1, 7, 1, 2]
 const TEST_CASE_2 = collect(1:8)
-
+const TEST_CASE_3 = [9, 9, 5, 2, 9, 3, 6 , 5]
 
 
 args = (;
@@ -232,7 +211,7 @@ args = (;
     hidden_dim = 64,
     heads = 4,
     z_dim = 16,
-    m_z = 3,       # NEW: number of latent summary tokens (was implicitly 1 in first_test.jl)
+    m_z = 1,       # NEW: number of latent summary tokens (was implicitly 1 in first_test.jl)
     n_layers = 3,  # NEW: number of stacked self+cross-attention rounds (was implicitly 1)
     att_layers = 2, # NEW: number of stacked self-attention rounds in the decoder (was implicitly 1)
     β = 0.01f0,
@@ -280,6 +259,8 @@ for epoch in 1:args.epochs
         print_reconstruction_report(model, TEST_CASE_1; device=cu)
         println("-- reconstruction check: $TEST_CASE_2 --")
         print_reconstruction_report(model, TEST_CASE_2; device=cu)
+        println("-- reconstruction check: $TEST_CASE_3 --")
+        print_reconstruction_report(model, TEST_CASE_3; device=cu)
     end
 end
 
