@@ -89,7 +89,7 @@ function with_dropout(chain::Flux.Chain, p::Real)
     spliced = Any[]
     for (i, l) in enumerate(layers)
         push!(spliced, l)
-        i < length(layers) && push!(spliced, Flux.Dropout(p))
+        i < length(layers) && push!(spliced, x->Flux.dropout(x, p)) #Flux.Dropout(p))
     end
     return Flux.Chain(spliced...)
 end

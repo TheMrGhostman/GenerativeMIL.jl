@@ -302,13 +302,12 @@ args = (;
 
 
 
-x_train, mask_train, labels_train = make_bag_digit_dataset(args.n_train_batches, N_MAX, DIGITS);
+# Training bags are resampled fresh every epoch (see the loop below) instead of drawn once here,
+# since make_bag_digit_dataset is just cheap random sampling — the model then never sees the same
+# fixed n_train_batches bags twice, which keeps it from overfitting to one static training set.
+# The validation set stays fixed across epochs so ℒᵥ is comparable epoch-to-epoch.
 x_valid, mask_valid, labels_valid = make_bag_digit_dataset(args.n_valid_batches, N_MAX, DIGITS);
-
-dataloaders = (
-    train = DataLoader((x_train, mask_train), batchsize=128, shuffle=true, partial=true),
-    valid = DataLoader((x_valid, mask_valid), batchsize=128, shuffle=false, partial=true),
-)
+valid_loader = DataLoader((x_valid, mask_valid), batchsize=128, shuffle=false, partial=true)
 #CyclicalSigmoidSchedule(max_value, beta_warmup, warmup_epochs, rise_epochs, hold_epochs, cycles; slope_factor=12f0/rise_epochs)
 beta_scheduler = GenerativeMIL.CyclicalSigmoidSchedule(
     args.scheduler.max_value,
@@ -341,11 +340,15 @@ opt = Optimisers.setup(AdamW(; eta=1e-3, lambda=1e-4), model);
 for epoch in 1:args.epochs
     logs = nothing
     β = beta_scheduler(epoch)
-    for batch in tqdm(CuIterator(dataloaders.train))
+    x_train, mask_train, _ = make_bag_digit_dataset(args.n_train_batches, N_MAX, DIGITS)
+    train_loader = DataLoader((x_train, mask_train), batchsize=128, shuffle=true, partial=true)
+    Flux.trainmode!(model)
+    for batch in tqdm(CuIterator(train_loader))
         global model, opt # top-level nested-loop reassignment is ambiguous soft scope otherwise (Julia gotcha)
         model, opt, logs = optim_step(model, batch, opt, pairwise_logitcrossentropy; β=β, λ=args.λ)
     end
-    vlogs, _ = valid_step(model, dataloaders.valid, pairwise_logitcrossentropy; β=β, λ=args.λ, device=cu)
+    Flux.testmode!(model)
+    vlogs, _ = valid_step(model, valid_loader, pairwise_logitcrossentropy; β=β, λ=args.λ, device=cu)
     println("Epoch $epoch | train: $(logs) | valid: $(vlogs)")
 
     if epoch % 10 == 0 || epoch == args.epochs
