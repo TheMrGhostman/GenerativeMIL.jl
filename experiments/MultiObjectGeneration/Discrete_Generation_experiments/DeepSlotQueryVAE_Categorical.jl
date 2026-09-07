@@ -100,15 +100,43 @@ const TEST_CASE_2 = collect(1:8)
 const TEST_CASE_3 = [9, 9, 5, 2, 9, 3, 6 , 5]
 
 
+
+
+
+
+
+function build_model(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_slots::Int, n_layers::Int, att_layers::Int, out_layers::Int, ext_layers::Int, activation::Function=relu)
+
+    encoder = PoolEncoder(
+        create_mlp(dₓ, dₕ, n_layers, dₕ, activation),
+        PMA(m_z, dₕ, n_heads),
+        create_mlp(dₕ, dₕ, n_layers, dₕ, activation)
+    )
+    z_prior = SplitLayer(dₕ, (d_z, d_z),(identity, Flux.softplus))
+    z_to_hidden = Flux.Dense(d_z, dₕ)
+    decoder = TransformerDecoder(
+        [MultiheadAttentionBlock(dₕ, n_heads; attention_fn=attention) for _ in 1:att_layers],
+        [MultiheadAttentionBlock(dₕ, n_heads; attention_fn=attention) for _ in 1:att_layers]
+    )
+    output_head = create_mlp(dₕ, dₕ, out_layers, dₓ, activation; out_identity=true)
+    exist_head = create_mlp(dₕ, dₕ, ext_layers, 1, activation; out_identity=true)
+    queries = randn(Float32, dₕ, n_slots)
+
+    return DeepSlotQueryVAE(encoder, z_prior, z_to_hidden, decoder, output_head, exist_head, queries)
+end
+
 args = (;
     embed_dim = length(DIGITS),
     hidden_dim = 64,
     heads = 4,
     n_slots = N_MAX,   # max number of objects the model can predict per bag
     z_dim = 16,
-    m_z = 1,           # number of latent summary tokens produced by the pooling encoder
+    m_z = 2,           # number of latent summary tokens produced by the pooling encoder
     n_layers = 2,      # stacked self+cross-attention rounds in the slot decoder
-    β = 0.01f0,
+    out_layers = 2,       # stacked MLP layers in the output head
+    ext_layers = 1,       # stacked MLP layers in the existence head
+    att_layers = 2,    # stacked self-attention rounds in the decoder
+    β = 0.01f0,          # 0.01f0,  # KL weight
     λ_exist = 2f0,
     epochs = 100,
     n_train_batches = 8000,
@@ -126,7 +154,8 @@ dataloaders = (
 )
 
 
-model = DeepSlotQueryVAE(args.embed_dim, args.hidden_dim, args.heads, args.n_slots, args.z_dim, args.m_z, args.n_layers);
+
+model = build_model(args.embed_dim, args.hidden_dim, args.m_z, args.z_dim, args.heads, args.n_slots, args.n_layers, args.att_layers, args.out_layers, args.ext_layers, relu);
 #x,m = first(dataloaders.train)
 #elbo_with_logging(model, x, m, pairwise_logitcrossentropy; β=args.β, λ_exist=args.λ_exist)  # sanity check: forward pass works
 #optim_step(model, (x,m), Optimisers.setup(AdamW(; eta=1e-3, lambda=1e-4), model), pairwise_logitcrossentropy; β=args.β, λ_exist=args.λ_exist)

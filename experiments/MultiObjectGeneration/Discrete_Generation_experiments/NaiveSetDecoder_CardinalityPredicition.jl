@@ -70,6 +70,23 @@ function pred_card_mask(n̂::AbstractArray{<:AbstractFloat,3}, n::Int, bs::Int)
     return mask
 end
 
+# Splices a Dropout(p) after every layer but the last in a Chain built by create_mlp, without
+# needing to touch create_mlp itself. p<=0 is a no-op (returns chain unchanged) so existing
+# callers that don't pass dropout keep building exactly the same Chain as before. Dropout layers
+# are found by Flux.@layer's functor traversal like any other child, so they automatically go
+# inactive outside of gradient computation (plain `model(x, mask)` calls) with no explicit
+# trainmode!/testmode! calls needed.
+function with_dropout(chain::Flux.Chain, p::Real)
+    p <= 0 && return chain
+    layers = chain.layers
+    spliced = Any[]
+    for (i, l) in enumerate(layers)
+        push!(spliced, l)
+        i < length(layers) && push!(spliced, Flux.Dropout(p))
+    end
+    return Flux.Chain(spliced...)
+end
+
 struct NaiveSetModelCP{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, D<:TransformerDecoder, OT<:Flux.Dense, CT<:Flux.Chain}
     encoder::E
     z_prior::PT
@@ -81,12 +98,12 @@ end
 
 Flux.@layer NaiveSetModelCP
 
-function NaiveSetModelCP(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu)
+function NaiveSetModelCP(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu, dropout::Real=0.0)
 
     encoder = PoolEncoder(
         create_mlp(dₓ, dₕ, n_layers, dₕ, activation),
         PMA(m_z, dₕ, n_heads),
-        create_mlp(dₕ, dₕ, n_layers, dₕ, activation)
+        create_mlp(dₕ, dₕ, n_layers, dₕ, activation),
     )
     z_prior = SplitLayer(dₕ, (d_z, d_z),(identity, Flux.softplus))
     decoder = TransformerDecoder(
@@ -95,7 +112,8 @@ function NaiveSetModelCP(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int,
     )
     z_to_hidden = Flux.Dense(d_z, dₕ)
     output_head = Flux.Dense(dₕ, dₓ)
-    cardinality_head = create_mlp(d_z, dₕ, cp_layers, 1, activation)
+    cardinality_head = with_dropout(create_mlp(d_z, dₕ, cp_layers, 1, activation, out_identity=true), dropout)
+
     return NaiveSetModelCP(encoder, z_prior, z_to_hidden, decoder, output_head, cardinality_head)
 end
 
@@ -160,6 +178,7 @@ end
 
 function valid_step(model::NaiveSetModelCP, dataloader::DataLoader, logpdf; β=1f0, λ=1f0, device::Function=cpu, kwargs...)
     ℒ, ℒ_rec, ℒₖₗ, ℒ_card = 0f0, 0f0, 0f0, 0f0
+    Flux.testmode!(model, true)
     for batch in dataloader
         x, x_mask = length(batch) == 3 ? (batch[1], batch[2]) : batch # TODO: make it more robust to different batch formats
         x, x_mask = device(x), device(x_mask)
@@ -170,7 +189,7 @@ function valid_step(model::NaiveSetModelCP, dataloader::DataLoader, logpdf; β=1
         ℒₖₗ += logs.ℒₖₗ
         ℒ_card += logs.ℒ_card
     end
-
+    Flux.testmode!(model, false)
     n = length(dataloader)
     logs = (; ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥₖₗ = ℒₖₗ/n, ℒᵥ_card = ℒ_card/n)
     return logs, ℒ/n
@@ -208,8 +227,9 @@ function reconstruct_bag(model::NaiveSetModelCP, digits::AbstractVector{<:Intege
     mask = falses(1, N_max, 1)
     x[:, 1:n, 1] .= Flux.onehotbatch(digits, digits_alphabet)
     mask[1, 1:n, 1] .= true
-
+    Flux.testmode!(model, true)
     x̂, _, _, n̂ = model(device(x), device(mask); gt_card)
+    Flux.testmode!(model, false)
     x̂ = Array(x̂)
     pred_cardinality = cardinality_from_nhat(n̂, N_max)[1]  # single bag -> scalar
 
@@ -245,6 +265,18 @@ const TEST_CASE_1 = [1, 7, 1, 2]
 const TEST_CASE_2 = collect(1:8)
 const TEST_CASE_3 = [9, 9, 5, 2, 9, 3, 6 , 5]
 
+silu(x) = x .* σ.(x)
+
+scheduler = (
+    type = "sigmoidal_cyclical",
+    max_value = 0.05f0,
+    beta_warmup = 0.0005f0,
+    warmup_epochs = 300,
+    rise_epochs = 125,
+    hold_epochs = 50,
+    cycles = 4,
+    slope_factor = 12f0/100
+)
 
 args = (;
     dₓ = length(DIGITS),
@@ -254,13 +286,19 @@ args = (;
     m_z = 1,       # NEW: number of latent summary tokens (was implicitly 1 in first_test.jl)
     n_layers = 3,  # NEW: number of stacked self+cross-attention rounds (was implicitly 1)
     att_layers = 2, # NEW: number of stacked self-attention rounds in the decoder (was implicitly 1)
-    cp_layers = 2,  # NEW: number of layers in the cardinality prediction head (was implicitly 1)
+    cp_layers = 3,  # NEW: number of layers in the cardinality prediction head (was implicitly 1)
+    dropout=0.2,
     β = 0.01f0,
     λ = 0.1f0,
-    epochs = 100,
+    epochs = 1000,
     n_train_batches = 8000,
     n_valid_batches = 800,
+    #beta = beta_scheduler,
+    scheduler = scheduler,
+    activation = relu, #gelu, #x-> x · σ.(x)
+    ui=Int(rand(1:10^6))  # optional unique identifier for this run, used for naming output directory if model_dir is not set
 )
+
 
 
 
@@ -271,7 +309,18 @@ dataloaders = (
     train = DataLoader((x_train, mask_train), batchsize=128, shuffle=true, partial=true),
     valid = DataLoader((x_valid, mask_valid), batchsize=128, shuffle=false, partial=true),
 )
+#CyclicalSigmoidSchedule(max_value, beta_warmup, warmup_epochs, rise_epochs, hold_epochs, cycles; slope_factor=12f0/rise_epochs)
+beta_scheduler = GenerativeMIL.CyclicalSigmoidSchedule(
+    args.scheduler.max_value,
+    args.scheduler.beta_warmup,
+    args.scheduler.warmup_epochs,
+    args.scheduler.rise_epochs,
+    args.scheduler.hold_epochs,
+    args.scheduler.cycles;
+    slope_factor=args.scheduler.slope_factor
+)
 
+#beta_scheduler = x-> args.beta
 
 #vae = NaiveSetModelCP(args.dₓ, args.hidden_dim, args.m_z, args.z_dim, args.heads, args.n_layers, args.att_layers, args.cp_layers)  
 #x, m = first(dataloaders.train)
@@ -285,17 +334,18 @@ dataloaders = (
 #x̂, μ, Σ, n̂ = vae(x, m; gt_card=true)  # training always decodes against ground-truth cardinality; 
 #x̂, μ, Σ, n̂ = vae(x, m; gt_card=false) 
 
-model = NaiveSetModelCP(args.dₓ, args.hidden_dim, args.m_z, args.z_dim, args.heads, args.n_layers, args.att_layers, args.cp_layers);
+model = NaiveSetModelCP(args.dₓ, args.hidden_dim, args.m_z, args.z_dim, args.heads, args.n_layers, args.att_layers, args.cp_layers, args.activation, args.dropout);
 model = cu(model);
 opt = Optimisers.setup(AdamW(; eta=1e-3, lambda=1e-4), model);
 
 for epoch in 1:args.epochs
     logs = nothing
+    β = beta_scheduler(epoch)
     for batch in tqdm(CuIterator(dataloaders.train))
         global model, opt # top-level nested-loop reassignment is ambiguous soft scope otherwise (Julia gotcha)
-        model, opt, logs = optim_step(model, batch, opt, pairwise_logitcrossentropy; β=args.β, λ=args.λ)
+        model, opt, logs = optim_step(model, batch, opt, pairwise_logitcrossentropy; β=β, λ=args.λ)
     end
-    vlogs, _ = valid_step(model, dataloaders.valid, pairwise_logitcrossentropy; β=args.β, λ=args.λ, device=cu)
+    vlogs, _ = valid_step(model, dataloaders.valid, pairwise_logitcrossentropy; β=β, λ=args.λ, device=cu)
     println("Epoch $epoch | train: $(logs) | valid: $(vlogs)")
 
     if epoch % 10 == 0 || epoch == args.epochs
@@ -309,3 +359,22 @@ for epoch in 1:args.epochs
 end
 
 
+# save model and opt state
+model_state = Flux.state(model|>cpu);
+opt_state = Flux.state(opt|>cpu);
+model_state_dir = joinpath("B:\\Github-Repos\\GenerativeMIL.jl\\data\\MultiObjectGeneration\\NaiveSetModel_CP\\naivesetmodel_cp_ui=$(args.ui)", "model_state")
+mkpath(model_state_dir)
+jldsave(joinpath(model_state_dir, "model_state_final.jld2"), model_state = model_state, opt_state = opt_state, args = args)
+
+
+##  relu
+# Epoch 99 | train: (ℒ = 0.20067011f0, ℒ_rec = 0.060231928f0, ℒₖₗ = 51.189003f0, ℒ_card = 1.1484368f0, β = 0.0005f0, λ = 0.1f0) | valid: (ℒᵥ = 0.2541466f0, ℒᵥ_rec = 0.081563175f0, ℒᵥₖₗ = 50.53027f0, ℒᵥ_card = 1.4731833f0)
+# Epoch 100 | train: (ℒ = 0.2028878f0, ℒ_rec = 0.104561254f0, ℒₖₗ = 52.397068f0, ℒ_card = 0.7212801f0, β = 0.0005f0, λ = 0.1f0) | valid: (ℒᵥ = 0.26070455f0, ℒᵥ_rec = 0.113363944f0, ℒᵥₖₗ = 52.344482f0, ℒᵥ_card = 1.2116833f0)
+
+##  gelu 
+# Epoch 99 | train: (ℒ = 0.31423312f0, ℒ_rec = 0.18404405f0, ℒₖₗ = 51.03629f0, ℒ_card = 1.0467093f0, β = 0.0005f0, λ = 0.1f0) | valid: (ℒᵥ = 0.4294079f0, ℒᵥ_rec = 0.19727376f0, ℒᵥₖₗ = 50.206543f0, ℒᵥ_card = 2.0703084f0)
+# Epoch 100 | train: (ℒ = 0.43544662f0, ℒ_rec = 0.29028273f0, ℒₖₗ = 52.769905f0, ℒ_card = 1.1877896f0, β = 0.0005f0, λ = 0.1f0) | valid: (ℒᵥ = 0.41868263f0, ℒᵥ_rec = 0.19286802f0, ℒᵥₖₗ = 52.039703f0, ℒᵥ_card = 1.9979473f0)
+
+## silu
+# Epoch 99 | train: (ℒ = 0.41047603f0, ℒ_rec = 0.26918f0, ℒₖₗ = 50.639606f0, ℒ_card = 1.1597621f0, β = 0.0005f0, λ = 0.1f0) | valid: (ℒᵥ = 0.45102736f0, ℒᵥ_rec = 0.2744412f0, ℒᵥₖₗ = 50.317314f0, ℒᵥ_card = 1.514275f0)
+# Epoch 100 | train: (ℒ = 0.41911846f0, ℒ_rec = 0.23857251f0, ℒₖₗ = 49.689873f0, ℒ_card = 1.5570099f0, β = 0.0005f0, λ = 0.1f0) | valid: (ℒᵥ = 0.43323693f0, ℒᵥ_rec = 0.24316442f0, ℒᵥₖₗ = 50.80605f0, ℒᵥ_card = 1.646695f0)

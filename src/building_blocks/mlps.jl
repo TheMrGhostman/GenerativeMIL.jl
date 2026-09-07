@@ -83,6 +83,16 @@ function _create_chain(ins_::Vector, outs_::Vector, layers::Vector, activations:
 end
 
 
+function with_dropout(chain::Flux.Chain, p::Real)
+    p <= 0 && return chain
+    layers = chain.layers
+    spliced = Any[]
+    for (i, l) in enumerate(layers)
+        push!(spliced, l)
+        i < length(layers) && push!(spliced, Flux.Dropout(p))
+    end
+    return Flux.Chain(spliced...)
+end
 
 
 """

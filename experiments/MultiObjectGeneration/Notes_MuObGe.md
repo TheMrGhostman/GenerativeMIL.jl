@@ -1480,43 +1480,6 @@ BenchmarkTools.Trial: 7 samples with 1 evaluation per sample.
 
 # Discrete-bags Generation on Categorical data 
 
-## NaiveSetModel (v1 baseline)
-- it works quite well, exact matching rate is good and mean_element_accuracy is close to 100%
-- mean_element_accuracy is very high, but question is if the cardinality prediction would not tank this. 
-- here we use ground truth cardinality, so model only focus on reconstruction. When cardinality prediciton is added results will most likely change. 
-- Options for upgrade: 
-  - [ ] add cardinality predictor at the end 
-  - [ ] add and train cardinality predictor but during training use ground truth cardinalities
-
-~~~julia
-Epoch 100 | train: (ℒ = 0.4553554f0, ℒ_rec = 0.32021052f0, ℒₖₗ = 13.514487f0) | valid: (ℒᵥ = 0.4697719f0, ℒᵥ_rec = 0.3347653f0, ℒᵥₖₗ = 13.500663f0)
--- reconstruction check: [1, 7, 1, 2] --
-  input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7])
-    sample 1: [1, 2, 7, 2]  ✗
-    sample 2: [1, 2, 7, 1]  ✓
-    sample 3: [1, 1, 2, 7]  ✓
-    sample 4: [1, 1, 7, 2]  ✓
-    sample 5: [7, 2, 1, 1]  ✓
-  exact_match_rate=0.85  mean_element_accuracy=0.9625
--- reconstruction check: [1, 2, 3, 4, 5, 6, 7, 8] --
-  input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8])
-    sample 1: [4, 8, 6, 2, 5, 7, 8, 3]  ✗
-    sample 2: [7, 1, 5, 3, 2, 8, 6, 4]  ✓
-    sample 3: [8, 4, 3, 6, 5, 4, 2, 1]  ✗
-    sample 4: [3, 6, 2, 4, 5, 8, 7, 1]  ✓
-    sample 5: [4, 7, 3, 2, 8, 6, 5, 1]  ✓
-  exact_match_rate=0.55  mean_element_accuracy=0.94375
--- reconstruction check: [9, 9, 5, 2, 9, 3, 6, 5] --
-  input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9])
-    sample 1: [9, 3, 9, 6, 5, 9, 2, 5]  ✓
-    sample 2: [5, 3, 6, 5, 2, 9, 9, 9]  ✓
-    sample 3: [2, 5, 3, 9, 6, 9, 9, 5]  ✓
-    sample 4: [5, 9, 3, 9, 5, 9, 5, 5]  ✗
-    sample 5: [5, 2, 2, 9, 6, 9, 5, 9]  ✗
-  exact_match_rate=0.5  mean_element_accuracy=0.91875s
-~~~
-
-
 
 ## DSQVAE Categorical 
 - λ_exist = 2f0 is important. but still the biggest problem is cardinality.
@@ -1550,3 +1513,219 @@ Epoch 100 | train: (ℒ = 6.4969907f0, ℒ_rec = 0.08386141f0, ℒ_exist = 3.018
   exact_match_rate=0.45  mean_element_accuracy=0.93125  mean_predicted_cardinality=7.45
 ~~~
 
+
+## NaiveSetModel (v1 baseline)
+- it works quite well, exact matching rate is good and mean_element_accuracy is close to 100%
+- mean_element_accuracy is very high, but question is if the cardinality prediction would not tank this. 
+- here we use ground truth cardinality, so model only focus on reconstruction. When cardinality prediciton is added results will most likely change. 
+- Options for upgrade: 
+  - [x] add and train cardinality predictor but during training use ground truth cardinalities (v2)
+  - [ ] add cardinality predictor at the end (transofer learning)
+
+~~~julia
+Epoch 100 | train: (ℒ = 0.4553554f0, ℒ_rec = 0.32021052f0, ℒₖₗ = 13.514487f0) | valid: (ℒᵥ = 0.4697719f0, ℒᵥ_rec = 0.3347653f0, ℒᵥₖₗ = 13.500663f0)
+-- reconstruction check: [1, 7, 1, 2] --
+  input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7])
+    sample 1: [1, 2, 7, 2]  ✗
+    sample 2: [1, 2, 7, 1]  ✓
+    sample 3: [1, 1, 2, 7]  ✓
+    sample 4: [1, 1, 7, 2]  ✓
+    sample 5: [7, 2, 1, 1]  ✓
+  exact_match_rate=0.85  mean_element_accuracy=0.9625
+-- reconstruction check: [1, 2, 3, 4, 5, 6, 7, 8] --
+  input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8])
+    sample 1: [4, 8, 6, 2, 5, 7, 8, 3]  ✗
+    sample 2: [7, 1, 5, 3, 2, 8, 6, 4]  ✓
+    sample 3: [8, 4, 3, 6, 5, 4, 2, 1]  ✗
+    sample 4: [3, 6, 2, 4, 5, 8, 7, 1]  ✓
+    sample 5: [4, 7, 3, 2, 8, 6, 5, 1]  ✓
+  exact_match_rate=0.55  mean_element_accuracy=0.94375
+-- reconstruction check: [9, 9, 5, 2, 9, 3, 6, 5] --
+  input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9])
+    sample 1: [9, 3, 9, 6, 5, 9, 2, 5]  ✓
+    sample 2: [5, 3, 6, 5, 2, 9, 9, 9]  ✓
+    sample 3: [2, 5, 3, 9, 6, 9, 9, 5]  ✓
+    sample 4: [5, 9, 3, 9, 5, 9, 5, 5]  ✗
+    sample 5: [5, 2, 2, 9, 6, 9, 5, 9]  ✗
+  exact_match_rate=0.5  mean_element_accuracy=0.91875s
+~~~
+
+~~~julia
+Epoch 200 | train: (ℒ = 4.6731896f0, ℒ_rec = 0.04474377f0, ℒ_exist = 2.1336432f0, ℒ_kld = 36.115997f0, β = 0.01f0) | valid: (ℒᵥ = 6.1463785f0, ℒᵥ_rec = 0.076317735f0, ℒᵥ_exist = 2.8532486f0, ℒᵥ_kld = 36.356407f0)
+-- reconstruction check: [1, 7, 1, 2] --
+  input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7], n=4)
+    sample 1: [1, 2, 1]  ✗
+    sample 2: [1, 2, 1]  ✗
+    sample 3: [1, 2, 1]  ✗
+    sample 4: [1, 2, 1]  ✗
+    sample 5: [1, 2, 1]  ✗
+  exact_match_rate=0.0  mean_element_accuracy=0.6875  mean_predicted_cardinality=2.75
+-- reconstruction check: [1, 2, 3, 4, 5, 6, 7, 8] --
+  input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8], n=8)
+    sample 1: [6, 8, 2, 7, 1, 5, 4, 3]  ✓
+    sample 2: [6, 8, 2, 7, 1, 5, 4, 3]  ✓
+    sample 3: [6, 8, 2, 7, 1, 5, 4, 3]  ✓
+    sample 4: [6, 8, 2, 7, 1, 5, 4, 3]  ✓
+    sample 5: [6, 8, 2, 7, 1, 5, 4, 3]  ✓
+  exact_match_rate=0.9  mean_element_accuracy=1.0  mean_predicted_cardinality=8.1
+-- reconstruction check: [9, 9, 5, 2, 9, 3, 6, 5] --
+  input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9], n=8)
+    sample 1: [6, 2, 9, 9, 5, 5, 3]  ✗
+    sample 2: [6, 2, 9, 9, 5, 5, 3]  ✗
+    sample 3: [6, 2, 9, 9, 5, 5, 9, 3]  ✓
+    sample 4: [6, 2, 9, 9, 5, 5, 9, 3]  ✓
+    sample 5: [6, 2, 9, 9, 5, 5, 9, 3]  ✓
+  exact_match_rate=0.65  mean_element_accuracy=0.9625  mean_predicted_cardinality=7.75
+~~~
+
+
+## NaiveSetModelCP (v2 cardinality prediction head)
+- train cardinality predictor but during training use ground truth cardinalities
+- i predcit true cardinality (1,12) and activation is softplus
+
+### λ = 1.0f0
+- do not work that well, we need to focus on λ parameter, 
+- mean_element_accuracy is lower that in baseline. It is influenced by cardinality prediction -> if cardinality is wrong/smaller for bigger bags, MEA is much lower
+  - paradoxically MAE is ussually better when cardianlity is predicted bigger then GT
+
+~~~julia
+Epoch 100 | train: (ℒ = 5.5297503f0, ℒ_rec = 0.9804146f0, ℒₖₗ = 12.628375f0, ℒ_card = 4.423052f0, β = 0.01f0, λ = 1.0f0) | valid: (ℒᵥ = 5.0078435f0, ℒᵥ_rec = 0.9813775f0, ℒᵥₖₗ = 12.667123f0, ℒᵥ_card = 3.8997948f0)
+-- reconstruction check (ground-truth cardinality): [1, 7, 1, 2] --
+  [ground-truth cardinality] input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7], n=4)
+    sample 1: [7, 2, 1, 2]  (pred_cardinality=5)  ✗
+    sample 2: [2, 1, 2, 7]  (pred_cardinality=5)  ✗
+    sample 3: [1, 1, 7, 2]  (pred_cardinality=5)  ✓
+    sample 4: [7, 2, 1, 6]  (pred_cardinality=5)  ✗
+    sample 5: [6, 7, 1, 2]  (pred_cardinality=5)  ✗
+  exact_match_rate=0.3  mean_element_accuracy=0.825  mean_predicted_cardinality=5.0
+-- reconstruction check (predicted cardinality): [1, 7, 1, 2] --
+  [predicted cardinality] input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7], n=4)
+    sample 1: [1, 2, 7, 1, 7]  (pred_cardinality=5)  ✗
+    sample 2: [1, 1, 7, 2, 7]  (pred_cardinality=5)  ✗
+    sample 3: [7, 1, 2, 1, 7]  (pred_cardinality=5)  ✗
+    sample 4: [7, 7, 1, 1]  (pred_cardinality=4)  ✗
+    sample 5: [2, 1, 7, 2, 1]  (pred_cardinality=5)  ✗
+  exact_match_rate=0.0  mean_element_accuracy=0.9375  mean_predicted_cardinality=4.9
+-- reconstruction check (ground-truth cardinality): [1, 2, 3, 4, 5, 6, 7, 8] --
+  [ground-truth cardinality] input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8], n=8)
+    sample 1: [2, 7, 1, 5, 7, 10, 6, 1]  (pred_cardinality=9)  ✗
+    sample 2: [1, 1, 3, 8, 10, 5, 1, 7]  (pred_cardinality=9)  ✗
+    sample 3: [6, 8, 3, 1, 6, 7, 1, 5]  (pred_cardinality=9)  ✗
+    sample 4: [4, 2, 3, 5, 1, 8, 3, 1]  (pred_cardinality=9)  ✗
+    sample 5: [5, 10, 4, 7, 1, 2, 3, 6]  (pred_cardinality=9)  ✗
+  exact_match_rate=0.0  mean_element_accuracy=0.71875  mean_predicted_cardinality=9.0
+-- reconstruction check (predicted cardinality): [1, 2, 3, 4, 5, 6, 7, 8] --
+  [predicted cardinality] input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8], n=8)
+    sample 1: [3, 6, 5, 10, 4, 3, 1, 5, 1]  (pred_cardinality=9)  ✗
+    sample 2: [10, 7, 5, 6, 3, 1, 1, 3, 8]  (pred_cardinality=9)  ✗
+    sample 3: [5, 7, 3, 1, 5, 4, 6, 10, 6]  (pred_cardinality=9)  ✗
+    sample 4: [3, 5, 4, 7, 1, 7, 6, 1, 2]  (pred_cardinality=9)  ✗
+    sample 5: [4, 2, 8, 1, 1, 7, 5, 3, 4]  (pred_cardinality=9)  ✗
+  exact_match_rate=0.0  mean_element_accuracy=0.78125  mean_predicted_cardinality=9.0
+-- reconstruction check (ground-truth cardinality): [9, 9, 5, 2, 9, 3, 6, 5] --
+  [ground-truth cardinality] input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9], n=8)
+    sample 1: [3, 7, 6, 2, 6, 9, 5, 9]  (pred_cardinality=7)  ✗
+    sample 2: [7, 6, 5, 7, 9, 6, 6, 3]  (pred_cardinality=6)  ✗
+    sample 3: [9, 3, 3, 5, 9, 6, 9, 7]  (pred_cardinality=7)  ✗
+    sample 4: [9, 3, 3, 7, 9, 5, 6, 6]  (pred_cardinality=6)  ✗
+    sample 5: [6, 6, 7, 3, 5, 9, 2, 2]  (pred_cardinality=6)  ✗
+  exact_match_rate=0.0  mean_element_accuracy=0.6625  mean_predicted_cardinality=6.5
+-- reconstruction check (predicted cardinality): [9, 9, 5, 2, 9, 3, 6, 5] --
+  [predicted cardinality] input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9], n=8)
+    sample 1: [9, 6, 5, 7, 3, 5, 6]  (pred_cardinality=7)  ✗
+    sample 2: [9, 3, 6, 9, 6, 3]  (pred_cardinality=6)  ✗
+    sample 3: [7, 6, 5, 3, 5, 9, 6]  (pred_cardinality=7)  ✗
+    sample 4: [9, 5, 9, 6, 3, 9]  (pred_cardinality=6)  ✗
+    sample 5: [3, 2, 7, 9, 7, 6, 5]  (pred_cardinality=7)  ✗
+  exact_match_rate=0.0  mean_element_accuracy=0.59375  mean_predicted_cardinality=6.35
+~~~
+
+### λ = 0.10f0
+- this seems much better, MAE is higher then 85%, frequently closer to 95%
+
+~~~julia
+Epoch 200 | train: (ℒ = 0.43141064f0, ℒ_rec = 0.16019674f0, ℒₖₗ = 16.8046f0, ℒ_card = 1.0316792f0, β = 0.01f0, λ = 0.1f0) | valid: (ℒᵥ = 0.42919883f0, ℒᵥ_rec = 0.15455623f0, ℒᵥₖₗ = 17.345613f0, ℒᵥ_card = 1.011865f0)
+-- reconstruction check (ground-truth cardinality): [1, 7, 1, 2] --
+  [ground-truth cardinality] input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7], n=4)
+    sample 1: [8, 1, 7, 1]  (pred_cardinality=3)  ✗
+    sample 2: [1, 2, 1, 7]  (pred_cardinality=3)  ✓
+    sample 3: [1, 7, 1, 2]  (pred_cardinality=3)  ✓
+    sample 4: [2, 7, 1, 1]  (pred_cardinality=4)  ✓
+    sample 5: [1, 1, 7, 2]  (pred_cardinality=4)  ✓
+  exact_match_rate=0.85  mean_element_accuracy=0.9625  mean_predicted_cardinality=3.25
+-- reconstruction check (predicted cardinality): [1, 7, 1, 2] --
+  [predicted cardinality] input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7], n=4)
+    sample 1: [7, 1, 1]  (pred_cardinality=3)  ✗
+    sample 2: [7, 1, 1, 2]  (pred_cardinality=4)  ✓
+    sample 3: [2, 1, 7, 1]  (pred_cardinality=4)  ✓
+    sample 4: [1, 1, 7, 2]  (pred_cardinality=4)  ✓
+    sample 5: [1, 7, 2, 1]  (pred_cardinality=4)  ✓
+  exact_match_rate=0.6  mean_element_accuracy=0.9  mean_predicted_cardinality=3.6
+-- reconstruction check (ground-truth cardinality): [1, 2, 3, 4, 5, 6, 7, 8] --
+  [ground-truth cardinality] input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8], n=8)
+    sample 1: [3, 2, 5, 4, 8, 6, 1, 7]  (pred_cardinality=8)  ✓
+    sample 2: [7, 8, 6, 3, 5, 10, 10, 4]  (pred_cardinality=8)  ✗
+    sample 3: [7, 2, 4, 10, 8, 6, 5, 3]  (pred_cardinality=8)  ✗
+    sample 4: [8, 6, 10, 4, 2, 3, 5, 7]  (pred_cardinality=8)  ✗
+    sample 5: [5, 8, 3, 4, 2, 1, 7, 6]  (pred_cardinality=8)  ✓
+  exact_match_rate=0.45  mean_element_accuracy=0.90625  mean_predicted_cardinality=8.05
+-- reconstruction check (predicted cardinality): [1, 2, 3, 4, 5, 6, 7, 8] --
+  [predicted cardinality] input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8], n=8)
+    sample 1: [7, 6, 3, 8, 1, 2, 5, 4]  (pred_cardinality=8)  ✓
+    sample 2: [8, 6, 7, 1, 5, 4, 2, 3]  (pred_cardinality=8)  ✓
+    sample 3: [8, 7, 6, 4, 3, 2, 5, 10]  (pred_cardinality=8)  ✗
+    sample 4: [3, 7, 4, 2, 1, 8, 5, 6]  (pred_cardinality=8)  ✓
+    sample 5: [5, 4, 7, 8, 3, 8, 2, 1]  (pred_cardinality=8)  ✗
+  exact_match_rate=0.5  mean_element_accuracy=0.93125  mean_predicted_cardinality=8.0
+-- reconstruction check (ground-truth cardinality): [9, 9, 5, 2, 9, 3, 6, 5] --
+  [ground-truth cardinality] input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9], n=8)
+    sample 1: [9, 9, 6, 2, 9, 3, 5, 5]  (pred_cardinality=8)  ✓
+    sample 2: [2, 9, 5, 6, 9, 3, 5, 9]  (pred_cardinality=8)  ✓
+    sample 3: [9, 9, 5, 9, 5, 6, 2, 3]  (pred_cardinality=7)  ✓
+    sample 4: [9, 3, 5, 9, 6, 9, 5, 2]  (pred_cardinality=8)  ✓
+    sample 5: [2, 5, 9, 9, 6, 3, 9, 5]  (pred_cardinality=8)  ✓
+  exact_match_rate=0.85  mean_element_accuracy=0.975  mean_predicted_cardinality=7.9
+-- reconstruction check (predicted cardinality): [9, 9, 5, 2, 9, 3, 6, 5] --
+  [predicted cardinality] input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9], n=8)
+    sample 1: [2, 6, 9, 5, 5, 3, 9, 9]  (pred_cardinality=8)  ✓
+    sample 2: [9, 5, 2, 9, 6, 3, 5, 9]  (pred_cardinality=8)  ✓
+    sample 3: [2, 5, 9, 6, 9, 3, 5, 9]  (pred_cardinality=8)  ✓
+    sample 4: [3, 6, 2, 5, 9, 9, 5, 2]  (pred_cardinality=8)  ✗
+    sample 5: [2, 5, 9, 9, 5, 3, 6, 9]  (pred_cardinality=8)  ✓
+  exact_match_rate=0.65  mean_element_accuracy=0.94375  mean_predicted_cardinality=7.75
+~~~
+
+
+## DSQVAE Categorical (deeper - experimental)
+- depends on architecture
+  - seems that existence head needs to be just Dense, more layers did not look convincing
+- [ ] think about predicting existence after first Cross Attention to produce mask and then future layers would use masked cross
+  - when i am thinkng about it now, i am not sure it would work.
+  s  
+~~~julia
+Epoch 200 | train: (ℒ = 4.2514844f0, ℒ_rec = 0.06844855f0, ℒ_exist = 1.9272197f0, ℒ_kld = 32.85965f0, β = 0.01f0, λ = 2.0f0) | valid: (ℒᵥ = 5.1991463f0, ℒᵥ_rec = 0.06484586f0, ℒᵥ_exist = 2.403013f0, ℒᵥ_kld = 32.827457f0)
+-- reconstruction check: [1, 7, 1, 2] --
+  input: [1, 7, 1, 2]  (sorted: [1, 1, 2, 7], n=4)
+    sample 1: [1, 7, 2, 1]  ✓
+    sample 2: [1, 7, 2, 1]  ✓
+    sample 3: [1, 7, 2, 1]  ✓
+    sample 4: [1, 7, 2, 1]  ✓
+    sample 5: [1, 7, 2, 1]  ✓
+  exact_match_rate=1.0  mean_element_accuracy=1.0  mean_predicted_cardinality=4.0
+-- reconstruction check: [1, 2, 3, 4, 5, 6, 7, 8] --
+  input: [1, 2, 3, 4, 5, 6, 7, 8]  (sorted: [1, 2, 3, 4, 5, 6, 7, 8], n=8)
+    sample 1: [4, 7, 4, 5, 3, 1, 2, 6, 8]  ✗
+    sample 2: [4, 7, 5, 1, 2, 6, 8, 3]  ✓
+    sample 3: [4, 7, 5, 1, 2, 6, 8, 3]  ✓
+    sample 4: [4, 7, 5, 1, 2, 6, 8, 3]  ✓
+    sample 5: [4, 7, 5, 3, 1, 2, 6, 8]  ✓
+  exact_match_rate=0.75  mean_element_accuracy=0.975  mean_predicted_cardinality=7.9
+-- reconstruction check: [9, 9, 5, 2, 9, 3, 6, 5] --
+  input: [9, 9, 5, 2, 9, 3, 6, 5]  (sorted: [2, 3, 5, 5, 6, 9, 9, 9], n=8)
+    sample 1: [5, 9, 9, 5, 5, 3, 2, 6]  ✗
+    sample 2: [5, 9, 9, 5, 5, 3, 2, 6]  ✗
+    sample 3: [5, 9, 9, 5, 5, 3, 2, 6]  ✗
+    sample 4: [5, 9, 9, 5, 5, 3, 2, 6]  ✗
+    sample 5: [5, 9, 9, 5, 5, 3, 2, 6]  ✗
+  exact_match_rate=0.0  mean_element_accuracy=0.875  mean_predicted_cardinality=8.0
+~~~

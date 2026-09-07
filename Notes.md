@@ -3,6 +3,40 @@
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
 
+## Todos 5.9.2026
+- [ ] make rigorous comparision on Naive and DSQ models 
+
+- Think about improvements to DSQ 
+  - i am starting to think that predicting cardinality/existence should be done early in decoder
+  - for example existence at the end of decoder in DSQ might make everything more complicated, because model might spread information into more slots then will be later needed, this might make matching harder. 
+  - also matching can be different then existing prediction, this i think makes it harder for model too. 
+  - so setting cardinality frist and selecting/sampling queries early might be beneficial because model needs to focus only on this restricted set and have to turn it into desired output. 
+  - [ ] think about VQ-VAE for prior
+    - we can sample queries from codebook
+    - or we can predict existence of queries based on global latent. -> crossentropy for each code from codebook. What we will get is something like histogram or rather discrete probability for each code, then we can sample N codes based on their probability. 
+
+
+## Todos 5.9.2026
+- i was working on experiments concerning generation of Discrete bags
+- I tested "naive" approach with and without cardinality prediction and it (surprisingly) worked quite well
+- experiments
+  - [x] prepare categorical mnist-like dataset for discrete bags
+  - [x] update DQSVAE
+  - [x] refactor HSQVAE
+  - [x] generalize and unify HungarianMatching and HungarianMatchingLoss
+  - [x] pairwise_logitcrossentropy
+
+  - [x] prepare NaiveSetModel
+    - [x] train script and all functions
+    - [x] run basic experiemnts
+  - [x] prepare NaiveSetModel with Cardinality Prediciton
+    - [x] train script and all functions
+    - [x] run basic experiements
+  - [x] DSQVAE for categorical data
+    - [x] train script and all functions
+    - [x] run basic experiements
+
+
 ## Todos 21.8.2026
 - [ ] use CuIterator for training
 - [ ] Improve memory and speed on GPUs of Hungarian matching and pairwise chamfer distance. 

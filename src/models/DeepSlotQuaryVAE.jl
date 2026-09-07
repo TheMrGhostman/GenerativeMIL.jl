@@ -1,6 +1,6 @@
 
 struct DeepSlotQueryVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, DT<:TransformerDecoder,
-        OT<:Flux.Dense, EXT<:Flux.Dense, QT<:AbstractMatrix{<:AbstractFloat}}
+        OT<:Union{Flux.Dense, Flux.Chain}, EXT<:Union{Flux.Dense, Flux.Chain}, QT<:AbstractMatrix{<:AbstractFloat}}
     encoder::E
     prior::PT
     z_to_hidden::ZT
@@ -64,7 +64,7 @@ function elbo_with_logging(model::DeepSlotQueryVAE, x::AbstractArray{T,3}, x_mas
     ℒ_rec, ℒ_exist = hungarian_matching_loss(x̂, x, x_mask, logits_exist, logpdf;) # FIXME / TODO: add hungarian matching loss into GenerativeMIL.jl and make it a separate function, so that it can be used in other models as well
     ℒ_kld = kl_divergence(μ_z, Σ_z)
     ℒ = ℒ_rec + T(λ_exist) * ℒ_exist + T(β) * ℒ_kld
-    return ℒ, (ℒ=ℒ, ℒ_rec=ℒ_rec, ℒ_exist=ℒ_exist, ℒ_kld=ℒ_kld, β=β)
+    return ℒ, (ℒ=ℒ, ℒ_rec=ℒ_rec, ℒ_exist=ℒ_exist, ℒ_kld=ℒ_kld, β=β, λ=λ_exist)
 end
 
 function optim_step(model::DeepSlotQueryVAE, batch::Tuple, opt::NamedTuple, logpdf, device::Function=cpu; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, kwargs...)
