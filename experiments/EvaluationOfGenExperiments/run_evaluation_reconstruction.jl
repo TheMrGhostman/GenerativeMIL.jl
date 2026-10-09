@@ -4,7 +4,8 @@ using DrWatson
 @quickactivate
 
 using Dates
-using GenerativeMIL 
+using Random
+using GenerativeMIL
 using CUDA
 
 
@@ -91,6 +92,9 @@ function main()
         ),
     )
     data_cfg = data_configs[dataset_name]
+    # Must match training: train_*.jl sets data_cfg[:seed] = args[:seed], and the MNIST split depends on it
+    # (without it, create_dataloaders falls back to seed=666 -> ~64% of valid/test samples were training samples).
+    data_cfg[:seed] = args[:seed]
 
 
     losses_to_use = Symbol.(split(args[:loss_functions], ","))
@@ -113,6 +117,9 @@ function main()
     @assert ispath(joinpath(@__DIR__, "processing_logs")) "\"processing_logs\" folder is missing"
     logname = "$(dataset_name)_$(args[:model_name])_$(args[:seed])_$(now()).jsonl"
     jsonl_log_path = joinpath(@__DIR__, "processing_logs", logname)
+
+    # ShapeNet valid/test point subsampling uses the global RNG; seed it so every model is evaluated on identical points.
+    Random.seed!(args[:seed])
 
     o = evaluate_reconstructions(
         paths_to_files, 
