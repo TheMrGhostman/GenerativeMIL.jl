@@ -245,6 +245,39 @@ function (svae::SetVAE)(x::AbstractArray{T}, x_mask::Mask=nothing; β::BetaArg=1
 end
 
 
+"""
+`generate_samples(model::SetVAE, cardinality::Int, num_samples::Int=10)`
+
+Generate new sets from the prior: initial set from the MoG prior, then every decoder layer samples
+its latent from the prior `p(z | h)` (no encoder, no posterior correction).
+
+Arguments (positional):
+- `model`: trained `SetVAE`.
+- `cardinality`: number of points per generated set.
+- `num_samples`: number of generated sets (default `10`).
+
+Returns:
+- `x̂`: generated sets `(d, cardinality, num_samples)`.
+- `zs`: vector of per-layer latent samples (same order as `model.decoder.layers`), each `(zdim, m, num_samples)`.
+
+Notes:
+- Runs in test mode (like `reconstruct`) and switches the model back to train mode afterwards.
+"""
+function generate_samples(model::SetVAE, cardinality::Int, num_samples::Int=10)
+    Flux.testmode!(model, true)
+    try
+        x̂ = model.prior(cardinality, num_samples)  # Sample from the prior
+        x̂ = model.decoder.expansion(x̂)  # Expand to the appropriate dimension
+        zs = Vector{typeof(x̂)}(undef, length(model.decoder.layers))
+        for (i, layer) in enumerate(model.decoder.layers)
+            x̂, _, _, zs[i] = layer(x̂)  # Pass through each layer, keep its latent sample
+        end
+        return model.decoder.reduction(x̂), zs
+    finally
+        Flux.testmode!(model, false)
+    end
+end
+
 
 
 """

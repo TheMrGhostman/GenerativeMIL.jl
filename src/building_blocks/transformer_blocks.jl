@@ -613,3 +613,10 @@ function (abl::AttentiveHalfBlock)(x::AbstractArray{T}, h_enc::AbstractArray{T},
     # MAB2((d, n, bs), (d, m, bs)) -> (d, n, bs)
     return abl.MAB(x, ĥ, x_mask, nothing), ℒₖₗ, ĥ, z # (d, n, bs), scalar, (zdim, m, bs), ...
 end
+
+function (abl::AttentiveHalfBlock)(x::AbstractArray{T}) where T <: AbstractFloat
+    # generation
+    # x ∈ ℝ^{n,d} ~ (d, n, bs) , in VB we need only bs
+    z, ĥ, ℒₖₗ = abl.VB(x) # z, h, kld ~ (zdim, m, bs), (d, m, bs), kld_loss 
+    return abl.MAB(x, ĥ), ℒₖₗ, ĥ, z  # (d, n, bs), (d, m, bs)
+end
