@@ -138,7 +138,6 @@ Construct a `SplitLayer` with dual dense projections.
 # Returns
 - `SplitLayer`: initialized split layer with dual `Dense` branches.
 """
-### Constructors | Dense version
 SplitLayer(in::Int, out::Int, acts::NTuple{2, Function}) = SplitLayer(in, (out, out), acts)
 function SplitLayer(in::Int, out::NTuple{2, Int}, acts::NTuple{2, Function})
 	SplitLayer(

@@ -28,6 +28,26 @@ function (m::NeuralStatistician)(x::AbstractArray{T, 3}) where {T <: AbstractFlo
     return x̂, (ℒₖₗ_z, ℒₖₗ_c)
 end
 
+function generate_samples(model::NeuralStatistician, cardinality::Int, num_samples::Int=10)
+    Flux.testmode!(model, true)
+    try
+        stat_weights = model.statistic_net.layers[end][end].μ.weight # (context_dim, hidden_dim)
+        cdim = size(stat_weights, 1) # context_dim
+        c = MLUtils.randn_like(stat_weights, (cdim, 1, num_samples)) # (context_dim, 1, batch_size) - sampled context vector
+        cᵢ = repeat(c, 1, cardinality, 1); # (context_dim, n_points, batch_size) - repeat context for each point
+        μ_ẑᵢ, Σ_ẑᵢ = model.latent_decoder(cᵢ)
+
+        zᵢ = μ_ẑᵢ .+ Σ_ẑᵢ .* MLUtils.randn_like(μ_ẑᵢ) # (latent_dim, n_points, batch_size) - sampled latent variables
+        x̂ = model.observation_decoder(zᵢ, cᵢ)
+
+        return x̂, (μ_ẑᵢ[:,1,:], Σ_ẑᵢ[:,1,:], c)
+    finally
+        Flux.testmode!(model, false)
+        #println("Generated samples with cardinality=$cardinality and num_samples=$num_samples")
+    end
+end
+
+
 
 function elbo_with_logging(m::NeuralStatistician, x::AbstractArray{T, 3}, logpdf::Function=Flux.mse; β₁::F=1f0, β₂::F=1f0, reconstruct::Bool=false) where {T <: AbstractFloat, F <: AbstractFloat}
     x̂, (ℒₖₗ_z, ℒₖₗ_c) = m(x)

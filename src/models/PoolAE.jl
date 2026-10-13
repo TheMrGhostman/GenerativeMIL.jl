@@ -82,7 +82,46 @@ function reconstruct(model::PoolModel, x::AbstractArray{T}; kwargs...) where T <
 end
 
 
-function reconstruct_and_log(model::PoolModel, x::AbstractArray{T}, x_mask::Mask, loss_function; β=1f0) where T <: AbstractFloat
+"""
+`encode_set(model::PoolModel, x)`
+
+Set-level encoding `h = encoder(x)` (deterministic; PoolModel is trained without KL, so `h` has no prior).
+
+Returns:
+- `h`: `(popdim, 1, batch_size)`.
+"""
+function encode_set(model::PoolModel, x::AbstractArray{T, 3}) where T <: AbstractFloat
+    Flux.testmode!(model, true)
+    try
+        return model.encoder(x)
+    finally
+        Flux.testmode!(model, false)
+    end
+end
+
+"""
+`decode_from_encoding(model::PoolModel, h, cardinality::Int)`
+
+Decode set encodings `h` into sets of `cardinality` points, exactly as in the forward pass:
+`μ, Σ = generator(h)`, one `z = μ + Σ ε` per point, `x̂ = decoder(z)`.
+
+Returns:
+- `x̂`: `(idim, cardinality, batch_size)`.
+- `(μ, Σ, z)`: generator parameters `(zdim, 1, bs)` / `(1 or zdim, 1, bs)` and per-point latents `(zdim, cardinality, bs)`.
+"""
+function decode_from_encoding(model::PoolModel, h::AbstractArray{T, 3}, cardinality::Int) where T <: AbstractFloat
+    Flux.testmode!(model, true)
+    try
+        μ, Σ = model.generator(h)
+        z = μ .+ Σ .* MLUtils.randn_like(μ, (size(μ, 1), cardinality, size(μ, 3)))
+        return model.decoder(z), (μ, Σ, z)
+    finally
+        Flux.testmode!(model, false)
+    end
+end
+
+
+function reconstruct_and_log(model::PoolModel,x::AbstractArray{T}, x_mask::Mask, loss_function; β=1f0) where T <: AbstractFloat
     Flux.testmode!(model, true)
     x̂ = model(x)
     ℒ_rec = loss_function(x̂, x)

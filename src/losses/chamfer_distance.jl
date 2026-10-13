@@ -9,9 +9,6 @@ Computes the chamfer distance between PointCloud `A` and `B`.
 `w1` and `w2` are optional arguments for specifying the weighted mean of between two 
 pcloud for computing metrics.
 """
-#chamfer_distance(A::PointCloud, B::PointCloud; w1::Number = 1.0, w2::Number = 1.0) =
-#    _chamfer_distance(A.points, B.points, Float32(w1), Float32(w2))
-
 chamfer_distance(
     A::AbstractArray{<:Number},
     B::AbstractArray{<:Number};
