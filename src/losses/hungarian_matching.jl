@@ -234,3 +234,19 @@ function hungarian_matching_loss(x̂::AbstractArray{T,N}, x::AbstractArray{T,N},
     #matched_frac = T(n_matched) / T(M * BS)
     return ℒ_rec, ℒ_exist
 end
+
+"""
+`pairwise_logitcrossentropy(x̂, x)`
+
+Pairwise categorical cross-entropy cost matrix between predicted logits `x̂` and one-hot targets
+`x`, meant as the `logpdf`/cost for Hungarian matching of discrete (categorical) set elements.
+
+- `x̂, x: (D, N)` → `(N, N)` with `CE[i,j] = crossentropy(softmax(x̂[:,i]), x[:,j])`.
+- `x̂, x: (D, N, BS)` → `(N, N, BS)`, batched per bag (no cross-bag pairs).
+"""
+pairwise_logitcrossentropy(x̂::AbstractMatrix, x::AbstractMatrix) = -logsoftmax(x̂; dims=1)' * x
+
+function pairwise_logitcrossentropy(x̂::AbstractArray{T,3}, x::AbstractArray{T,3}) where T <: AbstractFloat
+    logŷ = logsoftmax(x̂; dims=1)
+    return -batched_mul(batched_transpose(logŷ), x)
+end

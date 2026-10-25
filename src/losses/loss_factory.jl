@@ -91,6 +91,8 @@ function _resolve_named_loss(name)
         return (x,y) -> sinkhorn_divergence_loss(x, y, 0.1f0)
     elseif name_norm in ("maximum_mean_discrepancy", "maximum_mean_discrepency")
         return (x, y) -> maximum_mean_discrepancy(x, y)
+    elseif name_norm == "pairwise_logitcrossentropy"
+        return pairwise_logitcrossentropy
     elseif name_norm == "mse"
         return Flux.mse
     elseif name_norm == "l2sum"

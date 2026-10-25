@@ -47,5 +47,8 @@ export DeepSlotQueryVAE
 include("HierarchicalSlotQueryVAE.jl")
 export HierarchicalSlotQueryVAE
 
+include("DiscreteBagVAE.jl")
+export DiscreteBagVAE, discretebagvae_constructor_from_named_tuple
+
 # common exports 
 export elbo_with_logging, optim_step, valid_step, reconstruct_and_log, reconstruct

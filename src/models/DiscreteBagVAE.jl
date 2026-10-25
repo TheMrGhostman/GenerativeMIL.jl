@@ -166,12 +166,26 @@ function reconstruct(model::DiscreteBagVAE, x::AbstractArray{T,3}, x_mask::Abstr
     return x̂
 end
 
-# Single forward pass returning (x̂, loss, logs) -- used by `reconstruction_check`. Logits x̂ are
-# returned as they are (argmax over dim 1 gives the predicted category of each slot).
+# Single forward pass returning (x̂, loss, logs) -- used by `reconstruction_check`. Done in one pass
+# (not elbo_with_logging + a second forward) since the decoder query is fresh noise on every call,
+# so x̂ and the loss would otherwise come from different samples. x̂ are logits (argmax over dim 1
+# gives the predicted category of each slot).
 function reconstruct_and_log(model::DiscreteBagVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, logpdf; β=1f0, λ=1f0, use_elbo::Bool=true, kwargs...) where T <: AbstractFloat
     Flux.testmode!(model, true)
-    loss, logs = use_elbo ? elbo_with_logging(model, x, x_mask, logpdf; β=β, λ=λ) : loss_with_logging(model, x, x_mask, logpdf; λ=λ)
-    x̂, _, _ = model(x, x_mask; gt_card=true)
+    x̂, hₑ, n̂ = model(x, x_mask; gt_card=true)
     Flux.testmode!(model, false)
-    return x̂, loss, logs
+    C = logpdf(x̂, x) # (N, N, BS)
+    matched_indices, _ = hungarian_match(C, x_mask, x_mask)
+    ℒ_rec = length(matched_indices) > 0 ? mean(C[matched_indices]) : zero(T)
+    ℒ_card = Flux.mse(Flux.softplus.(n̂), Float32.(sum(x_mask, dims=2)))
+    if use_elbo
+        μ_z, Σ_z = hₑ
+        ℒₖₗ = GenerativeMIL.kl_divergence(μ_z, Σ_z) |> mean
+        ℒ = ℒ_rec + β * ℒₖₗ + λ * ℒ_card
+        logs = (ℒ = ℒ, ℒ_rec=ℒ_rec, ℒₖₗ=ℒₖₗ, ℒ_card=ℒ_card)
+    else
+        ℒ = ℒ_rec + λ * ℒ_card
+        logs = (ℒ = ℒ, ℒ_rec=ℒ_rec, ℒ_card=ℒ_card)
+    end
+    return x̂, ℒ, logs
 end

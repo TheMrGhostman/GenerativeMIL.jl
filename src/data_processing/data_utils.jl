@@ -313,5 +313,37 @@ function bag_collate_fn(batch::Vector{Tuple{X, M}}) where {X <: AbstractArray{<:
     return (x, mask)
 end
 
+"""
+    bag_collate_fn(batch)
+
+Variants of [`bag_collate_fn`](@ref) for bags of plain (non-point-cloud) elements, e.g.
+one-hot categorical bags from `load_bag_digits`/`sample_one_digit_bag`.
+
+# Arguments
+- `batch`: vector of tuples `(data, mask)` or `(data, mask, labels)` where `data` has shape
+  `(D, N)`, `mask` has shape `(1, N)`, and `labels` is a variable-length vector.
+
+# Returns
+- Tuple `(x, mask)` or `(x, mask, labels)` where `x` has shape `(D, N, BS)`, `mask` has shape
+  `(1, N, BS)`, and `labels` is a `Vector` of the per-bag label vectors (lengths differ, so
+  they are not stacked).
+"""
+function bag_collate_fn(batch::Vector{Tuple{X, M}}) where {X <: AbstractMatrix{<:AbstractFloat}, M <: AbstractMatrix{Bool}}
+    data1, mask1 = batch[1]
+    BS = length(batch)
+    x = Array{eltype(data1)}(undef, size(data1)..., BS)
+    mask = Array{Bool}(undef, size(mask1)..., BS)
+    @inbounds for (i, (data, m)) in pairs(batch)
+        copyto!(@view(x[:, :, i]), data)
+        copyto!(@view(mask[:, :, i]), m)
+    end
+    return (x, mask)
+end
+
+function bag_collate_fn(batch::Vector{Tuple{X, M, L}}) where {X <: AbstractMatrix{<:AbstractFloat}, M <: AbstractMatrix{Bool}, L <: AbstractVector{Int}}
+    x, mask = bag_collate_fn([(data, m) for (data, m, _) in batch])
+    return (x, mask, [l for (_, _, l) in batch])
+end
+
 
 
