@@ -1,0 +1,177 @@
+struct DiscreteBagVAE{E<:PoolEncoder, QP, HT<:Flux.Dense, D<:TransformerDecoder, OT<:Flux.Dense, CT<:Flux.Chain} <: AbstractGenModel
+    encoder::E
+    query_prior::QP
+    z_to_kv::HT
+    decoder::D
+    output_head::OT
+    cardinality_head::CT
+end
+
+Flux.@layer DiscreteBagVAE
+
+function DiscreteBagVAE(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu, dropout::Real=0.0, gaussian_mlp::Bool=true)
+
+    encoder = PoolEncoder(
+        create_mlp(dₓ, dₕ, n_layers, dₕ, activation),
+        PMA(m_z, dₕ, n_heads),
+        gaussian_mlp ? create_gaussian_mlp(dₕ, dₕ, n_layers, d_z, activation; softplus_=true) : create_mlp(dₕ, dₕ, n_layers, d_z, activation) 
+    )
+
+    query_prior = MLUtils.randn_like
+    z_to_kv = Flux.Dense(d_z, dₕ)
+    decoder = TransformerDecoder(
+        [MultiheadAttentionBlock(dₕ, n_heads; attention_fn=attention) for _ in 1:att_layers],
+        [MultiheadAttentionBlock(dₕ, n_heads; attention_fn=attention) for _ in 1:att_layers]
+    )
+    
+    output_head = Flux.Dense(dₕ, dₓ)
+    cardinality_head = with_dropout(create_mlp(d_z, dₕ, cp_layers, 1, activation, out_identity=true), dropout)
+
+    return DiscreteBagVAE(encoder, query_prior, z_to_kv, decoder, output_head, cardinality_head)
+end
+
+produce_z(x::Tuple{T, T}) where T <: AbstractArray = x[1] .+ x[2] .* MLUtils.randn_like(x[1])
+produce_z(x::AbstractArray) = x 
+
+# Converts the cardinality head's raw regression output n̂ (1, m_z, bs) into an integer
+# cardinality per batch element: pools over the m_z latent tokens, applies the same softplus
+# used in the training loss to keep the estimate non-negative, then rounds and clamps into a
+# valid slot count in 1:n_max.
+cardinality_from_nhat(n̂::AbstractArray{<:AbstractFloat,3}, n_max::Int) =
+    clamp.(round.(Int, dropdims(mean(Flux.softplus.(Array(n̂)), dims=2), dims=(1,2))), 1, n_max)
+
+# Builds a (1, n, bs) existence mask from the cardinality head's prediction n̂, mirroring
+# x_mask's layout (first `card[b]` query slots existing, rest padding). CPU-only index
+# bookkeeping (like hungarian_match) -- only meant to run at inference/generation time, never
+# under gradient tracking, so callers should wrap it in Zygote.@ignore.
+function pred_card_mask(n̂::AbstractArray{<:AbstractFloat,3}, n::Int, bs::Int)
+    card = cardinality_from_nhat(n̂, n)
+    mask = falses(1, n, bs)
+    for (b, c) in enumerate(card)
+        mask[1, 1:c, b] .= true
+    end
+    return mask
+end
+
+
+function (m::DiscreteBagVAE)(x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; gt_card::Bool=true) where T <: AbstractFloat
+    dₓ, n, bs = size(x)                                          # (dₓ, n, bs)
+    hₑ = m.encoder(x, x_mask)                                     # (dₕ, m_z, bs) — mask padding out of the pooling attention
+    #μ_z, Σ_z = m.z_prior(h)                                      # (d_z, m_z, bs)
+    #z = μ_z + Σ_z .* MLUtils.randn_like(μ_z)                     # (d_z, m_z, bs)
+    z = produce_z(hₑ)
+
+    n̂ = m.cardinality_head(z)                                    # (1, m_z, bs)
+    h = m.z_to_kv(z)                                             # (dₕ, m_z, bs)
+    query_mask = if gt_card
+        x_mask
+    else
+        Zygote.@ignore begin
+            mask_cpu = pred_card_mask(n̂, n, bs)
+            x_mask isa CuArray ? CuArray(mask_cpu) : mask_cpu
+        end
+    end
+    q = m.query_prior(h, (size(h,1), n, bs))                # (dₕ, n, bs) - or this could be different prior
+    x̂ = m.decoder(q, h, query_mask)                              # (dₕ, n, bs) — masked self/cross-attention over query slots
+    x̂ = m.output_head(x̂)                                         # (dₓ, n, bs)
+    return x̂, hₑ, n̂
+end
+
+function elbo_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function; β=1f0, λ=1f0, kwargs...) where T <: AbstractFloat
+    x̂, (μ_z, Σ_z), n̂ = model(x, x_mask; gt_card=true)  # training always decodes against ground-truth cardinality
+    # KL divergence
+    ℒₖₗ = GenerativeMIL.kl_divergence(μ_z, Σ_z) |> mean
+    # reconstruction loss
+    C = logpdf(x̂, x) # (N, N, BS)
+    matched_indices, _ = Zygote.@ignore hungarian_match(C, x_mask, x_mask)
+    n_matched = length(matched_indices)
+    ℒ_rec = n_matched > 0 ? mean(C[matched_indices]) : zero(T)
+    # cardinality prediction loss: supervise n̂ (via softplus, kept non-negative) against each
+    # bag's true element count (sum of its mask), not the constant padded width n
+    true_card = sum(x_mask, dims=2)  # (1, 1, bs); broadcasts against n̂'s (1, m_z, bs)
+    ℒ_card = Flux.mse(Flux.softplus.(n̂), Float32.(true_card))
+    # total objective
+    ℒ = ℒ_rec + β * ℒₖₗ + λ * ℒ_card
+    # logging
+    logs = (ℒ = ℒ, ℒ_rec=ℒ_rec, ℒₖₗ=ℒₖₗ, ℒ_card=ℒ_card, β=β, λ=λ)
+    return ℒ, logs
+end
+
+function loss_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function; λ=1f0, kwargs...) where T <: AbstractFloat
+    x̂, _, n̂ = model(x, x_mask; gt_card=true)  # training always decodes against ground-truth cardinality
+    # reconstruction loss
+    C = logpdf(x̂, x) # (N, N, BS)
+    matched_indices, _ = Zygote.@ignore hungarian_match(C, x_mask, x_mask)
+    n_matched = length(matched_indices)
+    ℒ_rec = n_matched > 0 ? mean(C[matched_indices]) : zero(T)
+    # cardinality prediction loss: supervise n̂ (via softplus, kept non-negative) against each
+    # bag's true element count (sum of its mask), not the constant padded width n
+    true_card = sum(x_mask, dims=2)  # (1, 1, bs); broadcasts against n̂'s (1, m_z, bs)
+    ℒ_card = Flux.mse(Flux.softplus.(n̂), Float32.(true_card))
+    # total objective
+    ℒ = ℒ_rec + λ * ℒ_card
+    # logging
+    logs = (ℒ = ℒ, ℒ_rec=ℒ_rec, ℒ_card=ℒ_card,  λ=λ)
+    return ℒ, logs
+end
+
+function optim_step(model::DiscreteBagVAE, batch::Tuple{X, M}, opt::NamedTuple, logpdf, device::Function=cpu; use_elbo::Bool=true, β=1f0, λ=1f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,3}, M <: AbstractArray{Bool,3}}
+    x, x_mask = batch
+    x, x_mask = device(x), device(x_mask)
+    (loss, logs), (∇model,) = Zygote.withgradient(model) do m
+        use_elbo ? elbo_with_logging(m, x, x_mask, logpdf; β=β, λ=λ, kwargs...) : loss_with_logging(m, x, x_mask, logpdf; λ=λ, kwargs...)
+    end
+    #return loss, logs, ∇model
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, logs
+end
+
+function valid_step(model::DiscreteBagVAE, dataloader::DataLoader, logpdf; use_elbo::Bool=true, β=1f0, λ=1f0, device::Function=cpu, kwargs...)
+    ℒ, ℒ_rec, ℒₖₗ, ℒ_card = 0f0, 0f0, 0f0, 0f0
+    Flux.testmode!(model, true)
+    for batch in dataloader
+        x, x_mask = length(batch) == 3 ? (batch[1], batch[2]) : batch # TODO: make it more robust to different batch formats
+        x, x_mask = device(x), device(x_mask)
+        loss, logs = use_elbo ? elbo_with_logging(model, x, x_mask, logpdf; β=β, λ=λ, kwargs...) : loss_with_logging(model, x, x_mask, logpdf; λ=λ, kwargs...)
+
+        ℒ += loss
+        ℒ_rec += logs.ℒ_rec
+        haskey(logs, :ℒₖₗ) && (ℒₖₗ += logs.ℒₖₗ)
+        ℒ_card += logs.ℒ_card
+    end
+    Flux.testmode!(model, false)
+    n = length(dataloader)
+    logs = (; ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥₖₗ = ℒₖₗ/n, ℒᵥ_card = ℒ_card/n)
+    return logs, ℒ/n
+end
+
+
+function discretebagvae_constructor_from_named_tuple(; idim::Int, hdim::Int, heads::Int, zdim::Int, m_z::Int=1, n_layers::Int=3,
+    att_layers::Int=2, cp_layers::Int=3, activation=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, init_seed=nothing, kwargs...)
+    activation = activation isa Function ? activation : eval(:($(Symbol(activation))))
+    (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
+    model = DiscreteBagVAE(idim, hdim, m_z, zdim, heads, n_layers, att_layers, cp_layers, activation, dropout, gaussian_mlp)
+    (init_seed !== nothing) ? Random.seed!() : nothing
+    return model
+end
+
+######################################
+### Score functions and evaluation ###
+######################################
+
+function reconstruct(model::DiscreteBagVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; gt_card::Bool=true, kwargs...) where T <: AbstractFloat
+    Flux.testmode!(model, true)
+    x̂, _, _ = model(x, x_mask; gt_card=gt_card)
+    Flux.testmode!(model, false)
+    return x̂
+end
+
+# Single forward pass returning (x̂, loss, logs) -- used by `reconstruction_check`. Logits x̂ are
+# returned as they are (argmax over dim 1 gives the predicted category of each slot).
+function reconstruct_and_log(model::DiscreteBagVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, logpdf; β=1f0, λ=1f0, use_elbo::Bool=true, kwargs...) where T <: AbstractFloat
+    Flux.testmode!(model, true)
+    loss, logs = use_elbo ? elbo_with_logging(model, x, x_mask, logpdf; β=β, λ=λ) : loss_with_logging(model, x, x_mask, logpdf; λ=λ)
+    x̂, _, _ = model(x, x_mask; gt_card=true)
+    Flux.testmode!(model, false)
+    return x̂, loss, logs
+end
