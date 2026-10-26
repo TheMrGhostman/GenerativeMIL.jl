@@ -42,7 +42,7 @@ export VQ_PoolAE, VGQ_PoolAE, loss_gradient, loss_ema
 export vgq_poolae_constructor_from_named_tuple, vgq_poolae_constructor_from_named_tuple
 
 include("DeepSlotQuaryVAE.jl")
-export DeepSlotQueryVAE
+export DeepSlotQueryVAE, dsqvae_constructor_from_named_tuple
 
 include("HierarchicalSlotQueryVAE.jl")
 export HierarchicalSlotQueryVAE

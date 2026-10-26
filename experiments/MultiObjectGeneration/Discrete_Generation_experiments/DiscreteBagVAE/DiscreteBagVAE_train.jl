@@ -20,17 +20,19 @@ using GenerativeMIL: cardinality_from_nhat
 
 
 # --- model switch -----------------------------------------------------------
-# model_cfg[:model_type] -> constructor taking (; idim, model_cfg...). Add new discrete-set models here.
+# model_cfg[:model_type] -> constructor taking (; idim, n_max, model_cfg...). Add new discrete-set models here.
+# Loss weights go in train.loss_kwargs and their names are model-specific: λ, use_elbo for
+# DiscreteBagVAE; λ_exist for DeepSlotQueryVAE (a wrong name is silently ignored via kwargs...).
 const MODEL_CONSTRUCTORS = Dict(
     "discretebagvae" => discretebagvae_constructor_from_named_tuple,
     "discretebagae" => discretebagvae_constructor_from_named_tuple,  # same model, deterministic (gaussian_mlp=false, use_elbo=false); separate name -> separate output dir
-    # "dsqvae" => dsqvae_constructor_from_named_tuple, # TODO: needs a kwargs constructor for DeepSlotQueryVAE
+    "dsqvae" => dsqvae_constructor_from_named_tuple,
 )
 
-function build_model(model_type::AbstractString, model_cfg; idim::Int)
+function build_model(model_type::AbstractString, model_cfg; idim::Int, n_max::Int)
     key = lowercase(model_type)
     haskey(MODEL_CONSTRUCTORS, key) || error("Unknown model_type: $model_type (known: $(join(keys(MODEL_CONSTRUCTORS), ", ")))")
-    return MODEL_CONSTRUCTORS[key](; idim=idim, dict2nt(model_cfg)...)
+    return MODEL_CONSTRUCTORS[key](; idim=idim, n_max=n_max, dict2nt(model_cfg)...)
 end
 
 
@@ -74,7 +76,31 @@ function reconstruct_bag(model::DiscreteBagVAE, digits::AbstractVector{<:Integer
     return pred_digits, pred_cardinality
 end
 
-function evaluate_reconstruction(model::DiscreteBagVAE, digits::AbstractVector{<:Integer}; n_samples::Int=20, gt_card::Bool=true, kwargs...)
+# DeepSlotQueryVAE: no ground-truth-cardinality decoding mode -- existence of each of the n_slots
+# outputs is read off its exist head (logits_exist > 0), so gt_card is ignored. The query slots are
+# learned parameters; the only stochasticity across calls is the latent z sample.
+function reconstruct_bag(model::DeepSlotQueryVAE, digits::AbstractVector{<:Integer}; n_classes::Int, N_max::Int, device::Function=cpu, gt_card::Bool=false, exist_threshold::Real=0)
+    n = length(digits)
+    n <= N_max || throw(ArgumentError("bag of length $n exceeds N_max=$N_max"))
+
+    x = zeros(Float32, n_classes, N_max, 1)
+    mask = falses(1, N_max, 1)
+    x[:, 1:n, 1] .= Flux.onehotbatch(digits, 1:n_classes)
+    mask[1, 1:n, 1] .= true
+    x̂, logits_exist, _, _ = model(device(x), device(mask))
+    x̂, logits_exist = Array(x̂), Array(logits_exist)
+    existing = findall(>(exist_threshold), vec(logits_exist[1, :, 1]))  # slots the model claims exist
+    pred_digits = [argmax(view(x̂, :, i, 1)) for i in existing]
+    return pred_digits, length(existing)
+end
+
+# decoding modes the test cases are run in, per model
+card_modes(::DiscreteBagVAE) = (true, false)
+card_modes(::DeepSlotQueryVAE) = (false,)
+
+const DiagModel = Union{DiscreteBagVAE, DeepSlotQueryVAE}
+
+function evaluate_reconstruction(model::DiagModel, digits::AbstractVector{<:Integer}; n_samples::Int=20, gt_card::Bool=true, kwargs...)
     true_sorted = sort(collect(digits))
     results = [reconstruct_bag(model, digits; gt_card, kwargs...) for _ in 1:n_samples]
     predictions = first.(results)
@@ -97,12 +123,12 @@ end
 
 const TEST_CASES = ([1, 7, 1, 2], collect(1:8), [9, 9, 5, 2, 9, 3, 6, 5])
 
-# runs every test case that fits the dataset (alphabet size, max cardinality) in both decoding modes
-function test_case_reports(model::DiscreteBagVAE; n_classes::Int, N_max::Int, device::Function=cpu, verbose::Bool=true)
+# runs every test case that fits the dataset (alphabet size, max cardinality) in each of the model's decoding modes
+function test_case_reports(model::DiagModel; n_classes::Int, N_max::Int, device::Function=cpu, verbose::Bool=true)
     reports = []
     for tc in TEST_CASES
         (length(tc) <= N_max && maximum(tc) <= n_classes) || continue
-        for gt_card in (true, false)
+        for gt_card in card_modes(model)
             r = evaluate_reconstruction(model, tc; gt_card, n_classes, N_max, device)
             verbose && print_reconstruction_report(r)
             push!(reports, r)
@@ -178,7 +204,7 @@ function main()
     idim = size(first(dataloaders[:train])[1], 1)   # batch = (x, x_mask); x is (n_classes, N_max, bs)
     N_max = size(first(dataloaders[:train])[1], 2)
 
-    model = build_model(model_type, model_cfg; idim=idim)
+    model = build_model(model_type, model_cfg; idim=idim, n_max=N_max)
     lr = get(train_cfg, :lr, 1f-3)
     optimiser = Optimisers.AdamW(; eta=lr, lambda = get(train_cfg, :weight_decay, 0));
 
@@ -267,8 +293,8 @@ function main()
     serialize(joinpath(results_dir, "reconstructions_ES_best.jls"), out_es)
     @info "Saved reconstructions into " folder=results_dir
 
-    # hand-picked bag diagnostics (DiscreteBagVAE-specific)
-    if result.model isa DiscreteBagVAE
+    # hand-picked bag diagnostics
+    if result.model isa DiagModel
         n_classes = idim
         println("-- test-case reconstructions, final model --")
         tc_final = test_case_reports(result.model; n_classes, N_max, device=_device)

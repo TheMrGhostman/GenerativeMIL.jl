@@ -86,3 +86,43 @@ function valid_step(model::DeepSlotQueryVAE, dataloader::DataLoader, logpdf; β:
     n = length(dataloader)
     return (ℒᵥ=ℒ/n, ℒᵥ_rec=ℒ_rec/n, ℒᵥ_exist=ℒ_exist/n, ℒᵥ_kld=ℒ_kld/n), ℒ/n
 end
+
+# kwargs constructor (config-driven training). Mirrors `build_model` from
+# experiments/.../DeepSlotQueryVAE_Categorical.jl: MLP pre/post-pool layers in the encoder and MLP
+# output/existence heads, unlike the single-Dense positional constructor above. `n_slots` defaults
+# to `n_max` (the data's padded slot count), so the model can emit as many elements as a bag holds.
+function dsqvae_constructor_from_named_tuple(; idim::Int, hdim::Int, heads::Int, zdim::Int, m_z::Int=1, n_max::Int=0,
+    n_slots::Int=n_max, n_layers::Int=2, att_layers::Int=2, out_layers::Int=2, ext_layers::Int=1, activation=relu,
+    init_seed=nothing, kwargs...)
+    n_slots > 0 || throw(ArgumentError("n_slots must be given (or n_max passed from the data)"))
+    activation = activation isa Function ? activation : eval(:($(Symbol(activation))))
+    (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
+    encoder = PoolEncoder(
+        create_mlp(idim, hdim, n_layers, hdim, activation),
+        PMA(m_z, hdim, heads),
+        create_mlp(hdim, hdim, n_layers, hdim, activation)
+    )
+    prior = SplitLayer(hdim, (zdim, zdim), (identity, Flux.softplus))
+    z_to_hidden = Flux.Dense(zdim, hdim)
+    decoder = TransformerDecoder(
+        [MultiheadAttentionBlock(hdim, heads; attention_fn=attention) for _ in 1:att_layers],
+        [MultiheadAttentionBlock(hdim, heads; attention_fn=attention) for _ in 1:att_layers]
+    )
+    output_head = create_mlp(hdim, hdim, out_layers, idim, activation; out_identity=true)
+    exist_head = create_mlp(hdim, hdim, ext_layers, 1, activation; out_identity=true)
+    queries = randn(Float32, hdim, n_slots)
+    model = DeepSlotQueryVAE(encoder, prior, z_to_hidden, decoder, output_head, exist_head, queries)
+    (init_seed !== nothing) ? Random.seed!() : nothing
+    return model
+end
+
+# Single forward pass returning (x̂, loss, logs) -- used by `reconstruction_check`. x̂ is returned as
+# (x̂ = slot logits (D, n_slots, bs), logits_exist = (1, n_slots, bs)) so saved reconstructions keep
+# which slots the model claims exist (logits_exist > 0).
+function reconstruct_and_log(model::DeepSlotQueryVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, logpdf; β=1f0, λ_exist=1f0, kwargs...) where T <: AbstractFloat
+    x̂, logits_exist, μ_z, Σ_z = model(x, x_mask)
+    ℒ_rec, ℒ_exist = hungarian_matching_loss(x̂, x, x_mask, logits_exist, logpdf)
+    ℒ_kld = kl_divergence(μ_z, Σ_z)
+    ℒ = ℒ_rec + T(λ_exist) * ℒ_exist + T(β) * ℒ_kld
+    return (x̂=x̂, logits_exist=logits_exist), ℒ, (ℒ=ℒ, ℒ_rec=ℒ_rec, ℒ_exist=ℒ_exist, ℒ_kld=ℒ_kld)
+end
