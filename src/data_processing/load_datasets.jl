@@ -31,6 +31,8 @@ function load_dataset(name::String, args...; kwargs...)
         return load_mnist_clock(args...; kwargs...)
     elseif name == "bag_digits"
         return load_bag_digits(args...; kwargs...)
+    elseif name == "topic_bags"
+        return load_topic_bags(args...; kwargs...)
     else
         error("Unknown dataset: $name")
     end
@@ -396,7 +398,6 @@ function load_bag_digits(npoints=nothing; n_samples::Int=10000, n_eval_samples::
     end
     return train_data, test_data
 end
-
 
 """
     load_shapenet_class(classname::String, npoints::Int=2048; normalize=false, 
@@ -782,12 +783,12 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
     # mnist_clock-specific (bag-of-digits) options -- ignored via kwargs... by every other loader.
     n_samples = _cfgget(data_cfg, :n_samples, 60000)
     min_digits = _cfgget(data_cfg, :min_digits, 2)
-    max_digits = _cfgget(data_cfg, :max_digits, 12)
+    max_digits = _cfgget(data_cfg, :max_digits, dataset_name == "topic_bags" ? 16 : 12)  # topic_bags needs 16 slots
     # bag_digits-specific options
     n_eval_samples = _cfgget(data_cfg, :n_eval_samples, n_samples)
     n_classes = _cfgget(data_cfg, :n_classes, 10)
     # masked bag datasets returning (data, mask, labels) triples
-    is_bag_dataset = dataset_name in ("mnist_clock", "bag_digits")
+    is_bag_dataset = dataset_name in ("mnist_clock", "bag_digits", "topic_bags")
 
     data = load_dataset(
         dataset_name,
