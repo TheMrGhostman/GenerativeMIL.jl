@@ -345,5 +345,11 @@ function bag_collate_fn(batch::Vector{Tuple{X, M, L}}) where {X <: AbstractMatri
     return (x, mask, [l for (_, _, l) in batch])
 end
 
+# topic bags (`load_topic_bags`): (data, mask, labels, topic) -> (x, mask, labels, topics::Vector{Int})
+function bag_collate_fn(batch::Vector{Tuple{X, M, L, Int}}) where {X <: AbstractMatrix{<:AbstractFloat}, M <: AbstractMatrix{Bool}, L <: AbstractVector{Int}}
+    x, mask = bag_collate_fn([(data, m) for (data, m, _, _) in batch])
+    return (x, mask, [l for (_, _, l, _) in batch], [t for (_, _, _, t) in batch])
+end
+
 
 

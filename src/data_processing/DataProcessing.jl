@@ -20,3 +20,7 @@ export sample_fixed_n_from_matrix, sample_fixed_n_unsqueeze, sample_fixed_n, _st
 include("load_datasets.jl")
 export load_modelnet10, load_mnist, load_mnist_clock, load_shapenet_class, load_shapenet_multiple_classes, create_dataloaders
 export sample_one_bag
+
+
+include("topic_bags.jl")  # topic_bags dataset: load_topic_bags + exact likelihood
+export load_topic_bags, sample_one_topic_bag, topic_bags_logpdf, topic_bags_posterior, topic_bags_counts, TOPIC_BAGS_TOPICS, TOPIC_BAGS_NAMES
