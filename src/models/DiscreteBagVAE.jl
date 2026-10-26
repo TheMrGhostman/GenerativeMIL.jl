@@ -84,26 +84,39 @@ end
 
 
 function (m::DiscreteBagVAE)(x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; gt_card::Bool=true) where T <: AbstractFloat
-    dₓ, n, bs = size(x)                                          # (dₓ, n, bs)
     hₑ = m.encoder(x, x_mask)                                     # (dₕ, m_z, bs) — mask padding out of the pooling attention
-    #μ_z, Σ_z = m.z_prior(h)                                      # (d_z, m_z, bs)
-    #z = μ_z + Σ_z .* MLUtils.randn_like(μ_z)                     # (d_z, m_z, bs)
-    z = produce_z(hₑ)
-
-    n̂ = m.cardinality_head(z)                                    # (1, 1, bs) — pools over the m_z tokens
-    h = m.z_to_kv(z)                                             # (dₕ, m_z, bs)
-    query_mask = if gt_card
-        x_mask
-    else
-        Zygote.@ignore begin
-            mask_cpu = pred_card_mask(n̂, n, bs)
-            x_mask isa CuArray ? CuArray(mask_cpu) : mask_cpu
-        end
-    end
-    q = m.query_prior(h, (size(h,1), n, bs))                # (dₕ, n, bs) - or this could be different prior
-    x̂ = m.decoder(q, h, query_mask)                              # (dₕ, n, bs) — masked self/cross-attention over query slots
-    x̂ = m.output_head(x̂)                                         # (dₓ, n, bs)
+    z = produce_z(hₑ)                                            # (d_z, m_z, bs)
+    x̂, _, n̂ = decode(m, z, size(x, 2); card_mask = gt_card ? x_mask : nothing)
     return x̂, hₑ, n̂
+end
+
+"""
+`decode(m::DiscreteBagVAE, z, n_slots; card_mask=nothing)`
+
+Decoder half of the forward pass: from a latent `z (d_z, m_z, bs)` to `n_slots` output slots.
+Used for training (via the forward pass), reconstruction from μ_z and generation from z ~ N(0, I).
+
+- `card_mask`: `(1, n_slots, bs)` mask of the slots to decode; `nothing` uses the cardinality
+  head's own prediction (first `ĉ` slots, as at generation time).
+
+Returns `(x̂ (dₓ, n_slots, bs), query_mask (1, n_slots, bs), n̂ (1, 1, bs))`.
+"""
+function decode(m::DiscreteBagVAE, z::AbstractArray{T,3}, n_slots::Int; card_mask=nothing) where T <: AbstractFloat
+    bs = size(z, 3)
+    n̂ = m.cardinality_head(z)                                    # (1, 1, bs) — PoolEncoder head pools over the m_z tokens
+    h = m.z_to_kv(z)                                             # (dₕ, m_z, bs)
+    query_mask = if isnothing(card_mask)
+        Zygote.@ignore begin
+            mask_cpu = pred_card_mask(n̂, n_slots, bs)
+            z isa CuArray ? CuArray(mask_cpu) : mask_cpu
+        end
+    else
+        card_mask
+    end
+    q = m.query_prior(h, (size(h,1), n_slots, bs))               # (dₕ, n_slots, bs) - or this could be different prior
+    x̂ = m.decoder(q, h, query_mask)                              # (dₕ, n_slots, bs) — masked self/cross-attention over query slots
+    x̂ = m.output_head(x̂)                                         # (dₓ, n_slots, bs)
+    return x̂, query_mask, n̂
 end
 
 function elbo_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function; β=1f0, λ=1f0, kwargs...) where T <: AbstractFloat

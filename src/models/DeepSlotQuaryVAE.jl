@@ -38,14 +38,27 @@ function (m::DeepSlotQueryVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArra
     h = m.encoder(x, x_mask)                # (hidden, m_z, bs)
     μ_z, Σ_z = m.prior(h)                     # (z_dim, m_z, bs) each
     z = μ_z + Σ_z .* MLUtils.randn_like(μ_z)
-    Z = m.z_to_hidden(z)                      # (hidden, m_z, bs)
+    x̂, logits_exist = decode(m, z)
+    return x̂, logits_exist, μ_z, Σ_z
+end
 
+"""
+`decode(m::DeepSlotQueryVAE, z)`
+
+Decoder half of the forward pass: from a latent `z (z_dim, m_z, bs)` to all `n_slots` slots.
+Used for training (via the forward pass), reconstruction from μ_z and generation from z ~ N(0, I).
+A slot exists if its `logits_exist > 0`.
+
+Returns `(x̂ (embed_dim, n_slots, bs), logits_exist (1, n_slots, bs))`.
+"""
+function decode(m::DeepSlotQueryVAE, z::AbstractArray{T,3}) where T <: AbstractFloat
+    bs = size(z, 3)
+    Z = m.z_to_hidden(z)                      # (hidden, m_z, bs)
     slots = repeat(m.queries, 1, 1, bs)       # (hidden, n_slots, bs)
     slots = m.decoder(slots, Z)               # real (non-degenerate) cross-attention when m_z > 1
-
     x̂ = m.output_head(slots)                   # (embed_dim, n_slots, bs)
     logits_exist = m.exist_head(slots)          # (1, n_slots, bs)
-    return x̂, logits_exist, μ_z, Σ_z
+    return x̂, logits_exist
 end
 
 function generate(m::DeepSlotQueryVAE, n_samples::Int; m_z::Int)
