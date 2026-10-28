@@ -9,12 +9,16 @@ end
 
 Flux.@layer DiscreteBagVAE
 
-function DiscreteBagVAE(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, cp_pre_layers::Int=1)
+function DiscreteBagVAE(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, cp_pre_layers::Int=1; card_pooling::Union{Nothing, Symbol}=nothing)
+
+    pool_fn = PMA(m_z, dₕ, n_heads)
+    pool_fn = isnothing(card_pooling) ? pool_fn :  CardinalityPooling(pool_fn, card_pooling)
+    cfd = isnothing(card_pooling) ? 0 : feature_dim(pool_fn)                                     # cardinality feature dimension
 
     encoder = PoolEncoder(
         create_mlp(dₓ, dₕ, n_layers, dₕ, activation),
-        PMA(m_z, dₕ, n_heads),
-        gaussian_mlp ? create_gaussian_mlp(dₕ, dₕ, n_layers, d_z, activation; softplus_=true) : create_mlp(dₕ, dₕ, n_layers, d_z, activation) 
+        pool_fn,
+        gaussian_mlp ? create_gaussian_mlp(dₕ + cfd, dₕ, n_layers, d_z, activation; softplus_=true) : create_mlp(dₕ + cfd, dₕ, n_layers, d_z, activation) 
     )
 
     query_prior = MLUtils.randn_like
@@ -83,10 +87,10 @@ function pred_card_mask(n̂::AbstractArray{<:AbstractFloat,3}, n::Int, bs::Int)
 end
 
 
-function (m::DiscreteBagVAE)(x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; gt_card::Bool=true) where T <: AbstractFloat
+function (m::DiscreteBagVAE)(x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}; gt_card::Bool=true, no_grad_card::Bool=false) where T <: AbstractFloat
     hₑ = m.encoder(x, x_mask)                                     # (dₕ, m_z, bs) — mask padding out of the pooling attention
     z = produce_z(hₑ)                                            # (d_z, m_z, bs)
-    x̂, _, n̂ = decode(m, z, size(x, 2); card_mask = gt_card ? x_mask : nothing)
+    x̂, _, n̂ = decode(m, z, size(x, 2); card_mask = gt_card ? x_mask : nothing, no_grad_card=no_grad_card)
     return x̂, hₑ, n̂
 end
 
@@ -101,9 +105,9 @@ Used for training (via the forward pass), reconstruction from μ_z and generatio
 
 Returns `(x̂ (dₓ, n_slots, bs), query_mask (1, n_slots, bs), n̂ (1, 1, bs))`.
 """
-function decode(m::DiscreteBagVAE, z::AbstractArray{T,3}, n_slots::Int; card_mask=nothing) where T <: AbstractFloat
+function decode(m::DiscreteBagVAE, z::AbstractArray{T,3}, n_slots::Int; card_mask=nothing, no_grad_card::Bool=false) where T <: AbstractFloat
     bs = size(z, 3)
-    n̂ = m.cardinality_head(z)                                    # (1, 1, bs) — PoolEncoder head pools over the m_z tokens
+    n̂ = m.cardinality_head(no_grad_card ? Zygote.dropgrad(z) : z)       # (1, 1, bs) — PoolEncoder head pools over the m_z tokens
     h = m.z_to_kv(z)                                             # (dₕ, m_z, bs)
     query_mask = if isnothing(card_mask)
         Zygote.@ignore begin
@@ -119,8 +123,9 @@ function decode(m::DiscreteBagVAE, z::AbstractArray{T,3}, n_slots::Int; card_mas
     return x̂, query_mask, n̂
 end
 
-function elbo_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function; β=1f0, λ=1f0, kwargs...) where T <: AbstractFloat
-    x̂, hₑ, n̂ = model(x, x_mask; gt_card=true)  # training always decodes against ground-truth cardinality
+# no_grad_card=true: the cardinality loss trains only the cardinality head, no gradient flows from it into z / the encoder
+function elbo_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function; β=1f0, λ=1f0, no_grad_card::Bool=false, kwargs...) where T <: AbstractFloat
+    x̂, hₑ, n̂ = model(x, x_mask; gt_card=true, no_grad_card=no_grad_card)  # training always decodes against ground-truth cardinality
     # without a gaussian encoder hₑ is a plain array, and destructuring it would silently take its first two elements
     hₑ isa Tuple || throw(ArgumentError("elbo_with_logging needs gaussian_mlp=true (got deterministic encoder output); use use_elbo=false"))
     μ_z, Σ_z = hₑ
@@ -140,8 +145,8 @@ function elbo_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask
     return ℒ, logs
 end
 
-function loss_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function; λ=1f0, kwargs...) where T <: AbstractFloat
-    x̂, _, n̂ = model(x, x_mask; gt_card=true)  # training always decodes against ground-truth cardinality
+function loss_with_logging(model::DiscreteBagVAE, x::AbstractArray{T, 3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function; λ=1f0, no_grad_card::Bool=false, kwargs...) where T <: AbstractFloat
+    x̂, _, n̂ = model(x, x_mask; gt_card=true, no_grad_card=no_grad_card)  # training always decodes against ground-truth cardinality
     # reconstruction loss
     C = logpdf(x̂, x) # (N, N, BS)
     matched_indices, _ = Zygote.@ignore hungarian_match(C, x_mask, x_mask)
@@ -189,10 +194,11 @@ end
 
 
 function discretebagvae_constructor_from_named_tuple(; idim::Int, hdim::Int, heads::Int, zdim::Int, m_z::Int=1, n_layers::Int=3,
-    att_layers::Int=2, cp_layers::Int=3, cp_pre_layers::Int=1, activation=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, init_seed=nothing, kwargs...)
+    att_layers::Int=2, cp_layers::Int=3, cp_pre_layers::Int=1, activation=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, card_pooling=nothing, init_seed=nothing, kwargs...)  # kwargs: other config keys (model_type, n_max, ...) are ignored
     activation = activation isa Function ? activation : eval(:($(Symbol(activation))))
     (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
-    model = DiscreteBagVAE(idim, hdim, m_z, zdim, heads, n_layers, att_layers, cp_layers, activation, dropout, gaussian_mlp, cp_pre_layers)
+    card_pooling = isnothing(card_pooling) ? nothing : Symbol(card_pooling)
+    model = DiscreteBagVAE(idim, hdim, m_z, zdim, heads, n_layers, att_layers, cp_layers, activation, dropout, gaussian_mlp, cp_pre_layers, card_pooling=card_pooling)
     (init_seed !== nothing) ? Random.seed!() : nothing
     return model
 end

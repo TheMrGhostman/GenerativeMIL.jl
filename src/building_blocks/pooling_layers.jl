@@ -39,6 +39,34 @@ function PMA(m::Int, hidden_dim::Int, heads::Int; attention_fn::Function=attenti
     PMA(InducedSetAttentionHalfBlock(m, hidden_dim, heads; attention_fn=attention_fn))
 end
 
+
+struct CardinalityPooling{PF} <: AbstractPooling
+    pooling_function::PF
+    feature::Symbol
+end
+
+Flux.@layer CardinalityPooling
+
+function cardinality_feature(x::AbstractArray{T, 3}, x_mask::Mask, feature::Symbol) where T <: AbstractFloat
+    n_max = size(x, 2)
+    c = isnothing(x_mask) ? fill!(similar(x, 1, 1, size(x, 3)), n_max) : T.(sum(x_mask, dims=2))
+    feature == :linear && return c ./ T(n_max)
+    feature == :log    && return log.(c .+ one(T))
+    feature == :both   && return vcat(c ./ T(n_max), log.(c .+ one(T)))
+    throw(ArgumentError("unknown cardinality feature $feature (use :linear, :log or :both)"))
+    return feature
+end
+
+function (m::CardinalityPooling)(x::AbstractArray{T, 3}, x_mask::Mask=nothing; kwargs...) where T <: AbstractFloat
+    h = m.pooling_function(x, x_mask; kwargs...)                       # (d, m_z, bs)
+    card = Zygote.@ignore cardinality_feature(x, x_mask, m.feature)       # (k, 1, bs)
+    return vcat(h, repeat(card, 1, size(h, 2), 1))                        # (d + k, m_z, bs)
+end
+
+# number of rows the wrapper adds; the constructor needs it for the postpool input size
+feature_dim(m::CardinalityPooling) = m.feature == :both ? 2 : 1
+
+
 masked_mean(x, mask; dims=2) = sum(x, dims=dims) ./ sum(mask, dims=2) # TODO find if i did not figure this out anywhere
 masked_maximum(x, mask; dims=2) = maximum(x .* mask, dims=dims) #FIXME set masked values to -Inf
 

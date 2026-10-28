@@ -3,11 +3,13 @@
 
 # --- model switch -----------------------------------------------------------
 # model_cfg[:model_type] -> constructor taking (; idim, n_max, model_cfg...). Add new discrete-set models here.
-# Loss weights go in train.loss_kwargs and their names are model-specific: λ, use_elbo for
+# Loss weights go in train.loss_kwargs and their names are model-specific: λ, use_elbo, no_grad_card for
 # DiscreteBagVAE; λ_exist for DeepSlotQueryVAE (a wrong name is silently ignored via kwargs...).
 const MODEL_CONSTRUCTORS = Dict(
     "discretebagvae" => discretebagvae_constructor_from_named_tuple,
     "discretebagae" => discretebagvae_constructor_from_named_tuple,  # same model, deterministic (gaussian_mlp=false, use_elbo=false); separate name -> separate output dir
+    "discretebagvae_ngc" => discretebagvae_constructor_from_named_tuple,  # same model, trained with loss_kwargs no_grad_card=true (cardinality loss doesn't reach the encoder); separate output dir
+    "discretebagvae_caw" => discretebagvae_constructor_from_named_tuple,  # cardinality-aware encoder: model.card_pooling ("linear"/"log"/"both") appends the bag size after PMA
     "dsqvae" => dsqvae_constructor_from_named_tuple,
 )
 

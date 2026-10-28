@@ -25,7 +25,7 @@ export ActNorm, Invertible1x1Conv, ConcatSquashDense #AffineCoupling TODO finish
 
 include("pooling_layers.jl")
 export AbstractPooling
-export AttentionPooling, PMA, PoolEncoder
+export AttentionPooling, PMA, PoolEncoder, CardinalityPooling
 
 include("transformer_decoders.jl")
 export CrossAttentionDecoder, TransformerDecoder
