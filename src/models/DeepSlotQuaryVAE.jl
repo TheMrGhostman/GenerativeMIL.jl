@@ -12,10 +12,13 @@ end
 
 Flux.@layer DeepSlotQueryVAE
 
-function DeepSlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int, m_z::Int, n_layers::Int; pma_attention_fn::Function=attention, activation::Function=relu)
+function DeepSlotQueryVAE(embed_dim::Int, hidden_dim::Int, heads::Int, n_slots::Int, z_dim::Int, m_z::Int, n_layers::Int; pma_attention_fn::Function=attention, activation::Function=relu, card_pooling::Union{Nothing, Symbol}=nothing)
     prepool = Flux.Dense(embed_dim, hidden_dim, activation)
     pooling = PMA(m_z, hidden_dim, heads; attention_fn=pma_attention_fn) # m_z induced points -> Z is a set of m_z tokens, not one vector
-    postpool = Flux.Dense(hidden_dim, hidden_dim, activation)
+    # card_pooling (:linear / :log / :both) appends the bag size after PMA (cardinality-aware encoder)
+    pooling = isnothing(card_pooling) ? pooling : CardinalityPooling(pooling, card_pooling)
+    cfd = isnothing(card_pooling) ? 0 : feature_dim(pooling)
+    postpool = Flux.Dense(hidden_dim+cfd, hidden_dim, activation)
     encoder = PoolEncoder(prepool, pooling, postpool)
 
     prior = SplitLayer(hidden_dim, (z_dim, z_dim), (identity, Flux.softplus))
@@ -105,16 +108,18 @@ end
 # output/existence heads, unlike the single-Dense positional constructor above. `n_slots` defaults
 # to `n_max` (the data's padded slot count), so the model can emit as many elements as a bag holds.
 function dsqvae_constructor_from_named_tuple(; idim::Int, hdim::Int, heads::Int, zdim::Int, m_z::Int=1, n_max::Int=0,
-    n_slots::Int=n_max, n_layers::Int=2, att_layers::Int=2, out_layers::Int=2, ext_layers::Int=1, activation=relu,
+    n_slots::Int=n_max, n_layers::Int=2, att_layers::Int=2, out_layers::Int=2, ext_layers::Int=1, activation=relu, card_pooling=nothing,
     init_seed=nothing, kwargs...)
     n_slots > 0 || throw(ArgumentError("n_slots must be given (or n_max passed from the data)"))
     activation = activation isa Function ? activation : eval(:($(Symbol(activation))))
     (init_seed !== nothing) ? Random.seed!(init_seed) : nothing
-    encoder = PoolEncoder(
-        create_mlp(idim, hdim, n_layers, hdim, activation),
-        PMA(m_z, hdim, heads),
-        create_mlp(hdim, hdim, n_layers, hdim, activation)
-    )
+    card_pooling = isnothing(card_pooling) ? nothing : Symbol(card_pooling)  # YAML gives a String
+    # built in this order (prepool, pooling, postpool) so init_seed gives the same weights as before card_pooling
+    prepool = create_mlp(idim, hdim, n_layers, hdim, activation)
+    pooling = PMA(m_z, hdim, heads)
+    pooling = isnothing(card_pooling) ? pooling : CardinalityPooling(pooling, card_pooling)
+    cfd = isnothing(card_pooling) ? 0 : feature_dim(pooling)
+    encoder = PoolEncoder(prepool, pooling, create_mlp(hdim+cfd, hdim, n_layers, hdim, activation))
     prior = SplitLayer(hdim, (zdim, zdim), (identity, Flux.softplus))
     z_to_hidden = Flux.Dense(zdim, hdim)
     decoder = TransformerDecoder(

@@ -11,6 +11,7 @@ const MODEL_CONSTRUCTORS = Dict(
     "discretebagvae_ngc" => discretebagvae_constructor_from_named_tuple,  # same model, trained with loss_kwargs no_grad_card=true (cardinality loss doesn't reach the encoder); separate output dir
     "discretebagvae_caw" => discretebagvae_constructor_from_named_tuple,  # cardinality-aware encoder: model.card_pooling ("linear"/"log"/"both") appends the bag size after PMA
     "dsqvae" => dsqvae_constructor_from_named_tuple,
+    "dsqvae_caw" => dsqvae_constructor_from_named_tuple,  # cardinality-aware encoder (model.card_pooling), as discretebagvae_caw
 )
 
 function build_model(model_type::AbstractString, model_cfg; idim::Int, n_max::Int)
