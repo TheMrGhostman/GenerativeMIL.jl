@@ -6,8 +6,7 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Uprav jen tyto 4 veci:
 CONFIGS=(
-    "configs/mnist_clock_configs/cd_hsqvae_c001.yml"
-    "configs/mnist_clock_configs/cd_hsqvae_c002.yml"
+    "configs/mnist_clock_configs/cd_hsqvae_c008.yml"
 )
 SEEDS=(1)
 TIME_LIMIT=72
