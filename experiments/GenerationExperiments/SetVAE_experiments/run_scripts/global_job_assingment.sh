@@ -6,7 +6,16 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Uprav jen tyto 4 veci:
 CONFIGS=(
-#    "configs/airplane_configs/mmd_setvae_c001.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c011.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c012.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c013.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c014.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c015.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c016.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c017.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c018.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c019.yml"
+    "configs/mnist_configs_e/cd_setvae_e_c011.yml"
 
 )
 SEEDS=(1)

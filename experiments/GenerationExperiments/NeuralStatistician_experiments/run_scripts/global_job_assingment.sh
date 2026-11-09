@@ -6,7 +6,19 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Uprav jen tyto veci:
 CONFIGS=(
-    #"configs/airplane_configs/mmd_poolmodel_c001.yml"
+    "configs/core5_configs/l2_neuralstatistician_c001.yml"
+    "configs/core5_configs/l2_neuralstatistician_c002.yml"
+    "configs/core5_configs/l2_neuralstatistician_c003.yml"
+    "configs/core5_configs/l2_neuralstatistician_c004.yml"
+    "configs/core5_configs/l2_neuralstatistician_c005.yml"
+    "configs/core5_configs/l2_neuralstatistician_c006.yml"
+    "configs/core5_configs/l2_neuralstatistician_c007.yml"
+    "configs/core5_configs/l2_neuralstatistician_c008.yml"
+    "configs/core5_configs/l2_neuralstatistician_c009.yml"
+    "configs/core5_configs/l2_neuralstatistician_c010.yml"
+    "configs/core5_configs/l2_neuralstatistician_c011.yml"
+    "configs/core5_configs/l2_neuralstatistician_c012.yml"
+
  
 )
 SEEDS=(1)
