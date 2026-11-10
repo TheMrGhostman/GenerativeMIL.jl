@@ -35,7 +35,7 @@ end
 Flux.@layer MultiheadAttentionBlock
 
 """
-    MultiheadAttentionBlock(hidden_dim, heads, activation=relu; attention_fn::Function=attention)
+    MultiheadAttentionBlock(hidden_dim::Int, heads::Int; activation=relu, attention_fn::Function=attention, dropout::Real=0)
 
 Create a `MultiheadAttentionBlock` with hidden size `hidden_dim` and `heads` attention heads.
 The feed-forward branch uses two dense layers with optional `activation` in the first layer.
@@ -49,13 +49,15 @@ The feed-forward branch uses two dense layers with optional `activation` in the 
 # Returns
 - `MultiheadAttentionBlock`: initialized attention block module.
 """
-function MultiheadAttentionBlock(hidden_dim::Int, heads::Int; activation=relu, attention_fn::Function=attention)
+function MultiheadAttentionBlock(hidden_dim::Int, heads::Int; activation=relu, attention_fn::Function=attention, dropout::Real=0)
     # input_dim is equall to hidden_dim, if not there would be problem in "Q.+Multihead()"
     mh = MultiheadAttention(hidden_dim, hidden_dim, heads, attention_fn)
     ff = Flux.Chain(
         Flux.Dense(hidden_dim, hidden_dim, activation),
         Flux.Dense(hidden_dim, hidden_dim)
     )
+    ff = with_dropout(ff, dropout)
+
     ln1 = Flux.LayerNorm(hidden_dim)
     ln2 = Flux.LayerNorm(hidden_dim)
     return MultiheadAttentionBlock(ff, mh, ln1, ln2)
@@ -145,7 +147,7 @@ end
 Flux.@layer InducedSetAttentionBlock
 
 """
-    InducedSetAttentionBlock(n_slots, hidden_dim, heads; kwargs...)
+    InducedSetAttentionBlock(n_slots::Int, hidden_dim::Int, heads::Int; kwargs...)
 
 Construct an ISAB with `n_slots` inducing vectors of size `hidden_dim`.
 Keyword arguments are forwarded to internal `MultiheadAttentionBlock` constructors.
@@ -167,7 +169,7 @@ function InducedSetAttentionBlock(n_slots::Int, hidden_dim::Int, heads::Int; kwa
 end
 
 """
-    (isab::InducedSetAttentionBlock)(x)
+    (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: AbstractFloat
 
 Run unmasked ISAB pass and return `(x_out, h)` where `h` are induced latent features.
 
@@ -185,7 +187,7 @@ function (isab::InducedSetAttentionBlock)(x::AbstractArray{T}) where T <: Abstra
 end
 
 """
-    (isab::InducedSetAttentionBlock)(x, x_mask=nothing)
+    (isab::InducedSetAttentionBlock)(x::AbstractArray{T}, x_mask::Mask) where T <: AbstractFloat
 
 Run masked ISAB pass and return `(x_out, h)`.
 `x_mask` is applied in the internal attention operations.
@@ -231,7 +233,7 @@ end
 Flux.@layer InducedSetAttentionHalfBlock
 
 """
-    InducedSetAttentionHalfBlock(n_slots, hidden_dim, heads)
+    InducedSetAttentionHalfBlock(n_slots::Int, hidden_dim::Int, heads::Int; attention_fn::Function=slot_attention, kwargs...)
 
 Construct a half ISAB block with `n_slots` inducing vectors.
 
@@ -243,8 +245,8 @@ Construct a half ISAB block with `n_slots` inducing vectors.
 # Returns
 - `InducedSetAttentionHalfBlock`: initialized half-ISAB module.
 """
-function InducedSetAttentionHalfBlock(n_slots::Int, hidden_dim::Int, heads::Int; attention_fn::Function=slot_attention)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention_fn)
+function InducedSetAttentionHalfBlock(n_slots::Int, hidden_dim::Int, heads::Int; attention_fn::Function=slot_attention, kwargs...)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention_fn, kwargs...)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
     return InducedSetAttentionHalfBlock(mab1, I)
 end
@@ -310,7 +312,7 @@ end
 Flux.@layer VariationalBottleneck
 
 """
-    VariationalBottleneck(in_dim, z_dim, out_dim, hidden=32, depth=1, activation=identity)
+    VariationalBottleneck(in_dim, z_dim, out_dim, hidden=32, depth=1, activation=identity; kwargs...)
 
 Construct a variational bottleneck MLP stack.
 Returns a module with prior, posterior, and decoder subnetworks.
@@ -326,14 +328,14 @@ Returns a module with prior, posterior, and decoder subnetworks.
 # Returns
 - `VariationalBottleneck`: initialized variational module.
 """
-function VariationalBottleneck(in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity)
+function VariationalBottleneck(in_dim::Int, z_dim::Int, out_dim::Int, hidden::Int=32, depth::Int=1, activation::Function=identity; kwargs...)
     if depth < 1
         @error("Incorrect depth of VariationalBottleneck")
     end
 
-    encoder_μ = create_gaussian_mlp(in_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true)
-    encoder_Δμ = create_gaussian_mlp(in_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true)
-    decoder = create_mlp(z_dim, hidden, depth, out_dim, activation; out_identity=true)
+    encoder_μ = create_gaussian_mlp(in_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true, kwargs...)
+    encoder_Δμ = create_gaussian_mlp(in_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true, kwargs...)
+    decoder = create_mlp(z_dim, hidden, depth, out_dim, activation; out_identity=true, kwargs...)
 
     return VariationalBottleneck(encoder_μ, encoder_Δμ, decoder)
 end
@@ -428,11 +430,11 @@ Construct an attentive bottleneck layer with learnable inducing points and varia
 # Returns
 - `AttentiveBottleneckLayer`: initialized attentive bottleneck module.
 """
-function AttentiveBottleneckLayer(n_slots::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention)
-    mab2 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
+function AttentiveBottleneckLayer(n_slots::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity; kwargs...)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=slot_attention, kwargs...)
+    mab2 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention, kwargs...)
     I = randn(Float32, hidden_dim, n_slots) # keep batch size as free parameter
-    vb = VariationalBottleneck(hidden_dim, z_dim, hidden_dim, hidden, depth, activation)
+    vb = VariationalBottleneck(hidden_dim, z_dim, hidden_dim, hidden, depth, activation; kwargs...)
     return AttentiveBottleneckLayer(mab1, mab2, vb, I)
 end
 
@@ -565,15 +567,15 @@ Construct an attentive half block with constant Gaussian prior over `m` latent s
 # Returns
 - `AttentiveHalfBlock`: initialized attentive half-block module.
 """
-function AttentiveHalfBlock(m::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity)
-    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention)
+function AttentiveHalfBlock(m::Int, hidden_dim::Int, heads::Int, z_dim::Int, hidden::Int, depth::Int, activation::Function=identity; kwargs...)
+    mab1 = MultiheadAttentionBlock(hidden_dim, heads; attention_fn=attention, kwargs...)
 
     if depth < 1
         @error("Incorrect depth of VariationalBottleneck")
     end
 
-    posterior = create_gaussian_mlp(hidden_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true)
-    decoder = create_mlp(z_dim, hidden, depth, hidden_dim, activation; out_identity=true)
+    posterior = create_gaussian_mlp(hidden_dim, hidden, depth, (z_dim, z_dim), activation; softplus_=true, kwargs...)
+    decoder = create_mlp(z_dim, hidden, depth, hidden_dim, activation; out_identity=true, kwargs...)
 
     vb = VariationalBottleneck(ConstGaussPrior(m, z_dim), posterior, decoder)
 

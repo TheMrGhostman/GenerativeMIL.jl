@@ -13,6 +13,7 @@ using ProgressBars
 using Flux
 using Zygote
 using CUDA
+using Adapt # for moving structs to CUDA
 #using cuDNN # necessary to work for |> gpu
 using MLUtils
 using Optimisers
@@ -43,6 +44,8 @@ dict2nt(x) = (; (Symbol(k) => v for (k,v) in x)...)
 Zygote.@adjoint CUDA.ones(x...) = CUDA.ones(x...), _ -> map(_ -> nothing, x)
 Zygote.@adjoint CUDA.zeros(x...) = CUDA.zeros(x...), _ -> map(_ -> nothing, x)
 Zygote.@adjoint CUDA.randn(x...) = CUDA.randn(x...), _ -> map(_ -> nothing, x)
+
+Adapt.adapt_storage(::CUDA.CuArrayKernelAdaptor, ::Random.TaskLocalRNG) = CUDA.default_rng() # this fixes dropout issue on gpu using cu(model)
 
 export check, dict2nt, Models
 

@@ -1,5 +1,5 @@
 """
-    create_mlp(idim, hdim, depth, odim, activation; out_identity=false)
+    create_mlp(idim::T, hdim::T, depth::T, odim::T, activation::Function; out_identity::Bool=false, dropout::Real=0) where T<:Int
 
 Create a fully-connected MLP with uniform hidden dimensions.
 Can use `Function` or `String` to specify the activation.
@@ -11,29 +11,31 @@ Can use `Function` or `String` to specify the activation.
 - `odim::Int`: output feature dimension.
 - `activation::Union{Function, String}`: hidden layer activation (relu, tanh, etc.).
 - `out_identity::Bool`: if `true`, output layer uses identity activation; otherwise uses `activation`.
+- `dropout::Real`: dropout probability inserted after every layer except the last (see `with_dropout`);
+  `0` (default) adds no dropout layers, so the chain is the same as before the keyword existed.
 
 # Returns
 - `Flux.Chain`: constructed MLP chain.
 """
-function create_mlp(idim::T, hdim::T, depth::T, odim::T, activation::Function; out_identity::Bool=false) where T<:Int
+function create_mlp(idim::T, hdim::T, depth::T, odim::T, activation::Function; out_identity::Bool=false, dropout::Real=0) where T<:Int
     hdims = repeat([hdim], depth-1)
     ins_ = vcat(idim, hdims)
     outs_ = vcat(hdims, odim)
     layers = repeat([Flux.Dense], depth)
     activations = repeat([activation], depth-1)
     activations = (out_identity) ? vcat(activations, identity) : vcat(activations, activation)
-    _create_chain(ins_, outs_, layers, activations)
+    with_dropout(_create_chain(ins_, outs_, layers, activations), dropout)
 end
 
-function create_mlp(idim::T, hdim::T, depth::T, odim::T, activation::String; out_identity::Bool=false) where T<:Int
+function create_mlp(idim::T, hdim::T, depth::T, odim::T, activation::String; kwargs...) where T<:Int
     activation = eval(:($(Symbol(activation))))
-    create_mlp(idim, hdim, depth, odim, activation, out_identity=out_identity)
+    create_mlp(idim, hdim, depth, odim, activation; kwargs...)
 end
 
 #create_mlp(;idim::T=3, hdim::T=64, depth::T=3, odim::T=3, activation="relu") where T<:Int = create_mlp(idim, hdim, depth, odim, activation)
 
 """
-    create_gaussian_mlp(idim, hdim, depth, odim, activation; softplus_=true)
+    create_gaussian_mlp(idim::T, hdim::T, depth::T, odim::U, activation::Function; softplus_::Bool=true, dropout::Real=0) where {T<:Int, U<:Union{Int, NTuple{2, Int}}}
 
 Create an MLP with a Gaussian (mean/std) split output layer.
 The final layer outputs both mean and standard deviation via a `SplitLayer`.
@@ -45,29 +47,31 @@ The final layer outputs both mean and standard deviation via a `SplitLayer`.
 - `odim::Union{Int, Tuple{Int, Int}}`: output dimension (automatically duplicated if scalar).
 - `activation::Union{Function, String}`: hidden layer activation (relu, tanh, etc.).
 - `softplus_::Bool`: if `true`, apply softplus to the std output; otherwise identity.
+- `dropout::Real`: dropout probability after every hidden layer (i.e. also right before the `SplitLayer`);
+  `0` (default) adds no dropout layers.
 
 # Returns
 - `Flux.Chain`: MLP ending with `SplitLayer` for Gaussian outputs.
 """
-function create_gaussian_mlp(idim::T, hdim::T, depth::T, odim::U, activation::Function; softplus_::Bool=true) where {T<:Int, U<:Union{Int, NTuple{2, Int}}}
+function create_gaussian_mlp(idim::T, hdim::T, depth::T, odim::U, activation::Function; softplus_::Bool=true, dropout::Real=0) where {T<:Int, U<:Union{Int, NTuple{2, Int}}}
     hdims = repeat([hdim], depth-1)
     ins_ = vcat(idim, hdims)
     outs_ = vcat(hdims, odim)
     layers = vcat(repeat([Flux.Dense], depth-1), [SplitLayer])
     _softplus = (softplus_) ? Flux.softplus : identity
     activations = vcat(repeat([activation], depth-1), [(identity, _softplus)])
-    _create_chain(ins_, outs_, layers, activations)
+    with_dropout(_create_chain(ins_, outs_, layers, activations), dropout)
 end 
 
-function create_gaussian_mlp(idim::T, hdim::T, depth::T, odim::U, activation::String; softplus_::Bool=true) where {T<:Int, U<:Union{Int, NTuple{2, Int}}}
+function create_gaussian_mlp(idim::T, hdim::T, depth::T, odim::U, activation::String; kwargs...) where {T<:Int, U<:Union{Int, NTuple{2, Int}}}
     activation = eval(:($(Symbol(activation))))
-    create_gaussian_mlp(idim, hdim, depth, odim, activation; softplus_=softplus_)
+    create_gaussian_mlp(idim, hdim, depth, odim, activation; kwargs...)
 end
 
 #create_gaussian_mlp(;idim=3, hdim=64, depth=3, odim=3, activation="relu") where T<:Int = create_gaussian_mlp(idim, hdim, depth, odim, activation)
 
 """
-    _create_chain(ins_, outs_, layers, activations)
+    _create_chain(ins_::Vector, outs_::Vector, layers::Vector, activations::Vector)
 
 Internal helper to build a Flux.Chain from layer specifications.
 Zips input dimensions, output dimensions, layer types, and activations,
@@ -83,13 +87,19 @@ function _create_chain(ins_::Vector, outs_::Vector, layers::Vector, activations:
 end
 
 
+"""
+    with_dropout(chain::Flux.Chain, p::Real)
+
+Insert a `Dropout(p)` after every layer of `chain` except the last. Returns `chain` itself when `p <= 0`.
+Also used by `create_mlp`/`create_gaussian_mlp` through their `dropout` keyword.
+"""
 function with_dropout(chain::Flux.Chain, p::Real)
     p <= 0 && return chain
     layers = chain.layers
     spliced = Any[]
     for (i, l) in enumerate(layers)
         push!(spliced, l)
-        i < length(layers) && push!(spliced, Flux.Dropout(p)) #x->Flux.dropout(x, p)) # needs trainmode=true to work properly
+        i < length(layers) && push!(spliced, Dropout(p)) #x->Flux.dropout(x, p)) # needs trainmode=true to work properly
     end
     return Flux.Chain(spliced...)
 end
