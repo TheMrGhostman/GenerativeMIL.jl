@@ -41,7 +41,7 @@ function create_loss_function(cfg)
                 return sum_chamfer_pairwise_distance
             else
                 agg_ = agg isa Function ? agg : eval(Symbol(agg))
-                return (x, y; kwargs...) -> chamfer_pairwise_distance(x, y; w1 = w1, w2 = w2, agg=agg_, kwargs...)
+                return (x, y, masks...; kwargs...) -> chamfer_pairwise_distance(x, y, masks...; w1 = w1, w2 = w2, agg=agg_, kwargs...)
             end
         elseif type_norm in ("density_aware_chamfer_distance", "DCD")
             loss_scale = Float32.(get(cfg, :loss_scale, get(cfg, "loss_scale", 1f0)))

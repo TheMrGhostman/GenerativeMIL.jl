@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "b8b04236381da7d2076dab62157d3d249fe36f9d"
+project_hash = "d9b6fad8bcb2bf8b4c3bbeaca86190e1808220fe"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -56,10 +56,10 @@ version = "0.1.44"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [[deps.Adapt]]
-deps = ["LinearAlgebra", "Requires"]
-git-tree-sha1 = "0761717147821d696c9470a7a86364b2fbd22fd8"
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "eec8a0ad4e4b673afba213931504c360fffb8f97"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "4.5.2"
+version = "4.8.0"
 weakdeps = ["SparseArrays", "StaticArrays"]
 
     [deps.Adapt.extensions]
@@ -623,7 +623,7 @@ uuid = "096a3bc2-3ced-46d0-87f4-dd12716f4bfc"
 version = "1.1.1"
 
 [[deps.GenerativeMIL]]
-deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "ChainRulesCore", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "JLD2", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "OptimalTransport", "Optimisers", "OrderedCollections", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "UnicodePlots", "ValueHistories", "YAML", "Zygote", "cuDNN"]
+deps = ["AbstractTrees", "ArgParse", "BenchmarkTools", "CUDA", "ChainRulesCore", "Distances", "Distributions", "DrWatson", "Flux", "HDF5", "Hungarian", "JLD2", "JSON3", "LinearAlgebra", "MLUtils", "Mill", "NearestNeighbors", "OptimalTransport", "Optimisers", "OrderedCollections", "PaddedViews", "ParameterSchedulers", "ProgressBars", "Random", "Revise", "Serialization", "Statistics", "StatsBase", "UnicodePlots", "ValueHistories", "YAML", "Zygote", "cuDNN"]
 path = "."
 uuid = "f587a668-c5e7-5861-9bd6-a75883e5a803"
 version = "1.1.2"

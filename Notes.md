@@ -2,6 +2,26 @@
 ## To Remember : 
 - path to setting.json on rci : /home/zorekmat/.vscode-server/data/Machine/settings.json
 
+DRY_RUN=1 DATASET=airplane  MODEL=poolmodel PATTERNS="mmd_*" LATENTS="gaussia_K1 vae_depth=2_hdim=12_zdim=16_K1 vae_depth=3_hdim=256_zdim=32_K1 vae_depth=3_hdim=256_zdim=64_K1"  bash run_scripts/global_generative_evaluation_assignment.sh 
+
+- I excluded : from git it is in .git/info/exclude to save memory of julia language server. 
+  /dev/
+  /scripts/
+  /figure_creation/
+
+
+
+## Todos 13.10.2026
+- I did a lot of stuff for reconstruction and generation. But i did not log exact steps. i can do it ex-post
+- [ ] setvae - airplane - sh
+  - if i have time, i should recompute this because i did not train these models.
+- [ ] train latent vae for poolmodel - airplanes
+
+- [ ] think about how to do generation on mnist. I think i think vae on latent might be necessary for PoolModel and setvae as well. 
+  - i think setvae needs better prior on the deepest variational layer. It might be interesting to test vae on deeper latent vs just sampling
+  - [ ] setvae - vae latent 
+  - [ ] setvae - standard latent
+  
 
 ## Todos 5.9.2026
 - [ ] make rigorous comparision on Naive and DSQ models 
@@ -39,7 +59,7 @@
 
 ## Todos 21.8.2026
 - [ ] use CuIterator for training
-- [ ] Improve memory and speed on GPUs of Hungarian matching and pairwise chamfer distance. 
+- [x] Improve memory and speed on GPUs of Hungarian matching and pairwise chamfer distance. 
     - we can work only with cartesian indexes and intermediate PDM to compute hungarian matching, 
     - then when matching is found we can only compute with indexes we need for matching. we can save a lot of memory for gradients approximately HALF of it. 
     - Might be useful even for HTD distance
@@ -55,7 +75,7 @@
     - [x] elbo with logging
     - [x] optim step
     - [x] valid step
-  - [ ] testing
+  - [x] testing
     - [x] test loading of data
     - [x] test loss function 
     - [x] test traininig function
@@ -132,7 +152,7 @@
     - [x] dcd
     - [x] sh
     - [x] mmd
-  - [] airplane
+  - [ ] airplane
     - [x] l2
     - [x] cd
     - [x] dcd
