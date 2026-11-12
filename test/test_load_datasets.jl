@@ -8,6 +8,11 @@ using HDF5
 
 root = joinpath(@__DIR__, "..")
 # load the loader implementation directly (avoid GenerativeMIL module to prevent name clashes)
+# (loaders are split into datasets/*.jl, one file per dataset family; load_datasets.jl = dispatcher + create_dataloaders)
+include(joinpath(root, "src", "data_processing", "data_utils.jl"))   # sample_fixed_n_*, normalize_point_cloud, collate fns
+for f in ("mnist.jl", "mnist_clock.jl", "bag_digits.jl", "shapenet.jl", "modelnet.jl")
+    include(joinpath(root, "src", "data_processing", "datasets", f))
+end
 include(joinpath(root, "src", "data_processing", "load_datasets.jl"))
 
 # determine dataset paths from implementation helpers
@@ -16,6 +21,7 @@ natural_path = datadir("datasets/testing/natural_test.jls")
 
 _mnist_balanced_path() = balanced_path # temporary
 _mnist_natural_path() = natural_path # temporary
+_modelnet10_path(balanced=false) = datadir("datasets/modelnet10/modelnet10_selected_" * (balanced ? "balanced" : "unbalanced") * "_8196.jls")   # as in DataProcessing.jl (real data)
 
 mkpath(dirname(balanced_path))
 

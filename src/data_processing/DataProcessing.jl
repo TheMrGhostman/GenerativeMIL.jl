@@ -17,10 +17,16 @@ include("data_utils.jl")
 export normalize_point_cloud, on_fly_collate_fn, bag_collate_fn
 export sample_fixed_n_from_matrix, sample_fixed_n_unsqueeze, sample_fixed_n, _stack_point_clouds
 
+# one file per dataset family; load_datasets.jl holds the dispatcher (load_dataset) and create_dataloaders
+include("datasets/mnist.jl")         # load_mnist (+ _instance_split, shared with mnist_clock)
+include("datasets/mnist_clock.jl")   # load_mnist_clock, load_mnist_clock_unbalanced
+include("datasets/bag_digits.jl")    # load_bag_digits
+include("datasets/shapenet.jl")      # load_shapenet_class, load_shapenet_multiple_classes
+include("datasets/modelnet.jl")      # load_modelnet10, load_modelnet10_flux3d
+include("datasets/topic_bags.jl")    # topic_bags dataset: load_topic_bags + exact likelihood
 include("load_datasets.jl")
-export load_modelnet10, load_mnist, load_mnist_clock, load_shapenet_class, load_shapenet_multiple_classes, create_dataloaders
+export load_modelnet10, load_mnist, load_mnist_clock, load_mnist_clock_unbalanced, load_shapenet_class, load_shapenet_multiple_classes, create_dataloaders
 export sample_one_bag
 
 
-include("topic_bags.jl")  # topic_bags dataset: load_topic_bags + exact likelihood
 export load_topic_bags, sample_one_topic_bag, topic_bags_logpdf, topic_bags_posterior, topic_bags_counts, TOPIC_BAGS_TOPICS, TOPIC_BAGS_NAMES
