@@ -49,6 +49,25 @@ function _chamfer_distance(
     return distance
 end
 
+function _chamfer_distance(
+    A::AbstractArray{Float32,3},
+    B::AbstractArray{Float32,3},
+    A_mask::AbstractArray{Bool,3},
+    B_mask::AbstractArray{Bool,3},
+    w1::Float32 = 1.0f0,
+    w2::Float32 = 1.0f0,
+)
+    nn_for_A, nn_for_B = Zygote.@ignore _nearest_neighbors(A, B, A_mask, B_mask)
+
+    dist_A_to_B = mean((A .- B[:, nn_for_A]) .^ 2) * 3.0f0
+    dist_B_to_A = mean((B .- A[:, nn_for_B]) .^ 2) * 3.0f0
+
+    distance = (w1 * dist_A_to_B) + (w2 * dist_B_to_A)
+    return distance
+end
+
+# helper functions
+
 function _nearest_neighbors(x::Array{Float32,3}, y::Array{Float32,3})
     nn_for_x = cat(
         [
@@ -68,12 +87,18 @@ function _nearest_neighbors(x::Array{Float32,3}, y::Array{Float32,3})
 end
 
 function _nearest_neighbors(x::CuArray{Float32,3}, y::CuArray{Float32,3})
-    xx = sum(x .^ 2, dims = 1)
-    yy = sum(y .^ 2, dims = 1)
-    zz = Flux.batched_mul(permutedims(x, (2, 1, 3)), y)
-    rx = reshape(xx, size(xx, 2), 1, :)
-    ry = reshape(yy, 1, size(yy, 2), :)
-    P = (rx .+ ry) .- (2 .* zz)
+    P = _pairwise_sqdist_batched(x, y) # (n, m, bs)
+
+    nn_for_x = argmin(P; dims = 2) |> Array
+    nn_for_y = argmin(P; dims = 1) |> Array
+
+    nn_for_x = reshape(map(x -> CartesianIndex(x[2], x[3]), nn_for_x), :, size(x, 3))
+    nn_for_y = reshape(map(y -> CartesianIndex(y[1], y[3]), nn_for_y), :, size(y, 3))
+    return nn_for_x, nn_for_y
+end
+
+function _nearest_neighbors(x::CuArray{Float32,3}, y::CuArray{Float32,3}, x_mask::CuArray{Bool,3}, y_mask::CuArray{Bool,3})
+    P = _pairwise_sqdist_batched(x, y, x_mask, y_mask) # (n, m, bs)
 
     nn_for_x = argmin(P; dims = 2) |> Array
     nn_for_y = argmin(P; dims = 1) |> Array

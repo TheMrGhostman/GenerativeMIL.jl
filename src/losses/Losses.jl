@@ -21,6 +21,8 @@ kl_divergence(μ::AT, Σ::AT, Δμ::AT, ΔΣ::AT) where {T <: AbstractFloat, AT<
 l2(x,y) = sum(abs2, x .- y)
 export kl_divergence
 
+include("pairwise_sqdist_batched.jl")
+
 include("chamfer_distance.jl")
 export chamfer_distance
 include("density_aware_chamfer_distance.jl")

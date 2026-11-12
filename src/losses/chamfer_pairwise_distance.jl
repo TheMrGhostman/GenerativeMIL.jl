@@ -95,7 +95,8 @@ end
 `_nn_indices_clusters(x, y, x_mask, y_mask)`
 
 Masked counterpart of `_nn_indices_clusters(x, y)`. `x_mask (1,N,L,BS)` / `y_mask (1,N,M,BS)` mark valid points.
-Invalid point pairs are set to `Inf` in the fused distance tensor `P5 (n_a,l,n_b,m,bs)` before both `argmin`s, so every
+Invalid point pairs are `Inf` in the fused distance tensor `P5 (n_a,l,n_b,m,bs)` (via the masked
+`_pairwise_sqdist_batched(x, y, x_mask, y_mask)`, see `src/losses/pairwise_sqdist_batched.jl`) before both `argmin`s, so every
 valid point gets its nearest *valid* neighbour in the other cluster. Rows of invalid points (and every row when the other
 cluster is empty) are all `Inf` and return an arbitrary index -- the caller must give them zero weight. Index search
 only; call inside `Zygote.@ignore`.
@@ -105,10 +106,11 @@ function _nn_indices_clusters(x::AbstractArray{T,4}, y::AbstractArray{T,4}, x_ma
     _, N2, M, _ = size(y)
     @assert N == N2 "points-per-cluster must match between x and y"
 
-    P  = _pairwise_sqdist_batched(reshape(x, D, N*L, BS), reshape(y, D, N*M, BS))
+    # masked sqdist: entries with an invalid x or y point are +Inf (mask applied to the norm vectors, ~free on GPU).
+    # Mask reshapes follow the point reshapes exactly: (1,N,L,BS) -> (1,N*L,BS), same (n, l) ordering.
+    P  = _pairwise_sqdist_batched(reshape(x, D, N*L, BS), reshape(y, D, N*M, BS),
+                                  reshape(x_mask, 1, N*L, BS), reshape(y_mask, 1, N*M, BS))   # (N*L, N*M, BS)
     P5 = reshape(P, N, L, N, M, BS)                                             # (n_a, l, n_b, m, bs)
-    valid = reshape(x_mask, N, L, 1, 1, BS) .& reshape(y_mask, 1, 1, N, M, BS)  # (n_a, l, n_b, m, bs)
-    P5 = ifelse.(valid, P5, T(Inf))
 
     nb = getindex.(dropdims(argmin(P5, dims=3), dims=3), 3)   # (N,L,M,BS)
     na = getindex.(dropdims(argmin(P5, dims=1), dims=1), 1)   # (L,N,M,BS)
