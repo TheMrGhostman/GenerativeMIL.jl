@@ -10,6 +10,67 @@ DRY_RUN=1 DATASET=airplane  MODEL=poolmodel PATTERNS="mmd_*" LATENTS="gaussia_K1
   /figure_creation/
 
 
+## Todos 10.11.2026
+- [x] extension of HSQVAE on mnist with cardinalites
+  - [x] constructor
+  - [x] dropouts
+  - [x] cardinality head
+  - [x] loss function
+    - [x] cardinality term
+    - [x] hungarian matching
+    - [x] masked chamfer distance version
+  - [x] elbo with logging
+    - [x] masked chamfer distance version
+    - [x] tested
+  - [x] optim step
+  - [x] valid step
+
+- [x] chamfer_pairwised_distance masked version
+  - [x] implementation
+  - [x] testing
+  - [x] speedtesting on cuda
+    ~~~julia
+      Benchmark N=64, L=M=12, BS=32  (min time, ms) on Tesla V100-SXM2-32GB
+                              CPU       GPU   speedup
+      unmasked fwd           789.5      16.0     49.3x
+      masked fwd             874.4      15.9     54.9x
+      unmasked fwd+bwd       825.3      36.8     22.4x
+      masked fwd+bwd         991.8      37.8     26.3x
+
+      Benchmark N=64, L=M=12, BS=32  (min time, ms) on Tesla V100-SXM2-32GB
+                              CPU       GPU   speedup
+      unmasked fwd           475.1       5.4     88.3x
+      masked fwd             566.9       7.9     72.1x
+      unmasked fwd+bwd       490.9      21.1     23.2x
+      masked fwd+bwd         602.6      23.9     25.2x
+    ~~~
+- [x] masked _pairwise_sqdist_batched
+  - [x] implementation
+  - [x] testing
+  - [x] speedtest
+- [x] new masked version of chamfer distance with pairwise_sqdist_batched
+  - [x] implementation
+  - [x] testing
+  - [x] speedtest
+  ~~~julia
+  (d, n, bs) = (3, 512, 32)   GPU: Tesla V100-SXM2-32GB
+  time [ms]                     CPU        GPU  GPU spdup
+  old loop (masked) fwd        6.29      11.53       0.5x
+  old loop (masked) fwd+bwd       52.0      55.92       0.9x
+  new (masked) fwd           102.35       2.96      34.6x
+  new (masked) fwd+bwd        103.8       4.72      22.0x
+  unmasked fwd                20.31       2.84       7.2x
+  unmasked fwd+bwd            21.61        4.0       5.4x
+
+  (d, n, bs) = (3, 2048, 16)   GPU: Tesla V100-SXM2-32GB
+  time [ms]                     CPU        GPU  GPU spdup
+  old loop (masked) fwd        56.4      10.45       5.4x
+  old loop (masked) fwd+bwd     478.85     113.55       4.2x
+  new (masked) fwd            946.3      15.62      60.6x
+  new (masked) fwd+bwd      1032.74      17.34      59.6x
+  unmasked fwd                53.53      13.49       4.0x
+  unmasked fwd+bwd            55.95      15.51       3.6x
+  ~~~
 
 ## Todos 13.10.2026
 - I did a lot of stuff for reconstruction and generation. But i did not log exact steps. i can do it ex-post
@@ -24,14 +85,14 @@ DRY_RUN=1 DATASET=airplane  MODEL=poolmodel PATTERNS="mmd_*" LATENTS="gaussia_K1
   
 
 ## Todos 5.9.2026
-- [ ] make rigorous comparision on Naive and DSQ models 
+- [x] make rigorous comparision on Naive and DSQ models 
 
 - Think about improvements to DSQ 
   - i am starting to think that predicting cardinality/existence should be done early in decoder
   - for example existence at the end of decoder in DSQ might make everything more complicated, because model might spread information into more slots then will be later needed, this might make matching harder. 
   - also matching can be different then existing prediction, this i think makes it harder for model too. 
   - so setting cardinality frist and selecting/sampling queries early might be beneficial because model needs to focus only on this restricted set and have to turn it into desired output. 
-  - [ ] think about VQ-VAE for prior
+  - [x] think about VQ-VAE for prior
     - we can sample queries from codebook
     - or we can predict existence of queries based on global latent. -> crossentropy for each code from codebook. What we will get is something like histogram or rather discrete probability for each code, then we can sample N codes based on their probability. 
 

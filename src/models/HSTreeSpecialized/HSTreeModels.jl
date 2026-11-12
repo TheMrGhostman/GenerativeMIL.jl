@@ -1,0 +1,2 @@
+include("StructuredMNIST/StructuredMnistHSQVAE.jl")
+export StructuredMnistHSQVAE

@@ -29,6 +29,8 @@ function load_dataset(name::String, args...; kwargs...)
         return load_shapenet_multiple_classes(args...; kwargs...)
     elseif name == "mnist_clock"
         return load_mnist_clock(args...; kwargs...)
+    elseif name == "mnist_clock_unbalanced"
+        return load_mnist_clock_unbalanced(args...; kwargs...)
     elseif name == "bag_digits"
         return load_bag_digits(args...; kwargs...)
     elseif name == "topic_bags"
@@ -326,6 +328,150 @@ function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, 
         class_pool_val = Dict(c => findall(==(c), ys_val) for c in unique(ys_val))
         classes_val = collect(keys(class_pool_val))
         val_data = _build_bags(MersenneTwister(seed + 1), class_pool_val, classes_val, xs_val, npoints, min_digits, max_digits, n_samples)
+        return train_data, val_data, test_data
+    end
+
+    return train_data, test_data
+end
+
+# ---- mnist_clock_unbalanced: variable number of points per digit ------------------------------------------------------
+
+"""
+`_scaled_point_counts(n_natural::AbstractVector{Int}, npoints::Int, ref_points::Int, min_points::Int)`
+
+Point count of every digit instance for `mnist_clock_unbalanced`: the natural (ink-proportional) count scaled so that
+the largest digit (`ref_points` natural points) gets `npoints`, i.e.
+`n_i = clamp(round(Int, n_natural_i * npoints / ref_points), min_points, npoints)`. A property of the instance, not of
+the draw, so the same digit always has the same cardinality.
+"""
+_scaled_point_counts(n_natural::AbstractVector{Int}, npoints::Int, ref_points::Int, min_points::Int) =
+    clamp.(round.(Int, n_natural .* (npoints / ref_points)), min_points, npoints)
+
+"""
+`sample_one_unbalanced_bag(rng, class_pool::Dict, classes::AbstractVector, xs::AbstractVector{<:AbstractMatrix}, ns::AbstractVector{Int}, npoints::Int, min_digits::Int, max_digits::Int)`
+
+Like [`sample_one_bag`](@ref), but every digit has its own number of points `ns[inst] <= npoints` (see
+[`_scaled_point_counts`](@ref)), freshly subsampled (without replacement) from the instance's natural point cloud
+`xs[inst]`. Valid points occupy positions `1:ns[inst]` of the slot; the rest of the slot, and padding slots, are zero.
+
+Returns:
+- `data::Array{Float32,3}`: `(D, npoints, max_digits)`, zero in padded points and padding slots.
+- `mask::BitArray{3}`: `(1, npoints, max_digits)`, `true` for valid points (a padding slot is all `false`, so
+  `any(mask; dims=2)` gives the slot mask of `mnist_clock`).
+- `labels::Vector{Int}`: `(max_digits,)`, class label in valid slots, `-1` in padding slots.
+"""
+function sample_one_unbalanced_bag(rng, class_pool::Dict, classes::AbstractVector, xs::AbstractVector{<:AbstractMatrix}, ns::AbstractVector{Int}, npoints::Int, min_digits::Int, max_digits::Int)
+    D = size(first(xs), 1)
+    data = zeros(Float32, D, npoints, max_digits)
+    mask = falses(1, npoints, max_digits)
+    labels = fill(-1, max_digits)
+
+    n = rand(rng, min_digits:max_digits)
+    for j in 1:n
+        c = rand(rng, classes)
+        inst = rand(rng, class_pool[c])
+        k = ns[inst]
+        pt_idx = sample(rng, axes(xs[inst], 2), k, replace=false)
+        data[:, 1:k, j] .= xs[inst][:, pt_idx]
+        mask[1, 1:k, j] .= true
+        labels[j] = c
+    end
+    return data, mask, labels
+end
+
+"""
+`_build_unbalanced_bags(rng, class_pool, classes, xs, ns, npoints, min_digits, max_digits, n_samples)`
+
+Eager (fixed) version of [`sample_one_unbalanced_bag`](@ref), stacked over `n_samples` bags.
+
+Returns `data (D, npoints, max_digits, n_samples)`, `mask::BitArray{4} (1, npoints, max_digits, n_samples)` and
+`labels (max_digits, n_samples)`.
+"""
+function _build_unbalanced_bags(rng, class_pool::Dict, classes::AbstractVector, xs::AbstractVector{<:AbstractMatrix}, ns::AbstractVector{Int}, npoints::Int, min_digits::Int, max_digits::Int, n_samples::Int)
+    D = size(first(xs), 1)
+    data = zeros(Float32, D, npoints, max_digits, n_samples)
+    mask = falses(1, npoints, max_digits, n_samples)
+    labels = fill(-1, max_digits, n_samples)
+    for i in 1:n_samples
+        d, m, l = sample_one_unbalanced_bag(rng, class_pool, classes, xs, ns, npoints, min_digits, max_digits)
+        data[:, :, :, i] .= d
+        mask[:, :, :, i] .= m
+        labels[:, i] .= l
+    end
+    return data, mask, labels
+end
+
+"""
+`load_mnist_clock_unbalanced(npoints=512; n_samples=60000, min_digits=2, max_digits=12, min_points=1, validation=true, normalize=false, sample_on_fly=false, ratio=0.2, seed=666, kwargs...)`
+
+Unbalanced version of [`load_mnist_clock`](@ref): the same bags of `min_digits`..`max_digits` MNIST digits, but every
+digit has its own number of points, given by its natural ink-proportional count (natural MNIST point clouds, 928..6320
+points) scaled so that the largest digit in the dataset gets exactly `npoints` (thin "1"s get the fewest points,
+bold "0"/"8"s the most). Points are zero-padded to `npoints` inside each slot and the mask marks valid **points**:
+
+- `data (D, npoints, max_digits, BS)`, `mask (1, npoints, max_digits, BS)`, `labels (max_digits, BS)`.
+
+The 4-D point mask is what `StructuredMnistHSQVAE` and the masked `chamfer_pairwise_distance` take; the slot mask
+of `mnist_clock` is `any(mask; dims=2)`. Split by digit instance before any bag is built (as in `load_mnist_clock`).
+
+Keyword arguments as in [`load_mnist_clock`](@ref), plus:
+- `min_points`: lower bound on the per-digit point count (default 1; at `npoints=512` the smallest digit already
+  gets ~75 points, so it only matters for small `npoints`).
+
+Notes:
+- The per-digit count is a property of the instance (fixed), only *which* points are taken is random. With
+  `sample_on_fly=true` the training points (and bag composition) are redrawn on every access.
+- `npoints` must not exceed the largest natural count (6320), otherwise a digit could need more points than it has.
+"""
+function load_mnist_clock_unbalanced(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, min_points::Int=1, validation::Bool=true, normalize::Bool=false, sample_on_fly::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
+
+    dict_loaded = Serialization.deserialize(_mnist_natural_path())
+    xs = dict_loaded["features"]       # Vector of (D, n_natural_i) matrices
+    ys = dict_loaded["targets"]
+    n_natural = size.(xs, 2)
+    ref_points = maximum(n_natural)
+    @assert npoints <= ref_points "Number of requested points ($npoints) is greater than the largest natural digit ($ref_points)."
+    @assert 1 <= min_points <= npoints "min_points ($min_points) must be in 1:npoints ($npoints)."
+    ns = _scaled_point_counts(n_natural, npoints, ref_points, min_points)
+
+    # Optional preprocessing hook.
+    if normalize
+        xs = normalize_point_cloud(xs)
+    end
+
+    # Train/valid/test split by digit instance, BEFORE any bag is built (same split as load_mnist_clock).
+    rng_split = MersenneTwister(seed)
+    perm = randperm(rng_split, length(ys))
+    n_train_test = round(Int, 0.8 * length(ys))
+    train_val_idx = perm[1:n_train_test]
+    test_idx = perm[n_train_test+1:end]
+
+    if validation
+        n_train = round(Int, (1 - ratio) * length(train_val_idx))
+        train_idx = train_val_idx[1:n_train]
+        val_idx = train_val_idx[n_train+1:end]
+    else
+        train_idx = train_val_idx
+        val_idx = Int[]
+    end
+
+    pool(idx) = (xs[idx], ns[idx], Dict(c => findall(==(c), ys[idx]) for c in unique(ys[idx])))
+
+    xs_train, ns_train, class_pool_train = pool(train_idx)
+    classes_train = collect(keys(class_pool_train))
+    train_data = if sample_on_fly
+        mapobs(_ -> sample_one_unbalanced_bag(Random.default_rng(), class_pool_train, classes_train, xs_train, ns_train, npoints, min_digits, max_digits), 1:n_samples)
+    else
+        _build_unbalanced_bags(MersenneTwister(seed), class_pool_train, classes_train, xs_train, ns_train, npoints, min_digits, max_digits, n_samples)
+    end
+
+    # Validation and test are always fixed/pre-sampled, for reproducible evaluation.
+    xs_test, ns_test, class_pool_test = pool(test_idx)
+    test_data = _build_unbalanced_bags(MersenneTwister(seed + 2), class_pool_test, collect(keys(class_pool_test)), xs_test, ns_test, npoints, min_digits, max_digits, n_samples)
+
+    if validation
+        xs_val, ns_val, class_pool_val = pool(val_idx)
+        val_data = _build_unbalanced_bags(MersenneTwister(seed + 1), class_pool_val, collect(keys(class_pool_val)), xs_val, ns_val, npoints, min_digits, max_digits, n_samples)
         return train_data, val_data, test_data
     end
 
@@ -744,7 +890,8 @@ Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
     - `dataset`, `npoints`, `validation`, `ratio`, `seed`,
     - and dataset-specific options such as
         `cardinality_count`, `sample_on_fly`, `normalize`, `balanced_classes`, `type`,
-        and (for `dataset="mnist_clock"`) `n_samples`, `min_digits`, `max_digits`.
+        and (for `dataset="mnist_clock"`) `n_samples`, `min_digits`, `max_digits`
+        (`dataset="mnist_clock_unbalanced"` additionally `min_points`).
 - `batch_size`: dataloader batch size.
 - `train_collate_fn`: optional train collate function.
 - `valid_collate_fn`: optional validation collate function.
@@ -787,8 +934,10 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
     # bag_digits-specific options
     n_eval_samples = _cfgget(data_cfg, :n_eval_samples, n_samples)
     n_classes = _cfgget(data_cfg, :n_classes, 10)
+    # mnist_clock_unbalanced-specific option
+    min_points = _cfgget(data_cfg, :min_points, 1)
     # masked bag datasets returning (data, mask, labels) triples
-    is_bag_dataset = dataset_name in ("mnist_clock", "bag_digits", "topic_bags")
+    is_bag_dataset = dataset_name in ("mnist_clock", "mnist_clock_unbalanced", "bag_digits", "topic_bags")
 
     data = load_dataset(
         dataset_name,
@@ -807,6 +956,7 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
         max_digits=max_digits,
         n_eval_samples=n_eval_samples,
         n_classes=n_classes,
+        min_points=min_points,
         verbose=verbose,
     )
 

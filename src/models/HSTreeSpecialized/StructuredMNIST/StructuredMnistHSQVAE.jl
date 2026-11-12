@@ -70,7 +70,7 @@ function elbo_with_logging(model::StructuredMnistHSQVAE, x::AbstractArray{T,4}, 
     return ℒ, logs
 end
 
-function optim_step(model::StructuredMnistHSQVAE, batch::Tuple{X, M, L}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, λ_exist=1f0, α=1f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}, L <: AbstractVector{Int}}
+function optim_step(model::StructuredMnistHSQVAE, batch::Tuple{X, M, L}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, λ_exist=1f0, α=1f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}, L <: AbstractArray{Int}}
     x, x_mask, _ = batch
     return optim_step(model, (x, x_mask), opt, logpdf, device; β=β, λ_exist=λ_exist, α=α, kwargs...)
 end
