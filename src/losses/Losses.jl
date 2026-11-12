@@ -27,8 +27,9 @@ include("chamfer_distance.jl")
 export chamfer_distance
 include("density_aware_chamfer_distance.jl")
 export density_aware_chamfer_distance
-include("masked_chamfer_distance.jl")
-export chamfer_distance, masked_chamfer_distance, masked_chamfer_distance_cpu
+# masked_chamfer_distance.jl (old per-bag loop) is no longer part of the package: the masked Chamfer is now vectorised in
+# chamfer_distance.jl (same names). The old file is kept only as a reference for test/chamfer_distance_masked_cpu_gpu.jl.
+#include("masked_chamfer_distance.jl")
 include("maximum_mean_discrepancy.jl")
 export maximum_mean_discrepancy
 include("mmd_ema_update.jl")

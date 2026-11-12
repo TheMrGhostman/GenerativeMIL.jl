@@ -336,7 +336,7 @@ function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, logpdf::MMD_EMA
 end
 
 """
-`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, logpdf::Function=masked_chamfer_distance; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat`
+`elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, logpdf::Function=chamfer_distance; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat`
 
 Compute ELBO and logging values for masked batches with generic loss function.
 
@@ -344,7 +344,7 @@ Arguments (positional):
 - `model`: SetVAE instance.
 - `x`: input batch `(d, n, bs)`.
 - `x_mask`: boolean mask `(1, n, bs)` indicating which points are valid.
-- `logpdf`: masked reconstruction loss function (default `masked_chamfer_distance`).
+- `logpdf`: masked reconstruction loss function (default `chamfer_distance`).
 
 Keyword arguments:
 - `β`: scalar or per-layer KL weights.
@@ -354,7 +354,7 @@ Returns:
 - Total loss `ℒ = ℒ_rec + ℒₖₗ`.
 - Named tuple with keys `ℒ`, `ℒ_rec`, `ℒₖₗ`, `ℒₖₗₛ`, `β`.
 """
-function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function=masked_chamfer_distance; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat
+function elbo_with_logging(model::SetVAE, x::AbstractArray{T,3}, x_mask::AbstractArray{Bool, 3}, logpdf::Function=chamfer_distance; β::BetaArg=1f0, kwargs...) where T <: AbstractFloat
     x̂, ℒₖₗ, ℒₖₗₛ, _ = model(x, x_mask; β=β)
     ℒ_rec = logpdf(x̂, x, x_mask, x_mask)
     ℒ = ℒ_rec + ℒₖₗ
@@ -403,7 +403,7 @@ Arguments (positional):
 - `model`: SetVAE instance.
 - `batch`: tuple `(X, X_mask)` where X is `(d, n, bs)` and X_mask is `(1, n, bs)` boolean.
 - `opt`: optimizer state returned by `Optimisers.setup(rule, model)`.
-- `logpdf`: masked reconstruction loss function (e.g., `masked_chamfer_distance`).
+- `logpdf`: masked reconstruction loss function (e.g., `chamfer_distance`).
 - `device`: device transfer function (default `cpu`; e.g., `gpu`, `identity`, ...).
 
 Keyword arguments:

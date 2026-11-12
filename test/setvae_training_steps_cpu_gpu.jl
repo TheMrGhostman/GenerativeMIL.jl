@@ -21,7 +21,7 @@ const Mask = Union{AbstractArray{Bool}, Nothing}
 MaskT{T} = Union{AbstractArray{Bool}, AbstractArray{T}, Nothing}
 
 include(joinpath(@__DIR__, "..", "src", "losses", "chamfer_distance.jl"))
-include(joinpath(@__DIR__, "..", "src", "losses", "masked_chamfer_distance.jl"))
+#include(joinpath(@__DIR__, "..", "src", "losses", "masked_chamfer_distance.jl"))
 include(joinpath(@__DIR__, "..", "src", "building_blocks", "mlps.jl"))
 include(joinpath(@__DIR__, "..", "src", "building_blocks", "attention.jl"))
 include(joinpath(@__DIR__, "..", "src", "building_blocks", "prior.jl"))
@@ -119,7 +119,7 @@ function run_training_step_tests(device::Function, devname::String)
             @test length(logs_u.ℒₖₗₛ) == length(model.decoder.layers)
             @test isapprox(Float32(loss_u), Float32(logs_u.ℒ); rtol=1f-5, atol=1f-5)
 
-            loss_m, logs_m = elbo_with_logging(model, x, x_mask; β=β_vec, logpdf=masked_chamfer_distance)
+            loss_m, logs_m = elbo_with_logging(model, x, x_mask; β=β_vec, logpdf=chamfer_distance)
             @test all_finite(loss_m)
             @test all_finite(logs_m.ℒ)
             @test all_finite(logs_m.ℒ_rec)
@@ -139,7 +139,7 @@ function run_training_step_tests(device::Function, devname::String)
             @test all_finite(logs_u.ℒₖₗ)
             @test abs(p1 - p0) > 0f0
 
-            model, opt, logs_m = optim_step(model, (x, x_mask), opt, masked_chamfer_distance, identity; β=β_vec);
+            model, opt, logs_m = optim_step(model, (x, x_mask), opt, chamfer_distance, identity; β=β_vec);
             p2 = params_l2(model)
             @test all_finite(logs_m.ℒ)
             @test all_finite(logs_m.ℒ_rec)
@@ -158,7 +158,7 @@ function run_training_step_tests(device::Function, devname::String)
             @test isapprox(Float32(vloss_u), Float32(vlogs_u.ℒᵥ); rtol=1f-5, atol=1f-5)
 
             dl_m = DataLoader((x_cpu, x_mask_cpu), batchsize=2, shuffle=false)
-            vlogs_m, vloss_m = valid_step(model, dl_m, masked_chamfer_distance; β=β_vec, device=device)
+            vlogs_m, vloss_m = valid_step(model, dl_m, chamfer_distance; β=β_vec, device=device)
             @test all_finite(vloss_m)
             @test all_finite(vlogs_m.ℒᵥ)
             @test all_finite(vlogs_m.ℒᵥ_rec)

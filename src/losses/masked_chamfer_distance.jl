@@ -1,3 +1,6 @@
+# NOT INCLUDED IN GenerativeMIL ANY MORE (see src/losses/Losses.jl). Old loop-based masked Chamfer, kept only as a
+# reference implementation for test/chamfer_distance_masked_cpu_gpu.jl. The package version lives in chamfer_distance.jl.
+
 """
     _unmask(x, mask)
 
@@ -107,9 +110,9 @@ end
 
 Masked Chamfer distance wrapper for the single-mask case.
 """
-function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
-    return masked_chamfer_distance(x, y, x_mask)
-end
+#function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
+#    return masked_chamfer_distance(x, y, x_mask)
+#end
 
 
 """
@@ -117,9 +120,9 @@ end
 
 Masked Chamfer distance wrapper for the two-mask case.
 """
-function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, y_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
-    return masked_chamfer_distance(x, y, x_mask, y_mask)
-end
+#function chamfer_distance(x::AbstractArray{T,3}, y::AbstractArray{T,3}, x_mask::AbstractArray{Bool,3}, y_mask::AbstractArray{Bool,3}) where T <: AbstractFloat
+#    return masked_chamfer_distance(x, y, x_mask, y_mask)
+#end
 
 
 """
