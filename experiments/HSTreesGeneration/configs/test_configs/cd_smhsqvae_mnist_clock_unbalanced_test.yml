@@ -1,0 +1,79 @@
+# Test config: StructuredMnistHSQVAE (architecture = model₄ from dev/structuredmnistHSQVAE.jl) on unbalanced mnist_clock.
+# Loss/training settings from MultiObjectGeneration/HSQVAE_experiments/configs/mnist_clock_configs/cd_hsqvae_c001.yml,
+# except agg: "mean" (per-digit mean over valid points; see the two-config note in the session / notes).
+data:
+  dataset: "mnist_clock_unbalanced"   # points per digit ~ ink (natural MNIST), zero-padded to npoints
+  min_points: 20
+  npoints: 256
+  n_samples: 10000
+  min_digits: 2
+  max_digits: 12
+  sample_on_fly: true
+  normalize: "global"      # fixed global MNIST statistics (isotropic x,y), same coordinates in balanced and unbalanced
+  ratio: 0.2
+
+model:
+  model_type: "structured_mnist_hsqvae"
+  e_hdim: 64
+  e_pre_depth: 3
+  e_pma_heads: 4
+  e_pma_mz: 2                               # difference from cd_hsqvae_c010.yml (vs 1)
+  e_post_depth: 2
+  e_pma_attention_fn: "slot_attention"
+  dsq_emb_dim: 64
+  dsq_hdim: 64
+  dsq_pre_depth: 2
+  dsq_indices: 4
+  dsq_heads: 4
+  dsq_post_depth: 2
+  dsq_pma_attention_fn: "slot_attention"
+  dsq_zdim: 32
+  dsq_n_slots: 12
+  dsq_n_attn_layers: 2
+  d_mha_layers: 2
+  d_heads: 4
+  o_hdim: 64
+  o_depth: 2
+  cp_pre_layers: 2
+  cp_layers: 2
+  e_pma_card_pooling: "linear"        # difference from cd_hsqvae_c010.yml (there was no e_pma_card_pooling)
+  dsq_pma_card_pooling: "linear"      # difference from cd_hsqvae_c010.yml (there was no dsq_pma_card_pooling)
+  e_dropout: 0.1
+  dsq_dropout: 0.1
+  cp_dropout: 0.1
+  activation: "gelu"
+  output_activation: "identity"
+
+train:
+  loss_function:
+    type: "chamfer_pairwise_distance"
+    w1: 1
+    w2: 1
+    agg: "mean"
+  loss_kwargs:
+    λ: 0.004          # weight of the existence loss (also added to the Hungarian cost)  ≈ 1 / 250 = 0.004
+    α: 1.0                  # weight of the digit-cardinality loss (also added to the Hungarian cost)
+  lr: 0.0003
+  weight_decay: 0.0001
+  lr_scheduler: null
+  epochs: 1000
+  batch_size: 64
+  beta_annealer:
+    type: "sigmoidal"
+    max_value: 0.002      # weight of the KL term in the loss (annealed from 1e-8 to 0.002)  ≈ 0.5 / 250 = 0.002
+    slope_factor: 0.015
+    milestone: 800
+  use_gpu: true
+  valid_check_interval: 1000
+  validation_check_after_epoch: true
+  checkpoint_interval_epochs: 10
+  early_stopping: true
+  patience: 100000
+  grad_skip: false
+  save_val_predictions: false
+  val_prediction_count: 16
+  val_prediction_interval_epochs: 10
+  val_prediction_dirname: "val_predictionsdata"
+  seed: 1
+  verbose: true
+  model_dir: "cd_smhsqvae_mnist_clock_unbalanced_test"

@@ -44,8 +44,8 @@ function (m::StructuredMnistHSQVAE)(x::AbstractArray{T,4}, x_mask::AbstractArray
 end
 
 
-function elbo_with_logging(model::StructuredMnistHSQVAE, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, distance::Function=chamfer_pairwise_distance; β::AbstractFloat=1f0, λ_exist::AbstractFloat=1f0, α::AbstractFloat=1f0, card_distance::Function=pairwise_lin_card_distance, card_after_hm::Bool=false, kwargs...) where T <: AbstractFloat
-
+function elbo_with_logging(model::StructuredMnistHSQVAE, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, distance::Function=chamfer_pairwise_distance; β::AbstractFloat=1f0, λ::AbstractFloat=1f0, α::AbstractFloat=1f0, card_distance::Function=pairwise_lin_card_distance, card_after_hm::Bool=false, kwargs...) where T <: AbstractFloat
+    
     ŷ, logits_exist, μ_z, Σ_z, n̂ = model(x, x_mask)
 
     # hungarian matching loss for reconstruction and existence
@@ -65,32 +65,32 @@ function elbo_with_logging(model::StructuredMnistHSQVAE, x::AbstractArray{T,4}, 
     ℒ_exist = Flux.Losses.logitbinarycrossentropy(logits_exist, exist_target; agg=mean) * T(M) # sum over all slots, not mean 
     
     ℒₖₗ = mean(kl_divergence(μ_z, Σ_z))
-    ℒ = ℒ_rec + α * ℒ_card + λ_exist * ℒ_exist + β * ℒₖₗ 
-    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card = ℒ_card, ℒ_exist = ℒ_exist, ℒₖₗ = ℒₖₗ, λ_exist = λ_exist, β = β, α = α)
+    ℒ = ℒ_rec + α * ℒ_card + λ * ℒ_exist + β * ℒₖₗ 
+    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card = ℒ_card, ℒ_exist = ℒ_exist, λℒ_exist = λ * ℒ_exist , ℒₖₗ = ℒₖₗ, βℒₖₗ = β * ℒₖₗ, λ = λ, β = β, α = α)
     return ℒ, logs
 end
 
-function optim_step(model::StructuredMnistHSQVAE, batch::Tuple{X, M, L}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, λ_exist=1f0, α=1f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}, L <: AbstractArray{Int}}
+function optim_step(model::StructuredMnistHSQVAE, batch::Tuple{X, M, L}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, λ=1f0, α=1f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}, L <: AbstractArray{Int}}
     x, x_mask, _ = batch
-    return optim_step(model, (x, x_mask), opt, logpdf, device; β=β, λ_exist=λ_exist, α=α, kwargs...)
+    return optim_step(model, (x, x_mask), opt, logpdf, device; β=β, λ=λ, α=α, kwargs...)
 end
 
-function optim_step(model::StructuredMnistHSQVAE, batch::Tuple{X, M}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, λ_exist=1f0, α=1f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}}
+function optim_step(model::StructuredMnistHSQVAE, batch::Tuple{X, M}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, λ=1f0, α=1f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}}
     x, x_mask = device.(batch)
     (loss, logs), (∇model,) = Zygote.withgradient(model) do m
-        elbo_with_logging(m, x, x_mask, logpdf; β=β, λ_exist=λ_exist, α=α, kwargs...)
+        elbo_with_logging(m, x, x_mask, logpdf; β=β, λ=λ, α=α, kwargs...)
     end
     #return loss, logs, ∇model
     opt, model = Optimisers.update(opt, model, ∇model)
     return model, opt, logs
 end
 
-function valid_step(model::StructuredMnistHSQVAE, dataloader::DataLoader, logpdf; β=1f0, λ_exist=1f0, α=1f0, device::Function=cpu, kwargs...)
+function valid_step(model::StructuredMnistHSQVAE, dataloader::DataLoader, logpdf; β=1f0, λ=1f0, α=1f0, device::Function=cpu, kwargs...)
     ℒ, ℒ_rec, ℒₖₗ, ℒ_exist, ℒ_card = 0f0, 0f0, 0f0, 0f0, 0f0
     for batch in dataloader
         x, x_mask = length(batch) == 3 ? (batch[1], batch[2]) : batch # TODO: make it more robust to different batch formats
         x, x_mask = device(x), device(x_mask)
-        loss, logs = elbo_with_logging(model, x, x_mask, logpdf; β=β, λ_exist=λ_exist, α=α, kwargs...)
+        loss, logs = elbo_with_logging(model, x, x_mask, logpdf; β=β, λ=λ, α=α, kwargs...)
 
         ℒ += loss
         ℒ_rec += logs.ℒ_rec

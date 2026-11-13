@@ -71,7 +71,7 @@ function _build_bags(rng, class_pool::Dict, classes::AbstractVector, xs::Abstrac
 end
 
 """
-`load_mnist_clock(npoints=512; n_samples=60000, min_digits=2, max_digits=12, validation=true, normalize=false, sample_on_fly=false, ratio=0.2, seed=666, kwargs...)`
+`load_mnist_clock(npoints=512; n_samples=60000, min_digits=2, max_digits=12, validation=true, normalize=false, sample_on_fly=false, ratio=0.2, seed=666, point_mask=false, kwargs...)`
 
 Build a "bag of MNIST digits" dataset: each sample is a variable-cardinality outer set of
 `min_digits`..`max_digits` individual MNIST point-cloud digits (with class duplicates occurring
@@ -89,12 +89,16 @@ Arguments (keyword):
 - `min_digits`, `max_digits`: inclusive range for bag cardinality (`max_digits` is the fixed slot
   count `L`).
 - `validation`: if `true`, returns train/val/test; otherwise train/test.
-- `normalize`: apply point-cloud normalization before splitting.
+- `normalize`: `false`, `true` (legacy `normalize_point_cloud`) or `"global"` (fixed global MNIST statistics,
+  recommended for new runs), see `_normalize_mnist`.
 - `sample_on_fly`: if `true`, training bags are drawn fresh (via `MLUtils.mapobs`) every time
   they're accessed instead of being fixed at load time -- both bag composition and per-digit point
   subsampling vary from access to access. Validation/test are always fixed/pre-sampled.
 - `ratio`: validation ratio from the train/validation instance pool.
 - `seed`: random seed for the instance split and the fixed (non-on-the-fly) sampling paths.
+- `point_mask`: if `true`, return the point mask `(1, npoints, max_digits)` (slot mask repeated over the points)
+  instead of the slot mask `(1, 1, max_digits)`; needed by `StructuredMnistHSQVAE` (same mask layout as
+  `mnist_clock_unbalanced`). Default `false` keeps the old output.
 - `kwargs...`: reserved for API compatibility.
 
 Returns:
@@ -111,7 +115,7 @@ Notes:
 - `labels` are not needed by the reconstruction/matching loss -- they're carried through purely so
   bags can be colored/labeled for plots and diagnostics later.
 """
-function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, validation::Bool=true, normalize::Bool=false, sample_on_fly::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
+function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, validation::Bool=true, normalize::Union{Bool,AbstractString,Symbol}=false, sample_on_fly::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, point_mask::Bool=false, kwargs...)
 
     dict_loaded = Serialization.deserialize(_mnist_balanced_path())
     xs = dict_loaded["features"]
@@ -119,9 +123,7 @@ function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, 
     @assert npoints <= size(xs, 2) "Number of requested points ($npoints) is greater than dataset cardinality ($(size(xs, 2)))."
 
     # Optional preprocessing hook.
-    if normalize
-        xs = normalize_point_cloud(xs)
-    end
+    xs = _normalize_mnist(xs, normalize)   # false | true (legacy) | "global"
 
     # Train/valid/test split from deterministic shuffled indices, BEFORE any bag is built --
     # so no individual digit instance can appear in more than one split (mirrors load_mnist).
@@ -149,10 +151,26 @@ function load_mnist_clock(npoints=512; n_samples::Int=60000, min_digits::Int=2, 
         class_pool_val = Dict(c => findall(==(c), ys_val) for c in unique(ys_val))
         classes_val = collect(keys(class_pool_val))
         val_data = _build_bags(MersenneTwister(seed + 1), class_pool_val, classes_val, xs_val, npoints, min_digits, max_digits, n_samples)
-        return train_data, val_data, test_data
     end
 
-    return train_data, test_data
+    if point_mask   # (1, 1, L) slot mask -> (1, npoints, L) point mask (all points of a valid slot are valid)
+        train_data = sample_on_fly ? mapobs(_with_point_mask, train_data) : _with_point_mask(train_data)
+        test_data = _with_point_mask(test_data)
+        validation && (val_data = _with_point_mask(val_data))
+    end
+    return validation ? (train_data, val_data, test_data) : (train_data, test_data)
+end
+
+"""
+`_with_point_mask((data, mask, labels))`
+
+Repeat the slot mask `(1, 1, L[, BS])` of a `mnist_clock` bag (or stacked bags) over the point dimension of `data`,
+giving the point mask `(1, N, L[, BS])` used by `mnist_clock_unbalanced` / `StructuredMnistHSQVAE`.
+"""
+function _with_point_mask(t::Tuple)
+    data, mask, labels = t
+    reps = ntuple(i -> i == 2 ? size(data, 2) ÷ size(mask, 2) : 1, ndims(mask))
+    return data, repeat(mask, reps...), labels
 end
 
 # ---- mnist_clock_unbalanced: variable number of points per digit ------------------------------------------------------
@@ -244,7 +262,7 @@ Notes:
   `sample_on_fly=true` the training points (and bag composition) are redrawn on every access.
 - `npoints` must not exceed the largest natural count (6320), otherwise a digit could need more points than it has.
 """
-function load_mnist_clock_unbalanced(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, min_points::Int=1, validation::Bool=true, normalize::Bool=false, sample_on_fly::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
+function load_mnist_clock_unbalanced(npoints=512; n_samples::Int=60000, min_digits::Int=2, max_digits::Int=12, min_points::Int=1, validation::Bool=true, normalize::Union{Bool,AbstractString,Symbol}=false, sample_on_fly::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
 
     dict_loaded = Serialization.deserialize(_mnist_natural_path())
     xs = dict_loaded["features"]       # Vector of (D, n_natural_i) matrices
@@ -256,9 +274,7 @@ function load_mnist_clock_unbalanced(npoints=512; n_samples::Int=60000, min_digi
     ns = _scaled_point_counts(n_natural, npoints, ref_points, min_points)
 
     # Optional preprocessing hook.
-    if normalize
-        xs = normalize_point_cloud(xs)
-    end
+    xs = _normalize_mnist(xs, normalize)   # false | true (legacy) | "global"
 
     # Train/valid/test split by digit instance, BEFORE any bag is built (same split as load_mnist_clock).
     train_idx, val_idx, test_idx = _instance_split(length(ys), seed; validation=validation, ratio=ratio)

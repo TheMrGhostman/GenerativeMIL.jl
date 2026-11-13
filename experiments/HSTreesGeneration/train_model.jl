@@ -34,7 +34,7 @@ function main()
     @add_arg_table! s begin
         "config_file"
             arg_type = String
-            default = joinpath(@__DIR__, "configs", "test_configs", "cd_hsqvae_test_cfg.yml")
+            default = joinpath(@__DIR__, "configs", "test_configs", "cd_smhsqvae_mnist_clock_unbalanced_test.yml")
             help = "YAML configuration file"
         "seed"
             arg_type = Int

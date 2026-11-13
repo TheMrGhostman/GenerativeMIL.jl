@@ -4,10 +4,12 @@
 # block, and must swallow keys it doesn't use via kwargs... (model_type is passed too).
 # The model_type also names the output folder: data/HSTreeGenExperiments/<dataset>/<model_type>/..., so a model
 # variant that should be evaluated separately gets its own entry here, even if it shares a constructor.
-# Loss weights go in train.loss_kwargs; their names are model-specific (λ_exist for HSQVAE; a wrong name is
+# Loss weights go in train.loss_kwargs; their names are model-specific (λ_exist for HSQVAE, λ for StructuredMnistHSQVAE; a wrong name is
 # silently ignored by the model's kwargs...).
 const MODEL_CONSTRUCTORS = Dict(
     "hsqvae" => HierarchicalSlotQueryVAE,   # kwargs constructor in src/models/HierarchicalSlotQueryVAE.jl
+    "structured_mnist_hsqvae" => StructuredMnistHSQVAE,   # src/models/HSTreeSpecialized/StructuredMNIST/; needs a point mask
+                                                          # (mnist_clock with point_mask: true, or mnist_clock_unbalanced)
 )
 
 function build_model(model_type::AbstractString, model_cfg; data_dims...)

@@ -20,6 +20,49 @@ function _instance_split(n::Int, seed::Int; validation::Bool, ratio::Real)
     return train_val_idx[1:n_train], train_val_idx[n_train+1:end], test_idx
 end
 
+# ---- normalisation of MNIST point clouds (x, y, intensity) -------------------------------------------------------------
+
+# Global statistics for `normalize = "global"`: computed once in Float64 over all points of the TRAINING digits of the
+# natural MNIST point clouds (`_instance_split(60000, 666; validation=true, ratio=0.2)`), with one pooled sigma shared
+# by x and y (isotropic: digits are zoomed, not stretched) and a separate sigma for intensity. Training splits of other
+# seeds give the same values to < 0.05 %, the balanced (900-point) clouds to ~1.4 % -- so one set is used for every seed
+# and for mnist, mnist_clock and mnist_clock_unbalanced alike (a digit gets the same coordinates in all of them).
+const MNIST_GLOBAL_MU    = Float32[58.502, 58.3337, 0.5104]
+const MNIST_GLOBAL_SIGMA = Float32[20.6597, 20.6597, 0.3624]
+
+"""
+    mnist_global_normalize(x)
+    mnist_global_denormalize(z)
+
+`normalize = "global"` for MNIST point clouds: `z = (x .- MNIST_GLOBAL_MU) ./ MNIST_GLOBAL_SIGMA` per dimension
+(x, y share one sigma). Works on any array with the 3 point dimensions first, e.g. `(3, N, BS)` or
+`(3, N, L, BS)`, or a vector of `(3, N_i)` clouds. `mnist_global_denormalize` is the exact inverse (for plots in pixel
+coordinates).
+"""
+mnist_global_normalize(x::AbstractArray{T}) where T<:AbstractFloat =
+    (x .- T.(MNIST_GLOBAL_MU)) ./ T.(MNIST_GLOBAL_SIGMA)
+mnist_global_normalize(xs::AbstractVector{<:AbstractMatrix}) = map(mnist_global_normalize, xs)
+
+mnist_global_denormalize(z::AbstractArray{T}) where T<:AbstractFloat =
+    z .* T.(MNIST_GLOBAL_SIGMA) .+ T.(MNIST_GLOBAL_MU)
+mnist_global_denormalize(zs::AbstractVector{<:AbstractMatrix}) = map(mnist_global_denormalize, zs)
+
+"""
+`_normalize_mnist(xs, normalize)`
+
+Shared `normalize` option of the MNIST loaders:
+- `false`: no normalisation;
+- `true`: the legacy `normalize_point_cloud` (kept unchanged so old runs load the data they were trained on; note
+  that its balanced/3-D method sums in Float32 and gets mu and sigma noticeably wrong for the full dataset);
+- `"global"` / `:global`: [`mnist_global_normalize`](@ref) (recommended for new runs).
+"""
+function _normalize_mnist(xs, normalize::Union{Bool,AbstractString,Symbol})
+    normalize === false && return xs
+    normalize === true && return normalize_point_cloud(xs)
+    Symbol(normalize) === :global && return mnist_global_normalize(xs)
+    throw(ArgumentError("Unknown normalize option: $(repr(normalize)). Expected false, true or \"global\"."))
+end
+
 """
     load_mnist(npoints=512; validation=true, cardinality_count=:balanced,
                sample_on_fly=false, normalize=false, ratio=0.2, seed=666, kwargs...)
@@ -31,7 +74,8 @@ Load MNIST point-cloud data and create train/validation/test splits.
 - `validation`: if `true`, returns train/val/test; otherwise train/test.
 - `cardinality_count`: `:balanced` or `:natural` source format.
 - `sample_on_fly`: enable lazy sampling on the training split.
-- `normalize`: apply point-cloud normalization before splitting.
+- `normalize`: `false`, `true` (legacy `normalize_point_cloud`) or `"global"` (fixed global MNIST statistics,
+  recommended for new runs), see `_normalize_mnist`.
 - `ratio`: validation ratio from the train/validation pool.
 - `seed`: random seed for deterministic split/sampling behavior.
 - `kwargs...`: reserved for API compatibility.
@@ -46,7 +90,7 @@ Load MNIST point-cloud data and create train/validation/test splits.
 - Validation and test splits are always pre-sampled.
 - On-the-fly sampling is applied only to training data.
 """
-function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbol=:balanced, sample_on_fly::Bool=false, normalize::Bool=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
+function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbol=:balanced, sample_on_fly::Bool=false, normalize::Union{Bool,AbstractString,Symbol}=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
     if cardinality_count == :balanced
         dict_loaded = Serialization.deserialize(_mnist_balanced_path())
         xs = dict_loaded["features"]
@@ -63,9 +107,7 @@ function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbo
     end
 
     # Optional preprocessing hook.
-    if normalize
-        xs = normalize_point_cloud(xs)
-    end
+    xs = _normalize_mnist(xs, normalize)   # false | true (legacy) | "global"
 
     # Train/valid/test split from deterministic shuffled indices.
     train_idx, val_idx, test_idx = _instance_split(length(y), seed; validation=validation, ratio=ratio)

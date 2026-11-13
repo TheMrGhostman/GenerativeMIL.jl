@@ -84,7 +84,8 @@ Build train/validation/test `MLUtils.DataLoader`s from a dataset config.
     - and dataset-specific options such as
         `cardinality_count`, `sample_on_fly`, `normalize`, `balanced_classes`, `type`,
         and (for `dataset="mnist_clock"`) `n_samples`, `min_digits`, `max_digits`
-        (`dataset="mnist_clock_unbalanced"` additionally `min_points`).
+        (`dataset="mnist_clock_unbalanced"` additionally `min_points`; `dataset="mnist_clock"` optionally
+        `point_mask=true` for models that need a `(1, npoints, L)` point mask).
 - `batch_size`: dataloader batch size.
 - `train_collate_fn`: optional train collate function.
 - `valid_collate_fn`: optional validation collate function.
@@ -129,6 +130,8 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
     n_classes = _cfgget(data_cfg, :n_classes, 10)
     # mnist_clock_unbalanced-specific option
     min_points = _cfgget(data_cfg, :min_points, 1)
+    # mnist_clock: point mask (1, npoints, L) instead of slot mask (1, 1, L), needed by StructuredMnistHSQVAE
+    point_mask = _cfgget(data_cfg, :point_mask, false)
     # masked bag datasets returning (data, mask, labels) triples
     is_bag_dataset = dataset_name in ("mnist_clock", "mnist_clock_unbalanced", "bag_digits", "topic_bags")
 
@@ -150,6 +153,7 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
         n_eval_samples=n_eval_samples,
         n_classes=n_classes,
         min_points=min_points,
+        point_mask=point_mask,
         verbose=verbose,
     )
 
