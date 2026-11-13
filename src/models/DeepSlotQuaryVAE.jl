@@ -1,5 +1,6 @@
 
-struct DeepSlotQueryVAE{E<:PoolEncoder, PT<:SplitLayer, ZT<:Flux.Dense, DT<:TransformerDecoder,
+# PT: SplitLayer (variational: μ, softplus σ) or Flux.Dense (deterministic AE latent, no σ)
+struct DeepSlotQueryVAE{E<:PoolEncoder, PT<:Union{SplitLayer, Flux.Dense}, ZT<:Flux.Dense, DT<:TransformerDecoder,
         OT<:Union{Flux.Dense, Flux.Chain}, EXT<:Union{Flux.Dense, Flux.Chain}, QT<:AbstractMatrix{<:AbstractFloat}}
     encoder::E
     prior::PT
@@ -39,8 +40,9 @@ end
 function (m::DeepSlotQueryVAE)(x::AbstractArray{T,3}, x_mask::Union{AbstractArray{Bool},Nothing}=nothing) where T <: AbstractFloat
     bs = size(x, ndims(x))
     h = m.encoder(x, x_mask)                # (hidden, m_z, bs)
-    μ_z, Σ_z = m.prior(h)                     # (z_dim, m_z, bs) each
-    z = μ_z + Σ_z .* MLUtils.randn_like(μ_z)
+    hz = m.prior(h)                           # SplitLayer -> (μ_z, Σ_z); Dense (AE) -> z
+    μ_z, Σ_z = hz isa Tuple ? hz : (hz, nothing)  # (z_dim, m_z, bs) each; Σ_z = nothing for the AE
+    z = isnothing(Σ_z) ? μ_z : μ_z + Σ_z .* MLUtils.randn_like(μ_z)
     x̂, logits_exist = decode(m, z)
     return x̂, logits_exist, μ_z, Σ_z
 end
@@ -65,7 +67,8 @@ function decode(m::DeepSlotQueryVAE, z::AbstractArray{T,3}) where T <: AbstractF
 end
 
 function generate(m::DeepSlotQueryVAE, n_samples::Int; m_z::Int)
-    z_dim = size(m.prior.μ.weight, 1)
+    m.prior isa Flux.Dense && throw(ArgumentError("generate: deterministic (AE) latent has no N(0, I) prior; sample z from a fitted latent model and call decode"))
+    z_dim = size(m.z_to_hidden.weight, 2)
     z = randn(Float32, z_dim, m_z, n_samples)
     Z = m.z_to_hidden(z)
     slots = repeat(m.queries, 1, 1, n_samples)

@@ -4,12 +4,16 @@
 # block, and must swallow keys it doesn't use via kwargs... (model_type is passed too).
 # The model_type also names the output folder: data/HSTreeGenExperiments/<dataset>/<model_type>/..., so a model
 # variant that should be evaluated separately gets its own entry here, even if it shares a constructor.
-# Loss weights go in train.loss_kwargs; their names are model-specific (λ_exist for HSQVAE, λ for StructuredMnistHSQVAE; a wrong name is
+# Loss weights go in train.loss_kwargs; their names are model-specific (λ_exist for HSQVAE, λ/α (+γ for the AE) for StructuredMnistHSQVAE; a wrong name is
 # silently ignored by the model's kwargs...).
 const MODEL_CONSTRUCTORS = Dict(
     "hsqvae" => HierarchicalSlotQueryVAE,   # kwargs constructor in src/models/HierarchicalSlotQueryVAE.jl
-    "structured_mnist_hsqvae" => StructuredMnistHSQVAE,   # src/models/HSTreeSpecialized/StructuredMNIST/; needs a point mask
-                                                          # (mnist_clock with point_mask: true, or mnist_clock_unbalanced)
+    # src/models/HSTreeSpecialized/StructuredMNIST/; needs a point mask (mnist_clock with point_mask: true, or mnist_clock_unbalanced).
+    # VAE and its deterministic AE variant share the constructor; model_type is the only switch (so they land in different folders).
+    "structured_mnist_hsqvae" => (; variational=true, kw...) -> (variational === true ||
+        throw(ArgumentError("model_type structured_mnist_hsqvae is the VAE; use model_type structured_mnist_hsqae for the AE")); StructuredMnistHSQVAE(; kw...)),
+    "structured_mnist_hsqae" => (; variational=false, kw...) -> (variational === false ||
+        throw(ArgumentError("model_type structured_mnist_hsqae is the AE; don't set variational")); StructuredMnistHSQVAE(; kw..., variational=false)),
 )
 
 function build_model(model_type::AbstractString, model_cfg; data_dims...)

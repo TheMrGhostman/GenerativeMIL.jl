@@ -51,7 +51,7 @@ train:
     w2: 1
     agg: "mean"
   loss_kwargs:
-    λ: 0.004          # weight of the existence loss (also added to the Hungarian cost)  ≈ 1 / 250 = 0.004
+    λ: 0.004          # weight of the existence loss (NOT part of the Hungarian cost)  ≈ 1 / 250 = 0.004
     α: 1.0                  # weight of the digit-cardinality loss (also added to the Hungarian cost)
   lr: 0.0003
   weight_decay: 0.0001
@@ -76,4 +76,3 @@ train:
   val_prediction_dirname: "val_predictionsdata"
   seed: 1
   verbose: true
-  model_dir: "cd_smhsqvae_mnist_clock_unbalanced_test"

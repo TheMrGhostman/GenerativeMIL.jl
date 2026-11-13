@@ -96,7 +96,6 @@ function main()
     # model-specific loss weights / switches (e.g. λ_exist for HSQVAE), forwarded by train_model! to optim_step and
     # valid_step. The old top-level train.lambda_exist (HSQVAE configs) is still accepted.
     loss_kwargs_cfg = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in get(train_cfg, :loss_kwargs, Dict()))
-    haskey(train_cfg, :lambda_exist) && !haskey(loss_kwargs_cfg, :λ_exist) && (loss_kwargs_cfg[:λ_exist] = train_cfg[:lambda_exist])
     loss_kwargs = (; (k => _f32(v) for (k, v) in loss_kwargs_cfg)...)
 
     lr_scheduler_cfg = get(train_cfg, :lr_scheduler, nothing)
