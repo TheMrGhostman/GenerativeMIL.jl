@@ -53,8 +53,8 @@ train:
     w2: 1
     agg: "mean"
   loss_kwargs:
-    λ: 0.004          # weight of the existence loss (NOT part of the Hungarian cost)  ≈ 1 / 250 = 0.004
-    γ: 0.0            # weight of the latent-norm penalty ℒ_z = mean(½‖z‖²) (RAE); 0 = pure AE
+    λ: 0.01          # weight of the existence loss (NOT part of the Hungarian cost)  ≈ 1 / 250 = 0.004
+    γ: 0.0001         # weight of the latent-norm penalty ℒ_z = mean(½‖z‖²) (RAE); 0 = pure AE
     α: 1.0                  # weight of the digit-cardinality loss (also added to the Hungarian cost)
   lr: 0.0003
   weight_decay: 0.0001

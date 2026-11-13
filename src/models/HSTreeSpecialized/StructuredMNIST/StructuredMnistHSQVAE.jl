@@ -108,7 +108,7 @@ function elbo_with_logging(model::StructuredMnistHSQVAE, x::AbstractArray{T,4}, 
 
     ℒₖₗ = mean(kl_divergence(μ_z, Σ_z))
     ℒ = ℒ_rec + α * ℒ_card + λ * ℒ_exist + β * ℒₖₗ
-    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card = ℒ_card, ℒ_exist = ℒ_exist, λℒ_exist = λ * ℒ_exist , ℒₖₗ = ℒₖₗ, βℒₖₗ = β * ℒₖₗ, λ = λ, β = β, α = α)
+    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card = ℒ_card, ℒ_exist = ℒ_exist, ℒₖₗ = ℒₖₗ, λ = λ, β = β, α = α, λℒ_exist = λ * ℒ_exist, βℒₖₗ = β * ℒₖₗ, αℒ_card = α * ℒ_card)
     return ℒ, logs
 end
 
@@ -128,7 +128,7 @@ function loss_with_logging(model::StructuredMnistHSQVAE, x::AbstractArray{T,4}, 
 
     ℒ_z = mean(sum(z .^ 2; dims=1)) / 2
     ℒ = ℒ_rec + α * ℒ_card + λ * ℒ_exist + γ * ℒ_z
-    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card = ℒ_card, ℒ_exist = ℒ_exist, λℒ_exist = λ * ℒ_exist, ℒ_z = ℒ_z, γℒ_z = γ * ℒ_z, λ = λ, γ = γ, α = α)
+    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card = ℒ_card, ℒ_exist = ℒ_exist, ℒ_z = ℒ_z, λ = λ, γ = γ, α = α, λℒ_exist = λ * ℒ_exist, γℒ_z = γ * ℒ_z, αℒ_card = α * ℒ_card)
     return ℒ, logs
 end
 
