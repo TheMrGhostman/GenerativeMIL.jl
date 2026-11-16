@@ -149,8 +149,7 @@ function loss_with_logging(model::StructuredMnistBagVAE, x::AbstractArray{T,4}, 
     ℒ_z = mean(sum(z .^ 2; dims=1)) / 2
     ℒ = ℒ_rec + α₁ * ℒ_card_digits + α₂ * ℒ_card_points + γ * ℒ_z
 
-    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card_digits = ℒ_card_digits, , ℒ_card_points = ℒ_card_points, ℒ_z = ℒ_z, α₁ = α₁, α₂ = α₂, γ = γ, α₁ℒ_card_digits = α₁ * ℒ_card_digits, α₂ℒ_card_points = α₂ * ℒ_card_points, γℒ_z = γ * ℒ_z,
-         , n_unmatched = n_unmatched, card_mae_digits = card_mae_digits)
+    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card_digits = ℒ_card_digits, ℒ_card_points = ℒ_card_points, ℒ_z = ℒ_z, α₁ = α₁, α₂ = α₂, γ = γ, α₁ℒ_card_digits = α₁ * ℒ_card_digits, α₂ℒ_card_points = α₂ * ℒ_card_points, γℒ_z = γ * ℒ_z, n_unmatched = n_unmatched, card_mae_digits = card_mae_digits,)
     return ℒ, logs
 end
 
