@@ -68,9 +68,134 @@ function decode(m::StructuredMnistBagVAE, z::AbstractArray{T,3}, n_digits::Int, 
 end
 
 
+# ---- losses ---------------------------------------------------------------------------------------------------------
+#
+# ℒ = ℒ_rec + α₁ ℒ_card_digits + α₂ ℒ_card_points + β ℒₖₗ   (VAE, elbo_with_logging)
+# ℒ = ℒ_rec + α₁ ℒ_card_digits + α₂ ℒ_card_points + γ ℒ_z   (AE,  loss_with_logging)
+#
+# - ℒ_card_digits: digit count per bag (outer DiscreteBagVAE head), MSE on count / L -- no matching needed.
+# - ℒ_rec, ℒ_card_points: per digit, on the Hungarian-matched (predicted slot, ground-truth digit) pairs.
+# No existence head: the digit count (teacher-forced in training) decides which predicted slots exist.
 
+"""
+`_bag_matching_losses(ŷ, digit_mask, n̂_points, x, x_mask, distance; α₂, card_distance, card_after_hm)`
 
+Hungarian matching of the active predicted digit slots to the ground-truth digits, and the matched-pair losses.
 
+The predicted side is restricted in the MATCHING, not in the distance: `hungarian_match(C, gt_mask, digit_mask)` drops
+inactive predicted slots (rows) before solving, so they can never be matched. (Masking ŷ inside the masked Chamfer
+would be wrong: it sets the cost of pairs with an empty cluster to 0, which the matching would then prefer.) Under
+teacher forcing #active slots == #ground-truth digits, so every digit gets exactly one partner; with `gt_card=false`
+surplus slots / digits stay unmatched.
+
+Returns `(ℒ_rec, ℒ_card_points, n_unmatched_gt)`; `n_unmatched_gt` (GT digits without a partner) is for logging only.
+"""
+function _bag_matching_losses(ŷ, digit_mask, n̂_points, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, distance::Function; α₂, card_distance::Function, card_after_hm::Bool) where T <: AbstractFloat
+    C_rec = distance(ŷ, x, nothing, x_mask)                    # (M, L, BS); active predicted digits have all n points
+    C_card = card_distance(n̂_points, x_mask)                   # (M, L, BS); softplus(n̂) vs count / npoints
+    C = card_after_hm ? C_rec : C_rec .+ α₂ .* C_card          # point-count term in the matching cost (unless card_after_hm)
+
+    gt_mask = _digit_mask(x_mask)                               # (1, L, BS)
+    c_ml, _ = Zygote.@ignore hungarian_match(C, gt_mask, digit_mask)
+    n_matched = length(c_ml)
+    n_unmatched_gt = Zygote.@ignore sum(Array(gt_mask)) - n_matched
+
+    ℒ_rec = n_matched > 0 ? mean(C_rec[c_ml]) : zero(T)
+    ℒ_card_points = n_matched > 0 ? mean(C_card[c_ml]) : zero(T)
+    return ℒ_rec, ℒ_card_points, n_unmatched_gt
+end
+
+# loss weights of the HSQVAE models don't exist here; a copied config would otherwise be silently ignored (α₁=α₂=1)
+function _check_bag_loss_kwargs(kwargs)
+    for k in (:λ, :λ_exist, :α)
+        haskey(kwargs, k) && throw(ArgumentError("StructuredMnistBagVAE: unknown loss weight $k; use α₁ (digit count), α₂ (point count), β (VAE) / γ (AE)"))
+    end
+end
+
+"""
+`elbo_with_logging(model::StructuredMnistBagVAE, x, x_mask, distance; β, α₁, α₂, ...)` -- VAE loss
+`ℒ_rec + α₁ ℒ_card_digits + α₂ ℒ_card_points + β ℒₖₗ`. Only for `variational=true` (the AE uses `loss_with_logging`).
+
+`gt_card=true` (default) teacher-forces the digit count; `card_after_hm=true` keeps the point-count term out of the
+matching cost; `no_grad_card=true` trains the digit-count head without gradient into the latent.
+"""
+function elbo_with_logging(model::StructuredMnistBagVAE, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, distance::Function=chamfer_pairwise_distance; β::AbstractFloat=1f0, α₁::AbstractFloat=1f0, α₂::AbstractFloat=1f0, card_distance::Function=pairwise_lin_card_distance, card_after_hm::Bool=false, gt_card::Bool=true, no_grad_card::Bool=false, kwargs...) where T <: AbstractFloat
+    _check_bag_loss_kwargs(kwargs)
+    is_variational(model) || throw(ArgumentError("elbo_with_logging: deterministic (AE) StructuredMnistBagVAE has no KL term; use loss_with_logging"))
+
+    ŷ, μ_z, Σ_z, digit_mask, n̂_digits, n̂_points = model(x, x_mask; gt_card=gt_card, no_grad_card=no_grad_card)
+    ℒ_rec, ℒ_card_points, n_unmatched = _bag_matching_losses(ŷ, digit_mask, n̂_points, x, x_mask, distance; α₂=α₂, card_distance=card_distance, card_after_hm=card_after_hm)
+    ℒ_card_digits, card_mae_digits = cardinality_loss(n̂_digits, _digit_mask(x_mask))
+
+    ℒₖₗ = mean(kl_divergence(μ_z, Σ_z))
+    ℒ = ℒ_rec + α₁ * ℒ_card_digits + α₂ * ℒ_card_points + β * ℒₖₗ
+    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card_digits = ℒ_card_digits, ℒ_card_points = ℒ_card_points, ℒₖₗ = ℒₖₗ, β = β, α₁ = α₁, α₂ = α₂, βℒₖₗ = β * ℒₖₗ, α₁ℒ_card_digits = α₁ * ℒ_card_digits, α₂ℒ_card_points = α₂ * ℒ_card_points, n_unmatched = n_unmatched, card_mae_digits = card_mae_digits,)
+    return ℒ, logs
+end
+
+"""
+`loss_with_logging(model::StructuredMnistBagVAE, x, x_mask, distance; γ, α₁, α₂, ...)` -- AE loss
+`ℒ_rec + α₁ ℒ_card_digits + α₂ ℒ_card_points + γ ℒ_z`, `ℒ_z = mean(½ Σ_d z_d²)` (RAE latent penalty, same definition
+as in StructuredMnistHSQVAE; `γ = 0` default = pure AE). Only for `variational=false`; `β` from the trainer is ignored.
+"""
+function loss_with_logging(model::StructuredMnistBagVAE, x::AbstractArray{T,4}, x_mask::AbstractArray{Bool,4}, distance::Function=chamfer_pairwise_distance; γ::AbstractFloat=0f0, α₁::AbstractFloat=1f0, α₂::AbstractFloat=1f0, card_distance::Function=pairwise_lin_card_distance, card_after_hm::Bool=false, gt_card::Bool=true, no_grad_card::Bool=false, kwargs...) where T <: AbstractFloat
+    _check_bag_loss_kwargs(kwargs)
+    is_variational(model) && throw(ArgumentError("loss_with_logging: variational StructuredMnistBagVAE; use elbo_with_logging"))
+
+    ŷ, z, _, digit_mask, n̂_digits, n̂_points = model(x, x_mask; gt_card=gt_card, no_grad_card=no_grad_card)
+    ℒ_rec, ℒ_card_points, n_unmatched = _bag_matching_losses(ŷ, digit_mask, n̂_points, x, x_mask, distance; α₂=α₂, card_distance=card_distance, card_after_hm=card_after_hm)
+    ℒ_card_digits, card_mae_digits = cardinality_loss(n̂_digits, _digit_mask(x_mask))
+
+    ℒ_z = mean(sum(z .^ 2; dims=1)) / 2
+    ℒ = ℒ_rec + α₁ * ℒ_card_digits + α₂ * ℒ_card_points + γ * ℒ_z
+
+    logs = (ℒ = ℒ, ℒ_rec = ℒ_rec, ℒ_card_digits = ℒ_card_digits, , ℒ_card_points = ℒ_card_points, ℒ_z = ℒ_z, α₁ = α₁, α₂ = α₂, γ = γ, α₁ℒ_card_digits = α₁ * ℒ_card_digits, α₂ℒ_card_points = α₂ * ℒ_card_points, γℒ_z = γ * ℒ_z,
+         , n_unmatched = n_unmatched, card_mae_digits = card_mae_digits)
+    return ℒ, logs
+end
+
+# the loss matching the architecture: ELBO for the VAE, AE loss otherwise
+_loss_fn(m::StructuredMnistBagVAE) = is_variational(m) ? elbo_with_logging : loss_with_logging
+
+# ---- training / validation steps (called by train_model!) -----------------------------------------------------------
+
+function optim_step(model::StructuredMnistBagVAE, batch::Tuple{X, M, L}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, α₁=1f0, α₂=1f0, γ=0f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}, L <: AbstractArray{Int}}
+    x, x_mask, _ = batch
+    return optim_step(model, (x, x_mask), opt, logpdf, device; β=β, α₁=α₁, α₂=α₂, γ=γ, kwargs...)
+end
+
+function optim_step(model::StructuredMnistBagVAE, batch::Tuple{X, M}, opt::NamedTuple, logpdf, device::Function=cpu; β=1f0, α₁=1f0, α₂=1f0, γ=0f0, kwargs...) where {X <: AbstractArray{<:AbstractFloat,4}, M <: AbstractArray{Bool,4}}
+    x, x_mask = device.(batch)
+    lossf = _loss_fn(model)
+    (loss, logs), (∇model,) = Zygote.withgradient(model) do m
+        lossf(m, x, x_mask, logpdf; β=β, α₁=α₁, α₂=α₂, γ=γ, kwargs...)
+    end
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, logs
+end
+
+function valid_step(model::StructuredMnistBagVAE, dataloader::DataLoader, logpdf; β=1f0, α₁=1f0, α₂=1f0, γ=0f0, device::Function=cpu, kwargs...)
+    variational = is_variational(model)
+    lossf = _loss_fn(model)
+    ℒ, ℒ_rec, ℒ_cd, mae_d, ℒ_cp, ℒ_lat = 0f0, 0f0, 0f0, 0f0, 0f0, 0f0   # ℒ_lat: ℒₖₗ (VAE) or ℒ_z (AE)
+    for batch in dataloader
+        x, x_mask = length(batch) == 3 ? (batch[1], batch[2]) : batch
+        x, x_mask = device(x), device(x_mask)
+        loss, logs = lossf(model, x, x_mask, logpdf; β=β, α₁=α₁, α₂=α₂, γ=γ, kwargs...)
+        ℒ += loss
+        ℒ_rec += logs.ℒ_rec
+        ℒ_cd += logs.ℒ_card_digits
+        mae_d += logs.card_mae_digits
+        ℒ_cp += logs.ℒ_card_points
+        ℒ_lat += variational ? logs.ℒₖₗ : logs.ℒ_z
+    end
+    n = length(dataloader)
+    common = (; ℒᵥ = ℒ/n, ℒᵥ_rec = ℒ_rec/n, ℒᵥ_card_digits = ℒ_cd/n, ℒᵥ_card_mae_digits = mae_d/n, ℒᵥ_card_points = ℒ_cp/n)
+    logs = variational ? merge(common, (; ℒᵥₖₗ = ℒ_lat/n)) : merge(common, (; ℒᵥ_z = ℒ_lat/n))
+    return logs, ℒ/n
+end
+
+## Constructor
 
 function StructuredMnistBagVAE(; 
     idim::Int, e_hdim::Int, e_pre_depth::Int, e_pma_heads::Int, e_pma_mz::Int, e_post_depth::Int, e_pma_attention_fn, dbv_emb_dim::Int, dbv_hdim::Int, dbv_depth::Int, dbv_indices::Int, dbv_heads::Int, dbv_pma_attention_fn, dbv_zdim::Int, dbv_n_attn_layers::Int, d_mha_layers::Int, d_heads::Int, o_hdim::Int, o_depth::Int, cp_pre_layers::Int, cp_layers::Int, activation=relu, output_activation=identity, e_pma_card_pooling::CD1=nothing, dbv_pma_card_pooling::CD2=nothing, e_dropout::Real=0.0, dbv_dropout::Real=0.0, cp_dropout::Real=0.0, cp_out_dim::Int=1, variational::Bool=true, kwargs...
@@ -119,5 +244,3 @@ function StructuredMnistBagVAE(;
 
     return StructuredMnistBagVAE(encoder, dbv, decoder, cardinality_head, output)
 end
-
-
