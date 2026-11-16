@@ -9,16 +9,20 @@ end
 
 Flux.@layer DiscreteBagVAE
 
-function DiscreteBagVAE(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, cp_pre_layers::Int=1; card_pooling::Union{Nothing, Symbol}=nothing)
+function DiscreteBagVAE(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, cp_pre_layers::Int=1, cp_out_dim::Int=1; card_pooling::Union{Nothing, Symbol}=nothing, pma_attention_fn::Function=attention)
+    return DiscreteBagVAE(;dₓ=dₓ, dₕ=dₕ, m_z=m_z, d_z=d_z, n_heads=n_heads, pma_attention_fn=pma_attention_fn, n_layers=n_layers, att_layers=att_layers, cp_layers=cp_layers, activation=activation, dropout=dropout, gaussian_mlp=gaussian_mlp, cp_pre_layers=cp_pre_layers, cp_out_dim=cp_out_dim, card_pooling=card_pooling)
+end
 
-    pool_fn = PMA(m_z, dₕ, n_heads)
+function DiscreteBagVAE(;dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, pma_attention_fn::Function, n_layers::Int, att_layers::Int, cp_layers::Int, activation::Function=relu, dropout::Real=0.0, gaussian_mlp::Bool=true, cp_pre_layers::Int=1, cp_out_dim::Int=1, card_pooling::Union{Nothing, Symbol}=nothing)
+
+    pool_fn = PMA(m_z, dₕ, n_heads; attention_fn=pma_attention_fn)
     pool_fn = isnothing(card_pooling) ? pool_fn :  CardinalityPooling(pool_fn, card_pooling)
     cfd = isnothing(card_pooling) ? 0 : feature_dim(pool_fn)                                     # cardinality feature dimension
 
     encoder = PoolEncoder(
-        create_mlp(dₓ, dₕ, n_layers, dₕ, activation),
+        create_mlp(dₓ, dₕ, n_layers, dₕ, activation, dropout=dropout),
         pool_fn,
-        gaussian_mlp ? create_gaussian_mlp(dₕ + cfd, dₕ, n_layers, d_z, activation; softplus_=true) : create_mlp(dₕ + cfd, dₕ, n_layers, d_z, activation) 
+        gaussian_mlp ? create_gaussian_mlp(dₕ + cfd, dₕ, n_layers, d_z, activation; softplus_=true, dropout=dropout) : create_mlp(dₕ + cfd, dₕ, n_layers, d_z, activation, dropout=dropout) 
     )
 
     query_prior = MLUtils.randn_like
@@ -34,12 +38,12 @@ function DiscreteBagVAE(dₓ::Int, dₕ::Int, m_z::Int, d_z::Int, n_heads::Int, 
     # seed) first, so no token has to carry the cardinality on its own.
     cardinality_head = if m_z > 1
         PoolEncoder(
-            with_dropout(create_mlp(d_z, dₕ, cp_pre_layers, dₕ, activation), dropout),
+            create_mlp(d_z, dₕ, cp_pre_layers, dₕ, activation, dropout=dropout),
             PMA(1, dₕ, n_heads),
-            with_dropout(create_mlp(dₕ, dₕ, cp_layers, 1, activation, out_identity=true), dropout)
+            create_mlp(dₕ, dₕ, cp_layers, cp_out_dim, activation, out_identity=true, dropout=dropout)
         )
     else
-        with_dropout(create_mlp(d_z, dₕ, cp_layers, 1, activation, out_identity=true), dropout)
+        create_mlp(d_z, dₕ, cp_layers, cp_out_dim, activation, out_identity=true, dropout=dropout)
     end
 
     return DiscreteBagVAE(encoder, query_prior, z_to_kv, decoder, output_head, cardinality_head)
