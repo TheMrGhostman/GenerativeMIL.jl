@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --time=24:00:00
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1 --ntasks-per-node=1 --cpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --partition=gpulong
+#SBATCH --partition=gpufast
 #SBATCH --mem=30G
 #SBATCH --output=slurms/%x_%j.out
 

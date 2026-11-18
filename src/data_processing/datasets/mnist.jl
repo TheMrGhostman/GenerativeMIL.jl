@@ -72,7 +72,9 @@ Load MNIST point-cloud data and create train/validation/test splits.
 # Arguments
 - `npoints`: number of points requested after sampling.
 - `validation`: if `true`, returns train/val/test; otherwise train/test.
-- `cardinality_count`: `:balanced` or `:natural` source format.
+- `cardinality_count`: `:balanced` or `:natural` source format, or `:unbalanced`: single digits exactly as in
+  `mnist_clock_unbalanced` (per-digit point count + point mask, see [`_load_mnist_unbalanced`](@ref)); takes the
+  extra kwargs `min_points` and `augment_points`.
 - `sample_on_fly`: enable lazy sampling on the training split.
 - `normalize`: `false`, `true` (legacy `normalize_point_cloud`) or `"global"` (fixed global MNIST statistics,
   recommended for new runs), see `_normalize_mnist`.
@@ -91,6 +93,7 @@ Load MNIST point-cloud data and create train/validation/test splits.
 - On-the-fly sampling is applied only to training data.
 """
 function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbol=:balanced, sample_on_fly::Bool=false, normalize::Union{Bool,AbstractString,Symbol}=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
+    cardinality_count == :unbalanced && return _load_mnist_unbalanced(npoints; validation=validation, sample_on_fly=sample_on_fly, normalize=normalize, ratio=ratio, seed=seed, kwargs...)
     if cardinality_count == :balanced
         dict_loaded = Serialization.deserialize(_mnist_balanced_path())
         xs = dict_loaded["features"]
@@ -147,4 +150,69 @@ function load_mnist(npoints=512; validation::Bool=true, cardinality_count::Symbo
 
     return (x_train, y_train), (x_test, y_test)
 
+end
+
+# ---- single digits as in mnist_clock_unbalanced (digit classifier for the HSTree evaluation) ---------------------------
+
+"""
+`_masked_digit(rng, pc::AbstractMatrix, k::Int, npoints::Int)`
+
+`k` points of the point cloud `pc` (without replacement) in positions `1:k` of a zero-padded `(D, npoints, 1)` array,
+plus the point mask `(1, npoints, 1)`. Same layout as one digit slot of `sample_one_unbalanced_bag`.
+"""
+function _masked_digit(rng, pc::AbstractMatrix, k::Int, npoints::Int)
+    x = zeros(Float32, size(pc, 1), npoints, 1)
+    m = falses(1, npoints, 1)
+    idx = sample(rng, axes(pc, 2), k, replace=false)
+    x[:, 1:k, 1] .= pc[:, idx]
+    m[1, 1:k, 1] .= true
+    return x, m
+end
+
+# eager version for validation / test: (D, npoints, N), BitArray (1, npoints, N)
+function _masked_digits(rng, pcs::AbstractVector{<:AbstractMatrix}, ks::AbstractVector{Int}, npoints::Int)
+    xm = [_masked_digit(rng, pc, k, npoints) for (pc, k) in zip(pcs, ks)]
+    return cat(first.(xm)...; dims=3), cat(last.(xm)...; dims=3)
+end
+
+"""
+`_load_mnist_unbalanced(npoints; min_points=1, augment_points=false, validation, sample_on_fly, normalize, ratio, seed)`
+
+Single MNIST digits exactly as they appear in `mnist_clock_unbalanced` for the same `npoints`, `min_points` and
+`seed`: same natural point clouds, same instance split (`_instance_split`), same per-instance point count
+`_scaled_point_counts` (`k = clamp(round(n_natural · npoints / 6320), min_points, npoints)`), same normalization.
+Used to train the digit classifier of the HSTree evaluation.
+
+`augment_points=true` (training split only) draws the point count uniformly from `k:npoints` instead of `k`, so the
+classifier also sees dense versions of every digit (generated digits always have all `npoints` points).
+
+Returns `(x, mask, y)` triples: `x (3, npoints, N)`, `mask::BitArray (1, npoints, N)`, `y::Vector{Int}`. With
+`sample_on_fly` the training split is a lazy `mapobs` of per-digit `(x (3, npoints, 1), mask (1, npoints, 1), y)`
+triples (collated by `masked_digit_collate_fn`). Validation and test are always fixed (`MersenneTwister(seed + 1/2)`).
+"""
+function _load_mnist_unbalanced(npoints=512; min_points::Int=1, augment_points::Bool=false, validation::Bool=true, sample_on_fly::Bool=false, normalize::Union{Bool,AbstractString,Symbol}=false, ratio::AbstractFloat=0.2, seed::Int=666, kwargs...)
+    dict_loaded = Serialization.deserialize(_mnist_natural_path())
+    xs = dict_loaded["features"]
+    y = dict_loaded["targets"]
+    n_natural = size.(xs, 2)
+    ref_points = maximum(n_natural)
+    @assert npoints <= minimum(n_natural) "npoints ($npoints) must not exceed the smallest natural digit ($(minimum(n_natural))) -- augment_points samples up to npoints points without replacement."
+    @assert 1 <= min_points <= npoints "min_points ($min_points) must be in 1:npoints ($npoints)."
+    ns = _scaled_point_counts(n_natural, npoints, ref_points, min_points)
+    xs = _normalize_mnist(xs, normalize)
+
+    train_idx, val_idx, test_idx = _instance_split(length(y), seed; validation=validation, ratio=ratio)
+
+    xs_tr, ns_tr, y_tr = xs[train_idx], ns[train_idx], y[train_idx]
+    train_k(rng, i) = augment_points ? rand(rng, ns_tr[i]:npoints) : ns_tr[i]
+    train = if sample_on_fly
+        mapobs(i -> (_masked_digit(Random.default_rng(), xs_tr[i], train_k(Random.default_rng(), i), npoints)..., y_tr[i]), 1:length(train_idx))
+    else
+        rng = MersenneTwister(seed)
+        (_masked_digits(rng, xs_tr, [train_k(rng, i) for i in eachindex(xs_tr)], npoints)..., y_tr)
+    end
+    test = (_masked_digits(MersenneTwister(seed + 2), xs[test_idx], ns[test_idx], npoints)..., y[test_idx])
+    validation || return train, test
+    valid = (_masked_digits(MersenneTwister(seed + 1), xs[val_idx], ns[val_idx], npoints)..., y[val_idx])
+    return train, valid, test
 end

@@ -6,9 +6,10 @@ EXP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Uprav jen tyto 4 veci:
 CONFIGS=(
-    "configs/mnist_configs/clf_c001.yml"
-
-
+    # HSTree evaluation classifiers (mnist_clock / mnist_clock_unbalanced digits); keep SEEDS=(1) -- the data split
+    # seed must match the HST runs (seed=1)
+    "configs/mnist_configs/clf_clock_bal.yml"
+    "configs/mnist_configs/clf_clock_unb.yml"
 )
 SEEDS=(1)
 TIME_LIMIT=24

@@ -257,6 +257,17 @@ function on_fly_collate_fn(batch::Vector{Tuple{X, Y}}) where {X <: AbstractArray
 end
 
 """
+    masked_digit_collate_fn(batch)
+
+Collate function for on-the-fly sampled single digits with a point mask (`load_mnist` with
+`cardinality_count = :unbalanced`): observations `(x (D, N, 1), mask (1, N, 1), label::Int)` -> `(x (D, N, BS),
+mask (1, N, BS), labels (BS,))`.
+"""
+function masked_digit_collate_fn(batch::Vector{Tuple{X, M, Y}}) where {X <: AbstractArray{<:AbstractFloat, 3}, M <: AbstractArray{Bool, 3}, Y <: Int}
+    return cat(getindex.(batch, 1)...; dims=3), cat(getindex.(batch, 2)...; dims=3), collect(getindex.(batch, 3))
+end
+
+"""
     bag_collate_fn(batch)
 
 Collate function for on-the-fly sampled "bag of point clouds" batches (see

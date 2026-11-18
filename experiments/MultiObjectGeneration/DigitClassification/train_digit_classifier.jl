@@ -57,13 +57,31 @@ function GenerativeMIL.optim_step(model::PoolEncoder, batch::Tuple{X, Y}, opt::N
     return model, opt, (ℒ = loss,)
 end
 
+function GenerativeMIL.optim_step(model::PoolEncoder, batch::Tuple{X, M, Y}, opt::NamedTuple, logpdf, device::Function=cpu; unique_classes=1:2, kwargs...) where {X <: AbstractArray{<:AbstractFloat,3}, M<:AbstractArray{Bool, 3}, Y <: AbstractArray{Int}}
+    x, mask, y = batch
+    x, mask, y = device(x), device(mask), device(Flux.onehotbatch(y, unique_classes))
+    loss, (∇model,) = Zygote.withgradient(model) do m
+        logpdf(m(x, mask), y)
+    end
+    #return loss, logs, ∇model
+    opt, model = Optimisers.update(opt, model, ∇model)
+    return model, opt, (ℒ = loss,)
+end
+
+
 function GenerativeMIL.valid_step(model::PoolEncoder, dataloader::DataLoader, logpdf; device::Function=cpu, unique_classes=1:2, kwargs...)
     ℒ = 0f0
     acc = 0f0
     for batch in dataloader
-        x, y = batch
-        x, y = device(x), device(Flux.onehotbatch(y, unique_classes))
-        ŷ = model(x)
+        if (batch isa Tuple) && (length(batch) == 3)
+            x, mask, y = batch
+            x, mask, y = device(x), device(mask), device(Flux.onehotbatch(y, unique_classes))
+            ŷ = model(x, mask)
+        else
+            x, y = batch
+            x, y = device(x), device(Flux.onehotbatch(y, unique_classes))
+            ŷ = model(x)
+        end
         loss = logpdf(ŷ, y)
         acc += accuracy_onehot(ŷ, y)
         ℒ += loss
@@ -147,7 +165,8 @@ function main()
         grad_skip = get(train_cfg, :grad_skip, false),
         validation_verbose = get(train_cfg, :validation_verbose, false),
         save_val_predictions = get(train_cfg, :save_val_predictions, false),
-        unique_classes = sort(unique(dataloaders.train.data[2])),
+        # labels are the LAST field of the (eager) test split: (x, y) or, with a point mask, (x, mask, y)
+        unique_classes = sort(unique(dataloaders.test.data[end])),
     )
 
     # save config as json

@@ -130,6 +130,8 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
     n_classes = _cfgget(data_cfg, :n_classes, 10)
     # mnist_clock_unbalanced-specific option
     min_points = _cfgget(data_cfg, :min_points, 1)
+    # mnist with cardinality_count "unbalanced": training point count drawn from k:npoints (digit classifier)
+    augment_points = _cfgget(data_cfg, :augment_points, false)
     # mnist_clock: point mask (1, npoints, L) instead of slot mask (1, 1, L), needed by StructuredMnistHSQVAE
     point_mask = _cfgget(data_cfg, :point_mask, false)
     # masked bag datasets returning (data, mask, labels) triples
@@ -153,6 +155,7 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
         n_eval_samples=n_eval_samples,
         n_classes=n_classes,
         min_points=min_points,
+        augment_points=augment_points,
         point_mask=point_mask,
         verbose=verbose,
     )
@@ -178,6 +181,8 @@ function create_dataloaders(data_cfg; batch_size::Int=32, x_only::Bool=false, tr
 
     if sample_on_fly && is_bag_dataset
         train_collate_fn = isnothing(train_collate_fn) ? bag_collate_fn : train_collate_fn
+    elseif sample_on_fly && dataset_name == "mnist" && cardinality_count == :unbalanced
+        train_collate_fn = isnothing(train_collate_fn) ? masked_digit_collate_fn : train_collate_fn
     elseif sample_on_fly && cardinality_count == :natural
         train_collate_fn = isnothing(train_collate_fn) ? on_fly_collate_fn : train_collate_fn
     end
